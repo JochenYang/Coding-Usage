@@ -1,0 +1,12 @@
+node_modules
+dist
+*.local
+.DS_Store
+.env
+*.log
+.vite
+playwright-report
+test-results
+*.tsbuildinfo
+seed-*.mjs
+seed-*.js

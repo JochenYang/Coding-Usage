@@ -1,0 +1,132 @@
+import type { Dict } from './types'
+
+/**
+ * 英文文案字典
+ * - 结构必须与 zh-CN 完全一致（key 一一对应）
+ * - 类型用 Dict 强校验，避免漏 key / 多 key
+ */
+export const enUS: Dict = {
+  app: {
+    title: 'Coding Usage',
+    tagline: 'Multi-Platform Usage Dashboard',
+  },
+  header: {
+    autoRefresh: 'Auto refresh',
+    refreshAll: 'Refresh all',
+    settings: 'Settings',
+    theme: {
+      system: 'Follow system',
+      light: 'Light',
+      dark: 'Dark',
+    },
+  },
+  empty: {
+    title: 'Add your first API key',
+    description:
+      'Supports OpenCode Zen Go, Zhipu GLM, Kimi, DeepSeek, SiliconFlow, OpenRouter and MiniMax plans and balance. Each provider can have multiple accounts.',
+    openSettings: 'Open settings',
+  },
+  card: {
+    refresh: 'Refresh',
+    delete: 'Delete this account',
+    accountsCount: (n: number) => `· ${n} accounts`,
+    accountIndex: (n: number) => `Account ${n}`,
+    okRatio: (ok: number, total: number) => `${ok}/${total} ok`,
+    normal: 'ok',
+    error: 'error',
+    needsProxy: 'Needs local proxy',
+    unconfigured: 'Not configured',
+    loading: 'Querying…',
+    refreshing: 'Refreshing',
+    deleteHint: 'Delete this account?',
+    needsProxyDetail:
+      "This endpoint can't be called directly from the browser. Start the bundled local proxy:",
+    needsProxyAfter: 'After starting it, this card will resume fetching automatically.',
+    goSettings: 'Open settings to add',
+    displayCurrencies: 'Display currencies',
+    displayCurrenciesHint: 'Leave unchecked to show every currency the account returns',
+  },
+  settings: {
+    title: 'Settings · API Keys',
+    close: 'Close',
+    getKey: 'Get key ↗',
+    addAccount: 'Add account',
+    noAccount: 'No accounts for this provider yet. Click "Add account" to start.',
+    aliasLabel: 'Alias (optional)',
+    aliasPlaceholder: (n: number) => (n > 1 ? `Account ${n}` : 'e.g. Main'),
+    apiKeyLabel: 'API key',
+    apiKeyPlaceholder: 'Paste API key',
+    enabled: 'Enable queries',
+    test: 'Test',
+    testing: 'Testing',
+    show: 'Show',
+    hide: 'Hide',
+    deleteTooltip: 'Delete this account',
+    footer:
+      "Keys are stored only in this browser's localStorage. Queries are made directly from your browser to each provider's official API (except OpenCode Zen, which uses the local proxy). Do not save keys on shared computers.",
+    needsProxyError: 'Needs local proxy: run `npm run proxy` first',
+  },
+  providers: {
+    opencode: { name: 'OpenCode Zen Go', tagline: 'Go plan · rolling/weekly/monthly quota' },
+    zhipu: { name: 'Zhipu GLM', tagline: 'Plan · 5h/weekly window' },
+    kimi: { name: 'Kimi', tagline: 'Plan · monthly quota' },
+    deepseek: { name: 'DeepSeek', tagline: 'Pay-as-you-go · multi-currency balance' },
+    siliconflow: { name: 'SiliconFlow', tagline: 'Pay-as-you-go · multi-currency balance' },
+    openrouter: { name: 'OpenRouter', tagline: 'Pay-as-you-go · balance query' },
+    minimax: { name: 'MiniMax Token Plan', tagline: 'Subscription · 5h/weekly window + video bonus' },
+  },
+  provider: {
+    balanceLabel: (currency: string) => `Balance (${currency})`,
+    balanceLabelFallback: 'Balance',
+    totalBalanceLabel: (currency: string) => `Total balance (${currency})`,
+    topUpBalance: 'Topped up',
+    grantBalance: 'Granted',
+  },
+  metric: {
+    unlimited: 'Unlimited',
+    remaining: (cur: number, total: number) => `${cur} / ${total} remaining`,
+  },
+  time: {
+    countdownResetting: 'resetting soon',
+    countdownWithin1Min: 'within 1 min',
+    countdownMinutes: (n: number) => `in ${n} min`,
+    countdownHoursMinutes: (h: number, m: number) => `in ${h} h ${m} m`,
+    countdownDaysHours: (d: number, h: number) => `in ${d} d ${h} h`,
+    agoSeconds: (s: number) => `${s} s ago`,
+    agoMinutes: (m: number) => `${m} min ago`,
+    expiresToday: 'expires today',
+    expiresInDays: (n: number) => `in ${n} days`,
+    expiresOverdueDays: (n: number) => `${n} days overdue`,
+  },
+  windows: {
+    rolling: '5-hour window',
+    weekly: 'Weekly window',
+    monthly: 'Monthly window',
+    rateLimited: ' (rate-limited)',
+    fiveHour: 'Plan · 5-hour window',
+    weeklyPlan: 'Plan · Weekly quota',
+    videoWeekly: 'Video bonus · Weekly quota',
+    planQuota: 'Plan quota',
+    mcpMonthly: 'MCP monthly calls',
+  },
+  regions: {
+    zhipuCN: 'China · bigmodel.cn',
+    zhipuIntl: 'International · z.ai',
+    kimiCN: 'China · moonshot.cn',
+    kimiIntl: 'International · moonshot.ai',
+    minimaxCN: 'China · minimaxi.com',
+    minimaxIntl: 'International · minimax.io',
+    siliconflowCN: 'China · siliconflow.cn',
+    siliconflowIntl: 'International · siliconflow.ai',
+  },
+  autoRefresh: {
+    manual: 'Manual',
+    sec15: '15 sec',
+    sec30: '30 sec',
+    min1: '1 min',
+    min3: '3 min',
+    min5: '5 min',
+    min15: '15 min',
+    min30: '30 min',
+  },
+}
