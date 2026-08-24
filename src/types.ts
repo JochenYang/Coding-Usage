@@ -37,7 +37,6 @@ export type ProviderStatus =
   | 'ok'
   | 'error'
   | 'unconfigured'
-  | 'needs-proxy'
 
 /** Fetch helper injected by the dispatcher when a provider adapter issues extra requests (CORS/proxy already handled) */
 export interface ParseContext {
@@ -68,7 +67,6 @@ export interface ProviderDef {
   tagline: (t: Dict) => string
   /** Region options (label translated per locale). */
   regions?: ProviderRegion[] | ProviderRegionFactory
-  needsProxy?: boolean
   docsUrl: string
   keyUrl: string
   buildRequest(key: string, regionId?: string): { url: string; headers: Record<string, string> }

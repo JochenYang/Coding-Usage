@@ -14,9 +14,7 @@ function StatusDot({ result }: { result: ProviderResult | undefined }) {
       ? 'bg-success'
       : result?.status === 'error'
         ? 'bg-danger'
-        : result?.status === 'needs-proxy'
-          ? 'bg-warning'
-          : 'bg-muted-foreground/40'
+        : 'bg-muted-foreground/40'
   return <span className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${color}`} />
 }
 
@@ -56,16 +54,6 @@ function CardBody({
       )
     }
     return <MetricList metrics={filtered} />
-  }
-  if (result?.status === 'needs-proxy') {
-    return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
-        <div className="mb-1 font-semibold">{t.card.needsProxy}</div>
-        {t.card.needsProxyDetail}
-        <code className="mx-1 rounded bg-amber-100 px-1.5 py-0.5 font-mono">npm run proxy</code>
-        {t.card.needsProxyAfter}
-      </div>
-    )
   }
   if (result?.status === 'error') {
     return (
@@ -112,11 +100,9 @@ export function ProviderCard({
       ? t.card.normal
       : result?.status === 'error'
         ? t.card.error
-        : result?.status === 'needs-proxy'
-          ? t.card.needsProxy
-          : result == null
-            ? t.card.unconfigured
-            : null
+        : result == null
+          ? t.card.unconfigured
+          : null
   return (
     <div className="group relative flex overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-all hover:border-stone-300 hover:shadow-md">
       <div className="flex flex-1 flex-col gap-3 p-4">

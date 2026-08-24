@@ -8,7 +8,7 @@ import {
   loadSettings,
   saveSettings,
 } from './lib/storage'
-import { fetchUsage, pingProxy } from './lib/query'
+import { fetchUsage } from './lib/query'
 import { useT } from './i18n/useT'
 import { useLocale } from './i18n/LocaleProvider'
 import { Header } from './components/Header'
@@ -49,7 +49,6 @@ export default function App() {
   const { locale } = useLocale()
   const [settings, setSettings] = useState<Settings>(loadSettings)
   const [results, setResults] = useState<Record<string, ProviderResult>>({})
-  const [proxyOnline, setProxyOnline] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [refreshingAll, setRefreshingAll] = useState(false)
 
@@ -62,19 +61,7 @@ export default function App() {
 
   useEffect(() => saveSettings(settings), [settings])
 
-  useEffect(() => {
-    let alive = true
-    const ping = async () => {
-      const online = await pingProxy()
-      if (alive) setProxyOnline(online)
-    }
-    void ping()
-    const t = setInterval(ping, 15_000)
-    return () => {
-      alive = false
-      clearInterval(t)
-    }
-  }, [])
+  
 
   const refreshOne = useCallback(
     async (def: ProviderDef, cfg: ProviderConfig, key: string, opts?: { silent?: boolean }) => {
@@ -88,7 +75,7 @@ export default function App() {
       if (!silent) {
         setResults((r) => ({ ...r, [key]: { status: 'loading' } }))
       }
-      const result = await fetchUsage(def, cfg, proxyOnline, locale)
+      const result = await fetchUsage(def, cfg, locale)
       setResults((r) => {
         // In silent mode, if the user kicked off a manual refresh during the fetch,
         // preserve that loading state instead of clobbering it with the silent result.
@@ -96,7 +83,7 @@ export default function App() {
         return { ...r, [key]: result }
       })
     },
-    [proxyOnline, locale],
+    [locale],
   )
 
   const refreshAllEnabled = useCallback(
@@ -124,14 +111,6 @@ export default function App() {
       void refreshAllEnabled(settings, { silent: true })
     }
   }, [locale, refreshAllEnabled, settings])
-
-  const refreshedAfterProxy = useRef(false)
-  useEffect(() => {
-    if (proxyOnline && !refreshedAfterProxy.current) {
-      refreshedAfterProxy.current = true
-      void refreshAllEnabled(settings)
-    }
-  }, [proxyOnline, refreshAllEnabled, settings])
 
   useEffect(() => {
     if (!settings.autoRefreshMin) return

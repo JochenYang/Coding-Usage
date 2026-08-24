@@ -55,7 +55,7 @@ export const zhipu: ProviderDef = {
     const metrics: UsageMetric[] = []
     // TOKENS_LIMIT: unit=3 → 5h window, unit=6 → weekly window; legacy plans have only one
     const tokenLimits = body.data.limits
-      .filter((l) => l.type === 'TOKENS_LIMIT')
+      .filter((l) => l.type === 'TOKENS_LIMIT' || l.type === 'CREDIT_LIMIT')
       .sort((a, b) => (a.unit ?? 0) - (b.unit ?? 0))
     const windowNames =
       tokenLimits.length > 1 ? [t.windows.fiveHour, t.windows.weeklyPlan] : [t.windows.planQuota]

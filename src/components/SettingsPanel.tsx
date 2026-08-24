@@ -3,7 +3,7 @@ import { useState } from 'react'
 import type { ProviderConfig, ProviderDef, Settings } from '../types'
 import { PROVIDERS } from '../providers/registry'
 import { getProviderEntries } from '../lib/storage'
-import { fetchUsage, pingProxy } from '../lib/query'
+import { fetchUsage } from '../lib/query'
 import { useT } from '../i18n/useT'
 import { Switch } from './beui/switch'
 import { Loader } from './beui/loader'
@@ -202,8 +202,7 @@ export function SettingsPanel({
     const testKey = `${def.id}-${index}`
     setTests((t) => ({ ...t, [testKey]: { phase: 'testing' } }))
     try {
-      const proxyOnline = await pingProxy()
-      const result = await fetchUsage(def, cfg, proxyOnline)
+      const result = await fetchUsage(def, cfg)
       if (result.status === 'ok' && result.metrics) {
         const summary = result.metrics
           .map((m) =>
@@ -213,11 +212,6 @@ export function SettingsPanel({
           )
           .join('；')
         setTests((prev) => ({ ...prev, [testKey]: { phase: 'success', message: summary } }))
-      } else if (result.status === 'needs-proxy') {
-        setTests((prev) => ({
-          ...prev,
-          [testKey]: { phase: 'error', message: t.settings.needsProxyError },
-        }))
       } else {
         setTests((prev) => ({
           ...prev,

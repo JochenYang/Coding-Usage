@@ -23,7 +23,6 @@ export const opencode: ProviderDef = {
   logo: 'opencode',
   accent: 'from-zinc-300 to-slate-500',
   tagline: (t) => t.providers.opencode.tagline,
-  needsProxy: true,
   docsUrl: 'https://opencode.ai/docs/zen/',
   keyUrl: 'https://opencode.ai/zh/zen',
   buildRequest(key) {
