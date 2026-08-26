@@ -1,0 +1,28 @@
+# electron-builder packaging configuration.
+# TODO(packaging): add a real app icon (build/icon.ico, >=256px) before the
+# first release — without it installers fall back to the default Electron icon.
+appId: com.coding-usage.app
+productName: Coding Usage
+files:
+  - dist/**
+  - dist-electron/**
+  - assets/**
+# tokscale's platform binary must live outside the asar: spawning a process
+# from inside the archive is not possible on any platform.
+asarUnpack:
+  - node_modules/@tokscale/**
+  - node_modules/tokscale/**
+win:
+  # Rounded transparent app icon generated from assets/images/logo.png
+  icon: build/icon.png
+  target:
+    - nsis
+    - portable
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+# Used by electron-updater for auto-update feeds (latest.yml on GitHub Releases)
+publish:
+  provider: github
+  owner: JochenYang
+  repo: Coding-Usage

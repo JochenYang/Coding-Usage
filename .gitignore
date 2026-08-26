@@ -1,5 +1,7 @@
 node_modules
 dist
+dist-electron
+release
 *.local
 .DS_Store
 .env
@@ -10,3 +12,4 @@ test-results
 *.tsbuildinfo
 seed-*.mjs
 seed-*.js
+.playwright-cli/
