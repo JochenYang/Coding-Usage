@@ -40,31 +40,34 @@
 - **主题模式**：浅色 / 深色 / 跟随系统，favicon 同步适配
 - **多币种过滤**：DeepSeek 等支持按币种筛选显示余额
 - **beUI 组件库**：Select / Popover / Switch / Drawer / Loader 均使用 spring 动效
-- **纯前端**：Key 仅存于浏览器 localStorage，请求由浏览器直连各官方接口
+- **桌面优先**：Electron 壳下 Key 经 safeStorage(DPAPI) 加密存储、请求由主进程直连各官方接口（无 CORS）；浏览器模式下 Key 存 localStorage，直连失败自动回退 corsproxy.io
 
 ## 快速开始
 
 ```bash
 npm install
-npm run dev        # 打开 http://localhost:5173
-npm run build      # 产物为纯静态 dist/
+npm run dev        # 启动 Electron 桌面应用（开发模式，含 HMR）
+npm run dev:web    # 浏览器模式，打开 http://localhost:5173
+npm run build      # electron-vite 构建（dist-electron/ + dist/）
+npm run dist:win   # 打包 Windows 安装包（NSIS + portable）
 ```
 
 ## 新增 Provider
 
 1. 在 `src/providers/` 新建 adapter，实现 `ProviderDef`
 2. 在 `src/providers/registry.ts` 注册
-3. 若接口不支持 CORS，在 `proxy.mjs` 白名单追加域名
+3. 浏览器模式下若接口不支持 CORS，`src/lib/query.ts` 会自动回退 corsproxy.io；Electron 下主进程直连，无需任何代理
 
 ## 技术栈
 
 | 层 | 技术 |
 |---|---|
 | **框架** | React 19 + Vite 7 |
+| **桌面** | Electron 44（electron-vite + electron-builder + electron-updater） |
 | **语言** | TypeScript 5 strict |
 | **样式** | Tailwind CSS v4（`@theme` token 驱动） |
 | **动画** | `motion/react` + beui.dev |
-| **图标** | `lucide-react` + `lobehub icons` CDN |
+| **图标** | `lucide-react` + `@lobehub/icons`（离线打包） |
 | **状态** | React hooks + `localStorage` |
 
 ## 许可

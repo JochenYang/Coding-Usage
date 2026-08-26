@@ -22,16 +22,17 @@ interface ThemeContextValue {
 const STORAGE_KEY = 'coding-usage.theme.v1'
 const ThemeContext = createContext<ThemeContextValue | null>(null)
 
-/** lazy 读取 localStorage，避免 SSR / 同步首屏读不到 storage 时给出错误初始值 */
+/** lazy 读取 localStorage，避免 SSR / 同步首屏读不到 storage 时给出错误初始值。
+ *  无存储记录时默认深色（桌面壳的设计基准），而非跟随系统。 */
 function readStoredTheme(): ThemeMode {
-  if (typeof window === 'undefined') return 'system'
+  if (typeof window === 'undefined') return 'dark'
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (raw === 'light' || raw === 'dark' || raw === 'system') return raw
   } catch {
     // localStorage 可能被禁用（隐私模式 / 配额异常），退回默认
   }
-  return 'system'
+  return 'dark'
 }
 
 function getSystemPref(): ResolvedTheme {
@@ -82,6 +83,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // 把 resolved 同步到 <html class="dark">
   useEffect(() => {
     applyResolvedToDom(resolved)
+    // Keep the Electron title-bar overlay on the same colors as the app theme
+    window.desktopBridge?.setWindowTheme(resolved)
   }, [resolved])
 
   // Favicon: always follow the OS/browser `prefers-color-scheme` so the icon

@@ -1,0 +1,167 @@
+import type { Section } from './data-context'
+import type { ProviderResult } from '../types'
+
+/**
+ * Alert engine. Alerts are derived purely from current fetch results (no
+ * daemon): every recompute produces the full live set, and the store merge
+ * keeps firstSeenAt/read stable for surviving alerts while dropping resolved
+ * ones. Items persist structurally (kind + params) — display strings are
+ * formatted at render time through i18n so locale switches stay live.
+ */
+
+export type AlertLevel = 'danger' | 'warning' | 'info'
+
+export type AlertKind = 'window-reset' | 'high-usage' | 'low-balance'
+
+export interface AlertItem {
+  /** Stable id: accountKey + kind + metric id */
+  id: string
+  level: AlertLevel
+  /** Account result key ("providerId-index") */
+  accountKey: string
+  agentName: string
+  kind: AlertKind
+  /** kind=window-reset: minutes until reset */
+  resetInMin?: number
+  /** kind=high-usage: used percent */
+  pct?: number
+  /** kind=high-usage: used/total in original units */
+  used?: number
+  total?: number
+  /** kind=low-balance: remaining amount + currency code */
+  balance?: number
+  currency?: string
+  firstSeenAt: number
+  read: boolean
+}
+
+const KEY = 'coding-usage.alerts.v1'
+/** A window reset within this horizon raises an alert */
+const RESET_SOON_MS = 60 * 60_000
+/** Usage at/above this percent raises an alert */
+const HIGH_USAGE_PCT = 90
+/** Balance below this (per currency, in native units) raises an alert */
+const LOW_BALANCE: Record<string, number> = { CNY: 5, USD: 1, HKD: 5, TWD: 30 }
+
+function loadStored(): AlertItem[] {
+  try {
+    const raw = localStorage.getItem(KEY)
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    // Runtime shape guard: drop entries missing the core invariants so a
+    // corrupted store cannot poison sorting (NaN firstSeenAt) or unread count.
+    return parsed.filter(
+      (item): item is AlertItem =>
+        item != null &&
+        typeof item === 'object' &&
+        typeof (item as AlertItem).id === 'string' &&
+        typeof (item as AlertItem).firstSeenAt === 'number',
+    )
+  } catch {
+    // corrupted → start clean
+  }
+  return []
+}
+
+export function loadAlerts(): AlertItem[] {
+  return loadStored()
+}
+
+export function saveAlerts(items: AlertItem[]): void {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(items))
+  } catch {
+    // best-effort
+  }
+}
+
+/**
+ * Derive the live alert set from current sections/results, merged with the
+ * stored set (surviving alerts keep firstSeenAt/read; resolved ids are
+ * dropped). Pure — the caller persists the result.
+ */
+export function deriveAlerts(sections: Section[], results: Record<string, ProviderResult>): AlertItem[] {
+  const live = new Map<string, AlertItem>()
+  for (const sec of sections) {
+    for (const card of sec.cards) {
+      const result = results[card.key]
+      if (result?.status !== 'ok' || !result.metrics) continue
+      const agentName = card.cfg.label || `${sec.def.name} ${card.index + 1}`
+      for (const m of result.metrics) {
+        if (m.kind === 'percent' && m.percent != null) {
+          if (m.resetsAt != null) {
+            const mins = Math.round((m.resetsAt - Date.now()) / 60_000)
+            if (mins > 0 && m.resetsAt - Date.now() <= RESET_SOON_MS && m.percent < 100) {
+              const id = `${card.key}:window-reset:${m.id}`
+              live.set(id, {
+                id,
+                level: 'info',
+                accountKey: card.key,
+                agentName,
+                kind: 'window-reset',
+                resetInMin: mins,
+                firstSeenAt: Date.now(),
+                read: false,
+              })
+            }
+          }
+          if (m.percent >= HIGH_USAGE_PCT) {
+            const id = `${card.key}:high-usage:${m.id}`
+            live.set(id, {
+              id,
+              level: m.percent >= 100 ? 'danger' : 'warning',
+              accountKey: card.key,
+              agentName,
+              kind: 'high-usage',
+              pct: Math.round(m.percent),
+              used: m.used,
+              total: m.total,
+              firstSeenAt: Date.now(),
+              read: false,
+            })
+          }
+        }
+        if (m.kind === 'balance' && m.remaining != null && m.unit) {
+          const floor = LOW_BALANCE[m.unit.toUpperCase()]
+          if (floor != null && m.remaining <= floor) {
+            const id = `${card.key}:low-balance:${m.id}`
+            live.set(id, {
+              id,
+              level: 'info',
+              accountKey: card.key,
+              agentName,
+              kind: 'low-balance',
+              balance: m.remaining,
+              currency: m.unit,
+              firstSeenAt: Date.now(),
+              read: false,
+            })
+          }
+        }
+      }
+    }
+  }
+
+  const stored = loadStored()
+  const merged: AlertItem[] = []
+  for (const item of live.values()) {
+    const prev = stored.find((s) => s.id === item.id)
+    merged.push(prev ? { ...item, firstSeenAt: prev.firstSeenAt, read: prev.read } : item)
+  }
+  // Newest first for panel rendering
+  merged.sort((a, b) => b.firstSeenAt - a.firstSeenAt)
+  return merged
+}
+
+export function unreadCount(items: AlertItem[]): number {
+  return items.filter((a) => !a.read).length
+}
+
+export function markAllRead(items: AlertItem[]): AlertItem[] {
+  return items.map((a) => ({ ...a, read: true }))
+}
+
+export function markRead(items: AlertItem[], id: string): AlertItem[] {
+  return items.map((a) => (a.id === id ? { ...a, read: true } : a))
+}

@@ -1,13 +1,60 @@
 import type { ParseContext, ProviderConfig, ProviderDef, ProviderResult } from '../types'
 import type { Locale } from '../i18n/types'
 
+const bridge = window.desktopBridge
+
+/**
+ * Transport shared by every provider request. Under Electron it routes through
+ * the main process (`net.fetch`, not subject to CORS); in the browser it uses
+ * plain fetch. Returns null when the request could not be completed at all.
+ */
+async function transportFetch(
+  url: string,
+  headers: Record<string, string>,
+): Promise<{ status: number; json: unknown } | null> {
+  if (bridge) {
+    try {
+      const r = await bridge.fetch(url, headers)
+      let json: unknown = null
+      try {
+        json = JSON.parse(r.body)
+      } catch {
+        // Non-JSON response body
+      }
+      return { status: r.status, json }
+    } catch {
+      return null
+    }
+  }
+  try {
+    const res = await fetch(url, { headers })
+    let json: unknown = null
+    try {
+      json = await res.json()
+    } catch {
+      // Non-JSON response body
+    }
+    return { status: res.status, json }
+  } catch {
+    return null
+  }
+}
+
 /**
  * Fetch helper for extra requests issued from a provider adapter.
- * Returns a synthetic Response so adapters can uniformly call `.json()` on it.
+ * Goes through the shared transport (main-process under Electron), then wraps
+ * the outcome in a synthetic Response so adapters can uniformly call `.json()`.
  */
 async function makeCtxFetch(): Promise<NonNullable<ParseContext['fetch']>> {
   return async (targetUrl: string, targetHeaders: Record<string, string>) => {
-    return fetch(targetUrl, { headers: targetHeaders })
+    const r = await transportFetch(targetUrl, targetHeaders)
+    // No usable response at all (status 0 is the bridge's failure marker):
+    // surface as a thrown error so the adapter's own try/catch treats it as a
+    // soft failure, exactly like a failed native fetch did before.
+    if (!r || r.status === 0) {
+      throw new Error('network request failed')
+    }
+    return new Response(JSON.stringify(r.json), { status: r.status })
   }
 }
 
@@ -19,10 +66,18 @@ export async function fetchUsage(
   if (!cfg.apiKey) return { status: 'unconfigured' }
   const { url, headers } = def.buildRequest(cfg.apiKey, cfg.regionId)
   try {
-    // Try direct fetch first. If it fails (CORS), fall back to corsproxy.io.
-    let result = await tryFetch(url, headers)
-    if (!result) {
-      result = await tryFetch(`https://corsproxy.io/?url=${encodeURIComponent(url)}`, headers)
+    // Some adapters (e.g. Volcengine SK-signed) only emit a placeholder URL
+    // from buildRequest and issue the real request inside parseResponse:
+    // skip the transport preflight so their own signed request can run.
+    let result: { httpStatus: number; json: unknown } | null = null
+    if (!def.skipPreflight) {
+      // Try direct fetch first. If it fails (CORS), fall back to corsproxy.io —
+      // browser path only: under Electron the main-process fetch has no CORS
+      // restrictions and third-party proxies are not allowed.
+      result = await tryFetch(url, headers)
+      if (!result && !bridge) {
+        result = await tryFetch(`https://corsproxy.io/?url=${encodeURIComponent(url)}`, headers)
+      }
     }
     if (!result) {
       return { status: 'error', error: '网络请求失败（跨域或网络不可达）' }
@@ -54,21 +109,11 @@ export async function fetchUsage(
   }
 }
 
-/** Direct fetch, returns null on CORS / network error. */
+/** Shared-transport fetch; returns null on CORS / network error. */
 async function tryFetch(
   url: string,
   headers: Record<string, string>,
 ): Promise<{ httpStatus: number; json: unknown } | null> {
-  try {
-    const res = await fetch(url, { headers })
-    let json: unknown = null
-    try {
-      json = await res.json()
-    } catch {
-      // Non-JSON response
-    }
-    return { httpStatus: res.status, json }
-  } catch {
-    return null
-  }
+  const r = await transportFetch(url, headers)
+  return r ? { httpStatus: r.status, json: r.json } : null
 }

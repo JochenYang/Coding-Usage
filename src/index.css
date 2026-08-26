@@ -4,25 +4,32 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  /* Light theme — minimalist design */
-  --color-background: #fafaf9;
-  --color-foreground: #0c0a09;
+  /* Light theme — indigo-accent design system (desktop shell) */
+  --color-background: #eef0f5;
+  --color-foreground: #16161f;
   --color-card: #ffffff;
-  --color-muted: #f5f5f4;
-  --color-muted-foreground: #78716c;
-  --color-subtle: #a8a29e;
-  --color-border: #e7e5e4;
-  --color-ring: #0ea5e9;
+  --color-muted: #e7e8ef;
+  --color-muted-foreground: #6b6b80;
+  --color-subtle: #a3a3b8;
+  --color-border: #dcdce8;
+  --color-border-strong: #c9c9da;
+  --color-ring: #6366f1;
 
-  --color-primary: #0c0a09;
-  --color-primary-foreground: #fafaf9;
+  --color-primary: #16161f;
+  --color-primary-foreground: #f6f6f9;
 
   --color-popover: #ffffff;
-  --color-popover-foreground: #0c0a09;
+  --color-popover-foreground: #16161f;
 
-  --color-success: #10b981;
+  /* Brand accent (indigo) + semantic status colors */
+  --color-accent: #6366f1;
+  --color-accent-strong: #4f52e0;
+  --color-accent-soft: #eef0fe;
+  --color-success: #22c55e;
   --color-warning: #f59e0b;
   --color-danger: #ef4444;
+  --color-online: #22c55e;
+  --color-offline: #a3a3b8;
 
   --color-destructive: #ef4444;
   --color-destructive-foreground: #ffffff;
@@ -37,18 +44,22 @@ body {
     "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
-/* Dark theme: redefines the same token variables when <html class="dark"> is active.
-   Works without Tailwind's dark variant — components using bg-background / text-foreground follow automatically. */
+/* Dark theme (design baseline, from the approved screenshot): redefines the same
+   token variables when <html class="dark"> is active. Components using
+   bg-background / text-foreground follow automatically. */
 :root.dark {
-  --color-background: #0c0a09;
-  --color-foreground: #fafaf9;
-  --color-card: #1c1917;
-  --color-muted: #292524;
-  --color-muted-foreground: #a8a29e;
-  --color-subtle: #78716c;
-  --color-border: #292524;
-  --color-primary: #fafaf9;
-  --color-primary-foreground: #0c0a09;
-  --color-popover: #1c1917;
-  --color-popover-foreground: #fafaf9;
+  --color-background: #0b0b12;
+  --color-foreground: #f4f4f8;
+  --color-card: #15151f;
+  --color-muted: #1c1c29;
+  --color-muted-foreground: #9ca3af;
+  --color-subtle: #5c5c72;
+  --color-border: #232336;
+  --color-border-strong: #32324a;
+  --color-primary: #f4f4f8;
+  --color-primary-foreground: #0b0b12;
+  --color-popover: #171724;
+  --color-popover-foreground: #f4f4f8;
+  --color-accent-soft: rgba(99, 102, 241, 0.16);
+  --color-offline: #4b4b63;
 }

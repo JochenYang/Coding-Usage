@@ -19,6 +19,22 @@ export function formatAmount(n: number, locale: 'zh-CN' | 'en-US' = 'zh-CN'): st
   return n.toLocaleString(locale, { maximumFractionDigits: 2 })
 }
 
+/** Compact symbol for common display currencies; unknown codes render as-is. */
+export function currencySymbol(code: string): string {
+  switch (code.toUpperCase()) {
+    case 'CNY':
+      return '¥'
+    case 'USD':
+      return '$'
+    case 'HKD':
+      return 'HK$'
+    case 'TWD':
+      return 'NT$'
+    default:
+      return `${code} `
+  }
+}
+
 /** Relative time: "x minutes ago" / "x 秒前更新". */
 export function formatAgo(fetchedAt: number | undefined, now: number, t: Dict): string {
   if (!fetchedAt) return ''

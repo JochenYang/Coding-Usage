@@ -69,6 +69,10 @@ export interface ProviderDef {
   regions?: ProviderRegion[] | ProviderRegionFactory
   docsUrl: string
   keyUrl: string
+  /** True when buildRequest's fetch is only a placeholder and the real
+   *  (signed) request is issued inside parseResponse — skip the transport
+   *  preflight so the adapter's own request can run. */
+  skipPreflight?: boolean
   buildRequest(key: string, regionId?: string): { url: string; headers: Record<string, string> }
   /** Parse response into a metric list. Async signature lets adapters issue extra API calls (e.g. subscription details). */
   parseResponse(json: unknown, ctx?: ParseContext): Promise<UsageMetric[]>
@@ -90,6 +94,8 @@ export interface ProviderConfig {
 export interface Settings {
   providers: Record<string, ProviderConfig[]>
   autoRefreshMin: number
+  /** Currency used for cross-account balance totals (uppercase code) */
+  displayCurrency: string
 }
 
 export interface ProviderResult {

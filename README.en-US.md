@@ -40,31 +40,34 @@
 - **Theme modes**: Light / Dark / System follow, favicon adapts
 - **Multi-currency filter**: DeepSeek and others support currency filtering
 - **beUI components**: Select / Popover / Switch / Drawer / Loader with spring animations
-- **Pure frontend**: Keys stored in browser localStorage only, requests go directly to each provider's API
+- **Desktop-first**: under the Electron shell, keys are encrypted via safeStorage (DPAPI) and requests go through the main process directly to each provider API (no CORS); in browser mode keys live in localStorage with an automatic corsproxy.io fallback
 
 ## Quick Start
 
 ```bash
 npm install
-npm run dev        # Open http://localhost:5173
-npm run build      # Output is pure static dist/
+npm run dev        # Launch the Electron desktop app (dev mode with HMR)
+npm run dev:web    # Browser mode at http://localhost:5173
+npm run build      # electron-vite build (dist-electron/ + dist/)
+npm run dist:win   # Package Windows installers (NSIS + portable)
 ```
 
 ## Adding a New Provider
 
 1. Create an adapter in `src/providers/` implementing `ProviderDef`
 2. Register it in `src/providers/registry.ts`
-3. If the API lacks CORS, add the domain to `proxy.mjs` whitelist
+3. In browser mode, CORS-blocked APIs fall back to corsproxy.io automatically via `src/lib/query.ts`; under Electron the main process connects directly — no proxy needed
 
 ## Tech Stack
 
 | Layer | Tech |
 |---|---|
 | **Framework** | React 19 + Vite 7 |
+| **Desktop** | Electron 44 (electron-vite + electron-builder + electron-updater) |
 | **Language** | TypeScript 5 strict |
 | **Styling** | Tailwind CSS v4 (`@theme` token driven) |
 | **Animation** | `motion/react` + beui.dev |
-| **Icons** | `lucide-react` + `lobehub icons` CDN |
+| **Icons** | `lucide-react` + `@lobehub/icons` (bundled offline) |
 | **State** | React hooks + `localStorage` |
 
 ## License

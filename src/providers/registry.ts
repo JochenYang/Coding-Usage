@@ -6,6 +6,7 @@ import { zhipu } from './zhipu'
 import { siliconflow } from './siliconflow'
 import { openrouter } from './openrouter'
 import { minimax } from './minimax'
+import { volcengine } from './volcengine'
 
 /** Add a new provider: write an adapter file and register it below */
 export const PROVIDERS: ProviderDef[] = [
@@ -16,6 +17,7 @@ export const PROVIDERS: ProviderDef[] = [
   siliconflow,
   openrouter,
   minimax,
+  volcengine,
 ]
 
 export function getProvider(id: string): ProviderDef | undefined {

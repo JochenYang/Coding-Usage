@@ -1,5 +1,4 @@
 import type { ProviderDef } from '../types'
-import { SiliconFlowLogo } from '@/components/logos/SiliconFlow'
 import { zhCN } from '../i18n/dict.zh-CN'
 import { enUS } from '../i18n/dict.en-US'
 import type { Locale } from '../i18n/types'
@@ -10,7 +9,7 @@ export const siliconflow: ProviderDef = {
   id: 'siliconflow',
   name: 'SiliconFlow',
   accent: 'from-fuchsia-500 to-purple-600',
-  logo: <SiliconFlowLogo />,
+  logo: 'siliconcloud-color',
   tagline: (t) => t.providers.siliconflow.tagline,
   docsUrl: 'https://docs.siliconflow.com/cn/api-reference/userinfo/get-user-info',
   keyUrl: 'https://cloud.siliconflow.cn/account/ak',

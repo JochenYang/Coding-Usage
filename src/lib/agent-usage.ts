@@ -1,0 +1,387 @@
+/**
+ * Local AI coding-agent usage scanner.
+ *
+ * The heavy lifting (reading per-agent session logs) is done by the tokscale
+ * CLI binary, spawned inside the Electron main process via the `tokscale:scan`
+ * IPC channel. One `tokscale graph` invocation returns per-day contributions;
+ * this module validates the JSON and aggregates them into today / month /
+ * all-time totals, per-agent rows (plus an "other" row for unclassified
+ * entries such as tokscale's synthetic rows), model/provider detail and the
+ * daily series that powers the trend chart.
+ *
+ * Privacy: everything stays local. Only aggregated numbers cross this module —
+ * never prompts, responses, or any message content.
+ */
+
+export const AGENT_CLIENTS = ['codex', 'kimi', 'opencode', 'dsh'] as const
+export type AgentClientId = (typeof AGENT_CLIENTS)[number]
+
+export interface AgentPeriodVM {
+  /** input + output + cacheRead + cacheWrite (tokens, matching tokscale's totals) */
+  tokens: number
+  /** input-only tokens (cache excluded) */
+  input: number
+  output: number
+  cacheRead: number
+  costUsd: number
+  messages: number
+}
+
+export interface AgentClientVM {
+  client: AgentClientId
+  /** True when any period has data for this client */
+  exists: boolean
+  today: AgentPeriodVM
+  month: AgentPeriodVM
+  allTime: AgentPeriodVM
+}
+
+/** tokens/cost for one model or provider label (analysis views) */
+export interface CostSliceVM {
+  label: string
+  tokens: number
+  input: number
+  output: number
+  cacheRead: number
+  costUsd: number
+}
+
+export interface AgentUsageVM {
+  clients: AgentClientVM[]
+  /** Unclassified contributions (missing/synthetic client ids) — keeps the
+   *  four agent rows summing to the real totals */
+  other: { month: AgentPeriodVM; all: AgentPeriodVM } | null
+  todayTotal: AgentPeriodVM
+  monthTotal: AgentPeriodVM
+  allTimeTotal: AgentPeriodVM
+  todayByModel: CostSliceVM[]
+  monthCostByProvider: CostSliceVM[]
+  monthCostByModel: CostSliceVM[]
+  dailySeries: { label: string; value: number }[]
+  scannedAt: number | null
+  error: string | null
+  loading?: boolean
+}
+
+function zero(): AgentPeriodVM {
+  return { tokens: 0, input: 0, output: 0, cacheRead: 0, costUsd: 0, messages: 0 }
+}
+
+function numberOr(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+/** Per-day contribution entry from `tokscale graph` */
+interface GraphContribution {
+  date: string
+  totals: { tokens?: number; cost?: number; messages?: number }
+  tokenBreakdown?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
+  clients?: {
+    client?: string
+    modelId?: string
+    providerId?: string
+    tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; reasoning?: number }
+    cost?: number
+    messages?: number
+  }[]
+}
+
+interface SliceAgg extends AgentPeriodVM {}
+
+function addSlice(map: Map<string, SliceAgg>, key: string, p: AgentPeriodVM): void {
+  const hit = map.get(key) ?? zero()
+  map.set(key, {
+    tokens: hit.tokens + p.tokens,
+    input: hit.input + p.input,
+    output: hit.output + p.output,
+    cacheRead: hit.cacheRead + p.cacheRead,
+    costUsd: hit.costUsd + p.costUsd,
+    messages: hit.messages + p.messages,
+  })
+}
+
+function makePeriod(parts: {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+  cost: number
+  messages: number
+}): AgentPeriodVM {
+  return {
+    tokens: parts.input + parts.output + parts.cacheRead + parts.cacheWrite,
+    input: parts.input,
+    output: parts.output,
+    cacheRead: parts.cacheRead,
+    costUsd: parts.cost,
+    messages: parts.messages,
+  }
+}
+
+/** Day-level totals carry no breakdown inside `totals` — use tokenBreakdown */
+function dayPeriod(
+  totals: { tokens?: number; cost?: number; messages?: number },
+  breakdown?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number },
+): AgentPeriodVM {
+  return makePeriod({
+    input: numberOr(breakdown?.input),
+    output: numberOr(breakdown?.output),
+    cacheRead: numberOr(breakdown?.cacheRead),
+    cacheWrite: numberOr(breakdown?.cacheWrite),
+    cost: numberOr(totals.cost),
+    messages: numberOr(totals.messages),
+  })
+}
+
+/** Per-client-entry period from its tokens object */
+function entryPeriod(e: {
+  tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
+  cost?: number
+  messages?: number
+}): AgentPeriodVM {
+  return makePeriod({
+    input: numberOr(e.tokens?.input),
+    output: numberOr(e.tokens?.output),
+    cacheRead: numberOr(e.tokens?.cacheRead),
+    cacheWrite: numberOr(e.tokens?.cacheWrite),
+    cost: numberOr(e.cost),
+    messages: numberOr(e.messages),
+  })
+}
+
+function toSlice(list: [string, SliceAgg][]): CostSliceVM[] {
+  return list.map(([label, v]) => ({ label, tokens: v.tokens, input: v.input, output: v.output, cacheRead: v.cacheRead, costUsd: v.costUsd }))
+}
+
+function sortedByTokens(list: [string, SliceAgg][]): CostSliceVM[] {
+  return toSlice(list).sort((a, b) => b.tokens - a.tokens)
+}
+
+function sortedByCost(list: [string, SliceAgg][]): CostSliceVM[] {
+  return toSlice(list).sort((a, b) => b.costUsd - a.costUsd)
+}
+
+function emptyVM(error: string | null): AgentUsageVM {
+  return {
+    clients: AGENT_CLIENTS.map((c) => ({
+      client: c,
+      exists: false,
+      today: zero(),
+      month: zero(),
+      allTime: zero(),
+    })),
+    other: null,
+    todayTotal: zero(),
+    monthTotal: zero(),
+    allTimeTotal: zero(),
+    todayByModel: [],
+    monthCostByProvider: [],
+    monthCostByModel: [],
+    dailySeries: [],
+    scannedAt: null,
+    error,
+  }
+}
+
+function addPeriod(a: AgentPeriodVM, b: AgentPeriodVM): AgentPeriodVM {
+  return {
+    tokens: a.tokens + b.tokens,
+    input: a.input + b.input,
+    output: a.output + b.output,
+    cacheRead: a.cacheRead + b.cacheRead,
+    costUsd: a.costUsd + b.costUsd,
+    messages: a.messages + b.messages,
+  }
+}
+
+/**
+ * Turn the raw `tokscale:scan` IPC payload (one `graph` data set with
+ * `contributions[]`) into the view model. Never throws: malformed input falls
+ * back to an empty-but-typed view so the UI can render honest empty/error
+ * states instead of crashing.
+ */
+export function summarizeScan(raw: unknown): AgentUsageVM {
+  if (!raw || typeof raw !== 'object') return emptyVM(null)
+  const root = raw as { daily?: unknown; error?: string }
+  if (typeof root.error === 'string' && root.error) return emptyVM(root.error)
+
+  const daily = (root.daily ?? {}) as { contributions?: unknown }
+  const contribs: GraphContribution[] = (Array.isArray(daily.contributions) ? daily.contributions : [])
+    .filter(
+      (c): c is GraphContribution => !!c && typeof c === 'object' && typeof (c as GraphContribution).date === 'string',
+    )
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+
+  if (contribs.length === 0) return emptyVM('no data')
+
+  const monthPrefix = contribs[contribs.length - 1].date.slice(0, 7)
+
+  let todayTotal = zero()
+  let monthTotal = zero()
+  let allTimeTotal = zero()
+  let otherAll: AgentPeriodVM = zero()
+  let otherMonth: AgentPeriodVM = zero()
+
+  const monthByClient = new Map<string, SliceAgg>()
+  const allByClient = new Map<string, SliceAgg>()
+  const todayByClient = new Map<string, SliceAgg>()
+  const todayByModel = new Map<string, SliceAgg>()
+  const monthByProvider = new Map<string, SliceAgg>()
+  const monthByModel = new Map<string, SliceAgg>()
+
+  for (let i = 0; i < contribs.length; i++) {
+    const c = contribs[i]
+    const isToday = i === contribs.length - 1
+    const isMonthDay = c.date.startsWith(monthPrefix)
+    const p = dayPeriod(c.totals, c.tokenBreakdown)
+    allTimeTotal = addPeriod(allTimeTotal, p)
+    if (isMonthDay) monthTotal = addPeriod(monthTotal, p)
+    if (isToday) todayTotal = addPeriod(todayTotal, p)
+    // After the loop the `p` for today is recomputed from clients below —
+    // day totals equal the sum of its client rows, except unclassified rows
+    // (synthetic) which are captured in `other`.
+    if (isToday) {
+      let dayFromClients = zero()
+      for (const e of c.clients ?? []) {
+        const period = entryPeriod(e)
+        dayFromClients = addPeriod(dayFromClients, period)
+        const owner = typeof e.client === 'string' && e.client ? e.client : '__other__'
+        addSlice(todayByClient, owner, period)
+        const model = typeof e.modelId === 'string' && e.modelId ? e.modelId : undefined
+        if (model) addSlice(todayByModel, model, period)
+      }
+      // Unclassified balance for today (synthetic rows are in totals.tokens
+      // but not in any client entry)
+      otherAll = addPeriod(otherAll, subtract(p, dayFromClients))
+      otherMonth = addPeriod(otherMonth, subtract(p, dayFromClients))
+    } else {
+      for (const e of c.clients ?? []) {
+        const period = entryPeriod(e)
+        const owner = typeof e.client === 'string' && e.client ? e.client : '__other__'
+        if (owner === '__other__') {
+          otherAll = addPeriod(otherAll, period)
+          if (isMonthDay) otherMonth = addPeriod(otherMonth, period)
+          continue
+        }
+        addSlice(allByClient, owner, period)
+        if (isMonthDay) addSlice(monthByClient, owner, period)
+        const provider = typeof e.providerId === 'string' && e.providerId ? e.providerId : undefined
+        const model = typeof e.modelId === 'string' && e.modelId ? e.modelId : undefined
+        if (isMonthDay && provider) addSlice(monthByProvider, provider, period)
+        if (isMonthDay && model) addSlice(monthByModel, model, period)
+      }
+    }
+  }
+
+  const clients: AgentClientVM[] = AGENT_CLIENTS.map((c) => {
+    const today = todayByClient.get(c) ?? zero()
+    const month = monthByClient.get(c) ?? zero()
+    const all = allByClient.get(c) ?? zero()
+    return {
+      client: c,
+      exists: today.tokens > 0 || month.tokens > 0 || all.tokens > 0,
+      today,
+      month,
+      allTime: all,
+    }
+  })
+
+  const dailySeries = contribs.map((c) => ({
+    label: c.date.slice(5),
+    value: numberOr(c.totals.tokens),
+  }))
+
+  return {
+    clients,
+    other: otherAll.tokens > 0 ? { month: otherMonth, all: otherAll } : null,
+    todayTotal,
+    monthTotal,
+    allTimeTotal,
+    todayByModel: sortedByTokens([...todayByModel.entries()]),
+    monthCostByProvider: sortedByCost([...monthByProvider.entries()]),
+    monthCostByModel: sortedByCost([...monthByModel.entries()]),
+    dailySeries,
+    scannedAt: Date.now(),
+    error: null,
+  }
+}
+
+/** period a minus b, clamped at zero */
+function subtract(a: AgentPeriodVM, b: AgentPeriodVM): AgentPeriodVM {
+  return {
+    tokens: Math.max(0, a.tokens - b.tokens),
+    input: Math.max(0, a.input - b.input),
+    output: Math.max(0, a.output - b.output),
+    cacheRead: Math.max(0, a.cacheRead - b.cacheRead),
+    costUsd: Math.max(0, a.costUsd - b.costUsd),
+    messages: Math.max(0, a.messages - b.messages),
+  }
+}
+
+// ===== daily archive (fallback so history survives without graph) =====
+
+const DAILY_KEY = 'coding-usage.agentUsage.daily'
+const DAILY_RETENTION_DAYS = 90
+
+function todayKey(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${`${d.getMonth() + 1}`.padStart(2, '0')}-${`${d.getDate()}`.padStart(2, '0')}`
+}
+
+function loadDaily(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(DAILY_KEY)
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw)
+      if (parsed != null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, number>
+      }
+    }
+  } catch {
+    // corrupted → start clean
+  }
+  return {}
+}
+
+/** Upsert today's total token consumption, pruning entries older than 90 days */
+export function archiveDailyUsage(todayTokens: number): void {
+  if (todayTokens <= 0) return
+  const store = loadDaily()
+  store[todayKey()] = todayTokens
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - DAILY_RETENTION_DAYS)
+  const cutoffKey = `${cutoff.getFullYear()}-${`${cutoff.getMonth() + 1}`.padStart(2, '0')}-${`${cutoff.getDate()}`.padStart(2, '0')}`
+  for (const key of Object.keys(store)) {
+    if (key < cutoffKey) delete store[key]
+  }
+  try {
+    localStorage.setItem(DAILY_KEY, JSON.stringify(store))
+  } catch {
+    // best-effort
+  }
+}
+
+/** Daily total-token series from the local archive (oldest first) */
+export function getDailyUsageSeries(days: number): { label: string; value: number }[] {
+  const store = loadDaily()
+  const out: { label: string; value: number }[] = []
+  const now = new Date()
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i)
+    const key = `${d.getFullYear()}-${`${d.getMonth() + 1}`.padStart(2, '0')}-${`${d.getDate()}`.padStart(2, '0')}`
+    const value = store[key]
+    if (value != null && value > 0) {
+      out.push({ label: `${`${d.getMonth() + 1}`.padStart(2, '0')}-${`${d.getDate()}`.padStart(2, '0')}`, value })
+    }
+  }
+  return out
+}
+
+/** Clear the daily archive (used by the settings page "clear snapshots" flow) */
+export function clearDailyUsage(): void {
+  try {
+    localStorage.removeItem(DAILY_KEY)
+  } catch {
+    // ignore
+  }
+}
