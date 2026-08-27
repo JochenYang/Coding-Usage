@@ -84,7 +84,6 @@ function Shell() {
         <OverviewPage
           onAddAccount={() => navigate('agents')}
           onEditAccount={openEditor}
-          onOpenAlerts={() => navigate('alerts')}
         />
       )}
       {view === 'agents' && <AgentsPage />}

@@ -34,8 +34,20 @@ declare global {
     settingsBackupWrite(payload: string): Promise<void>
     /** Read the mirrored settings document, or null when none exists */
     settingsBackupRead(): Promise<string | null>
-    /** Sync the integrated title-bar overlay colors with the resolved app theme */
-    setWindowTheme(mode: 'light' | 'dark'): Promise<void>
+    /** Minimize the window (custom caption button) */
+    minimizeWindow(): Promise<void>
+    /** Toggle maximize/restore (custom caption button + title-bar double click) */
+    toggleMaximizeWindow(): Promise<void>
+    /** Hide the window to the tray ("minimize to tray" choice) */
+    hideWindow(): Promise<void>
+    /** Real quit through the tray/confirm flow (sets the pass-through gate first) */
+    quitApp(): Promise<void>
+    /** Current maximize state for the caption-button glyph */
+    getWindowMaximized(): Promise<boolean>
+    /** Subscribe to maximize/unmaximize transitions; returns an unsubscribe function */
+    onWindowMaximized(callback: (maximized: boolean) => void): () => void
+    /** Fired when a close is intercepted (caption X / Alt+F4) so the app can confirm */
+    onCloseRequested(callback: () => void): () => void
     /** Quit and install the downloaded auto-update (no-op when nothing is staged) */
     installUpdate(): Promise<void>
     /** Subscribe to autoUpdater's update-downloaded event; returns an unsubscribe function */

@@ -17,7 +17,21 @@ const desktopBridge: DesktopBridge = {
   geminiUsage: () => ipcRenderer.invoke('gemini:usage'),
   settingsBackupWrite: (payload) => ipcRenderer.invoke('settings:backup-write', payload),
   settingsBackupRead: () => ipcRenderer.invoke('settings:backup-read'),
-  setWindowTheme: (mode) => ipcRenderer.invoke('window:set-theme', mode),
+  minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
+  toggleMaximizeWindow: () => ipcRenderer.invoke('window:maximize-toggle'),
+  hideWindow: () => ipcRenderer.invoke('window:hide'),
+  quitApp: () => ipcRenderer.invoke('app:quit'),
+  getWindowMaximized: () => ipcRenderer.invoke('window:get-maximized'),
+  onWindowMaximized: (callback) => {
+    const listener = (_event: IpcRendererEvent, maximized: boolean) => callback(maximized)
+    ipcRenderer.on('desktop:window-maximized', listener)
+    return () => ipcRenderer.removeListener('desktop:window-maximized', listener)
+  },
+  onCloseRequested: (callback) => {
+    const listener = () => callback()
+    ipcRenderer.on('desktop:close-requested', listener)
+    return () => ipcRenderer.removeListener('desktop:close-requested', listener)
+  },
   installUpdate: () => ipcRenderer.invoke('app:install-update'),
   onUpdateDownloaded: (callback) => {
     const listener = (_event: IpcRendererEvent, version: string) => callback(version)

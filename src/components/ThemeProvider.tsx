@@ -83,8 +83,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // 把 resolved 同步到 <html class="dark">
   useEffect(() => {
     applyResolvedToDom(resolved)
-    // Keep the Electron title-bar overlay on the same colors as the app theme
-    window.desktopBridge?.setWindowTheme(resolved)
   }, [resolved])
 
   // Favicon: always follow the OS/browser `prefers-color-scheme` so the icon
