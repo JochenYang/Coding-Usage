@@ -1,6 +1,18 @@
 import { RefreshCw } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { Codex, DeepSeek, Kimi, OpenCode } from '@lobehub/icons'
+import {
+  Amp,
+  Claude,
+  Codex,
+  Copilot,
+  DeepSeek,
+  Gemini,
+  Kiro,
+  Kimi,
+  OpenCode,
+  Qwen,
+  Trae,
+} from '@lobehub/icons'
 import type { AgentClientId, AgentPeriodVM, AgentUsageVM } from '@/lib/agent-usage'
 import { formatCompactValue } from '@/lib/format'
 import { useT } from '@/i18n/useT'
@@ -18,27 +30,46 @@ export interface LocalUsageCardProps {
 
 /**
  * Bundled brand marks from @lobehub/icons (same icon set as the provider
- * logos). OpenCode ships no .Color variant — its .Avatar tile fills the slot.
+ * logos). Partial on purpose: brands without a recognizable mark (Cline,
+ * RooCode, Zed, …) degrade to the letter tile at render time. OpenCode ships
+ * no .Color variant — its .Avatar tile fills the slot.
  */
-const AGENT_ICONS: Record<AgentClientId, ReactNode> = {
+const AGENT_ICONS: Partial<Record<AgentClientId, ReactNode>> = {
   codex: <Codex.Color />,
+  claude: <Claude.Color />,
   kimi: <Kimi.Color />,
   opencode: <OpenCode.Avatar size={16} />,
+  gemini: <Gemini.Color />,
+  qwen: <Qwen.Color />,
+  copilot: <Copilot.Color />,
+  trae: <Trae.Color />,
+  kiro: <Kiro.Color />,
+  amp: <Amp.Color />,
   dsh: <DeepSeek.Color />,
 }
 
-/** Proper nouns — brand names, not translated. */
+/** Proper nouns — brand names, not translated. Ids = tokscale client ids. */
 const AGENT_LABELS: Record<AgentClientId, string> = {
   codex: 'Codex',
+  claude: 'Claude Code',
   kimi: 'Kimi Code',
   opencode: 'OpenCode',
+  gemini: 'Gemini CLI',
+  cursor: 'Cursor',
+  copilot: 'GitHub Copilot',
+  qwen: 'Qwen Code',
+  trae: 'Trae',
+  cline: 'Cline',
+  roocode: 'Roo Code',
+  kilocode: 'Kilo Code',
+  goose: 'Goose',
+  zed: 'Zed',
+  kiro: 'Kiro',
+  augment: 'Augment',
+  droid: 'Droid',
+  amp: 'Amp',
+  grok: 'Grok Build',
   dsh: 'DSH',
-}
-
-/** USD cost line: 3 decimals under a dollar so small sessions stay visible */
-function formatCost(costUsd: number): string {
-  if (costUsd <= 0) return '—'
-  return `$${costUsd.toFixed(costUsd < 1 ? 3 : 2)}`
 }
 
 interface PeriodColumnProps {
@@ -49,7 +80,7 @@ interface PeriodColumnProps {
   mode: 'all' | 'no-cache'
 }
 
-/** One right-aligned stat column: label, token count, cost */
+/** One right-aligned stat column: label + token count */
 function PeriodColumn({ label, period, exists, mode }: PeriodColumnProps) {
   return (
     <div className="text-right">
@@ -57,7 +88,6 @@ function PeriodColumn({ label, period, exists, mode }: PeriodColumnProps) {
       <div className="text-sm font-medium tabular-nums text-foreground">
         {exists ? formatCompactValue(displayTokens(period, mode)) : '—'}
       </div>
-      <div className="text-[11px] text-muted-foreground">{formatCost(period.costUsd)}</div>
     </div>
   )
 }
@@ -81,14 +111,26 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
     <section className={cn('rounded-2xl border border-border bg-card p-5', className)}>
       <div className="flex items-center justify-between">
         <h2 className="text-[15px] font-semibold text-foreground">{t.overview.localUsageTitle}</h2>
-        <button
-          type="button"
-          onClick={onRefresh}
-          aria-label={t.card.refresh}
-          className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Snapshot age: the startup cache replays last launch's numbers, so
+              say explicitly how fresh the figures are */}
+          {!loading && usage.scannedAt != null && (
+            <span className="text-[11px] text-subtle tabular-nums">
+              {`${t.overview.asOfPrefix} ${new Date(usage.scannedAt).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}`}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={onRefresh}
+            aria-label={t.card.refresh}
+            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+          </button>
+        </div>
       </div>
 
       {usage.error ? (
@@ -99,19 +141,21 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
         <div className="py-4 text-center text-xs text-subtle">{t.overview.localUsageEmpty}</div>
       ) : (
         <div>
-          {usage.clients.map((client) => (
+          {usage.clients
+            .filter((client) => client.exists)
+            .map((client) => (
             <div
               key={client.client}
               className="flex items-center gap-3 border-t border-border/60 py-2.5 first:border-t-0"
             >
               <span
                 className={cn(
-                  'flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted [&>svg]:h-5 [&>svg]:w-5',
+                  'flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted text-[11px] font-semibold text-muted-foreground [&>svg]:h-5 [&>svg]:w-5',
                   client.client === 'kimi' && invertOnLight && '[&>svg]:invert',
                 )}
                 aria-hidden
               >
-                {AGENT_ICONS[client.client]}
+                {AGENT_ICONS[client.client] ?? AGENT_LABELS[client.client][0]}
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium text-foreground">

@@ -14,6 +14,16 @@ export const zhCN: Dict = {
     autoRefresh: '自动刷新',
     refreshAll: '全部刷新',
     settings: '设置',
+    windowMinimize: '最小化',
+    windowMaximize: '最大化 / 还原',
+    windowClose: '关闭',
+    closeDialog: {
+      title: '关闭窗口',
+      detail: '最小化到托盘后，应用将保留在系统托盘中继续运行。',
+      toTray: '最小化到托盘',
+      quit: '退出应用',
+      dontAsk: '本次运行不再询问',
+    },
     theme: {
       system: '跟随系统',
       light: '浅色',
@@ -152,9 +162,7 @@ export const zhCN: Dict = {
     groupSettings: '设置',
   },
   topbar: {
-    allAgents: '全部智能体',
-    notifications: '通知',
-  },
+    notifications: '通知',  },
   status: {
     allNormal: '所有系统运行正常',
     updatedJustNow: '最后更新：刚刚',
@@ -196,7 +204,7 @@ export const zhCN: Dict = {
     colCache: '缓存',
     statusOnline: '在线',
     statusOffline: '离线',
-    totalAgents: (n: number) => `共 ${n} 个智能体`,
+    totalAgents: (n: number) => `共 ${n} 个账号`,
     distTitle: '服务商分布',
     distTotal: '总额度',
     distOther: '其他',
@@ -221,7 +229,9 @@ export const zhCN: Dict = {
     emptyTitle: '暂无智能体数据',
     emptyDesc: '添加账号后，这里会展示用量、额度与告警概览。',
     localUsageTitle: '本地 Agent 用量',
-    localUsageEmpty: '桌面模式下自动扫描本地 agent 会话（Codex / Kimi Code / OpenCode / DSH），暂未检测到数据。',
+    localUsageEmpty:
+      '桌面模式下会自动扫描本机 AI 编程工具的会话用量（当前支持 Codex、Kimi Code、OpenCode、DSH，后续支持更多工具），暂未检测到数据。',
+    asOfPrefix: '数据截至',
     todayCol: '今日',
     monthCol: '本月',
     allTimeCol: '累计',
@@ -283,6 +293,7 @@ export const zhCN: Dict = {
   },
   common: {
     clearSearch: '清空搜索',
+    cancel: '取消',
   },
   prefs: {
     appearance: '外观',

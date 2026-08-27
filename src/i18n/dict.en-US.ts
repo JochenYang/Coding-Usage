@@ -14,6 +14,16 @@ export const enUS: Dict = {
     autoRefresh: 'Auto refresh',
     refreshAll: 'Refresh all',
     settings: 'Settings',
+    windowMinimize: 'Minimize',
+    windowMaximize: 'Maximize / restore',
+    windowClose: 'Close',
+    closeDialog: {
+      title: 'Close window',
+      detail: 'Minimizing to the tray keeps the app running in the system tray.',
+      toTray: 'Minimize to tray',
+      quit: 'Quit app',
+      dontAsk: "Don't ask again this session",
+    },
     theme: {
       system: 'Follow system',
       light: 'Light',
@@ -153,7 +163,6 @@ export const enUS: Dict = {
     groupSettings: 'Settings',
   },
   topbar: {
-    allAgents: 'All agents',
     notifications: 'Notifications',
   },
   status: {
@@ -198,7 +207,7 @@ export const enUS: Dict = {
     colCache: 'Cache',
     statusOnline: 'Online',
     statusOffline: 'Offline',
-    totalAgents: (n: number) => `${n} agents total`,
+    totalAgents: (n: number) => `${n} accounts`,
     distTitle: 'Provider distribution',
     distTotal: 'Total quota',
     distOther: 'Others',
@@ -224,7 +233,8 @@ export const enUS: Dict = {
     emptyDesc: 'Add an account to see usage, quota and alerts here.',
     localUsageTitle: 'Local agent usage',
     localUsageEmpty:
-      'Local agent sessions (Codex / Kimi Code / OpenCode / DSH) are scanned automatically in desktop mode — no data yet.',
+      'Desktop mode scans local AI coding-tool sessions for usage automatically (currently Codex, Kimi Code, OpenCode and DSH — more tools coming), no data yet.',
+    asOfPrefix: 'As of',
     todayCol: 'Today',
     monthCol: 'Month',
     allTimeCol: 'All time',
@@ -289,6 +299,7 @@ export const enUS: Dict = {
   },
   common: {
     clearSearch: 'Clear search',
+    cancel: 'Cancel',
   },
   prefs: {
     appearance: 'Appearance',

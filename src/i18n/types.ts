@@ -17,6 +17,16 @@ export interface Dict {
     autoRefresh: string
     refreshAll: string
     settings: string
+    windowMinimize: string
+    windowMaximize: string
+    windowClose: string
+    closeDialog: {
+      title: string
+      detail: string
+      toTray: string
+      quit: string
+      dontAsk: string
+    }
     theme: {
       system: string
       light: string
@@ -153,7 +163,6 @@ export interface Dict {
     groupSettings: string
   }
   topbar: {
-    allAgents: string
     notifications: string
   }
   status: {
@@ -223,6 +232,7 @@ export interface Dict {
     emptyDesc: string
     localUsageTitle: string
     localUsageEmpty: string
+    asOfPrefix: string
     todayCol: string
     monthCol: string
     allTimeCol: string
@@ -284,6 +294,7 @@ export interface Dict {
   }
   common: {
     clearSearch: string
+    cancel: string
   }
   prefs: {
     appearance: string

@@ -13,7 +13,33 @@
  * never prompts, responses, or any message content.
  */
 
-export const AGENT_CLIENTS = ['codex', 'kimi', 'opencode', 'dsh'] as const
+/**
+ * Local agent clients tracked through the tokscale scan. Ids must be valid
+ * `tokscale graph --client` values; keep electron/main.ts TOKSCALE_CLIENTS in
+ * sync (the same list is passed to the CLI). Order = display order.
+ */
+export const AGENT_CLIENTS = [
+  'codex',
+  'claude',
+  'kimi',
+  'opencode',
+  'gemini',
+  'cursor',
+  'copilot',
+  'qwen',
+  'trae',
+  'cline',
+  'roocode',
+  'kilocode',
+  'goose',
+  'zed',
+  'kiro',
+  'augment',
+  'droid',
+  'amp',
+  'grok',
+  'dsh',
+] as const
 export type AgentClientId = (typeof AGENT_CLIENTS)[number]
 
 export interface AgentPeriodVM {
@@ -248,8 +274,20 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
         dayFromClients = addPeriod(dayFromClients, period)
         const owner = typeof e.client === 'string' && e.client ? e.client : '__other__'
         addSlice(todayByClient, owner, period)
+        // All-time buckets live here (not just in the non-today branch):
+        // today is part of the cumulative totals too
+        addSlice(allByClient, owner, period)
         const model = typeof e.modelId === 'string' && e.modelId ? e.modelId : undefined
         if (model) addSlice(todayByModel, model, period)
+        // Today always sits inside the current month: feed the month/provider
+        // buckets too, otherwise every "本月" figure and the distribution
+        // donut silently exclude today's spend until tomorrow.
+        if (isMonthDay) {
+          addSlice(monthByClient, owner, period)
+          const provider = typeof e.providerId === 'string' && e.providerId ? e.providerId : undefined
+          if (provider) addSlice(monthByProvider, provider, period)
+          if (model) addSlice(monthByModel, model, period)
+        }
       }
       // Unclassified balance for today (synthetic rows are in totals.tokens
       // but not in any client entry)
