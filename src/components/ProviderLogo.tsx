@@ -1,5 +1,16 @@
 import type { ReactNode } from 'react'
-import { DeepSeek, Kimi, Minimax, OpenCode, OpenRouter, SiliconCloud, Volcengine, Zhipu } from '@lobehub/icons'
+import {
+  DeepSeek,
+  Kimi,
+  Minimax,
+  Novita,
+  OpenCode,
+  OpenRouter,
+  SiliconCloud,
+  Stepfun,
+  Volcengine,
+  Zhipu,
+} from '@lobehub/icons'
 import { cn } from '@/lib/cn'
 import { useTheme } from '@/components/ThemeProvider'
 
@@ -20,6 +31,9 @@ const ICON_MAP: Record<string, ReactNode> = {
   'deepseek-color': <DeepSeek.Color />,
   'siliconcloud-color': <SiliconCloud.Color />,
   'volcengine-ark': <Volcengine.Color />,
+  // StepFun ships no .Color variant; .Avatar is its colored brand tile
+  'stepfun-avatar': <Stepfun.Avatar size={16} />,
+  'novita-color': <Novita.Color />,
 }
 
 /**
