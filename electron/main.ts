@@ -169,7 +169,31 @@ function createTray(): void {
 
 // ===== tokscale local agent scanner =====
 
-const TOKSCALE_CLIENTS = ['codex', 'kimi', 'opencode', 'dsh']
+// Must stay in sync with AGENT_CLIENTS in src/lib/agent-usage.ts (same ids,
+// which also drive the renderer's labels/icons). tokscale accepts each id via
+// `graph --client`; clients without local session dirs are skipped by the CLI.
+const TOKSCALE_CLIENTS = [
+  'codex',
+  'claude',
+  'kimi',
+  'opencode',
+  'gemini',
+  'cursor',
+  'copilot',
+  'qwen',
+  'trae',
+  'cline',
+  'roocode',
+  'kilocode',
+  'goose',
+  'zed',
+  'kiro',
+  'augment',
+  'droid',
+  'amp',
+  'grok',
+  'dsh',
+]
 const TOKSCALE_CACHE_MS = 5 * 60_000
 
 interface TokScanResult {
