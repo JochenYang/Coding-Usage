@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BarChart3, Plus } from 'lucide-react'
 import { useData } from '@/lib/data-context'
 import { useT } from '@/i18n/useT'
 import {
   DIST_COLORS,
   buildAgentRows,
+  buildBalanceProviders,
   buildDistribution,
   buildKpis,
   buildPlanCards,
@@ -16,27 +16,32 @@ import { TrendCard } from '@/components/overview/TrendCard'
 import { DistributionCard } from '@/components/overview/DistributionCard'
 import { AgentsTable } from '@/components/overview/AgentsTable'
 import { LocalUsageCard } from '@/components/overview/LocalUsageCard'
-import { AlertsPanel } from '@/components/overview/AlertsPanel'
 import { PlanCardsRow } from '@/components/overview/PlanCardsRow'
-import { EmptyState } from '@/components/common/EmptyState'
 
 /**
- * Overview page: KPI row + trend (top), agents table + distribution/alerts
- * (middle), plan cards (bottom). All models come from lib/overview builders;
- * this component only wires data to presentational pieces.
+ * Distribution legend shows the top slices plus one folded "other" bucket:
+ * enough to read the spend structure at a glance, few enough that every arc
+ * clears the donut's rounded-cap inset (~6% share minimum draws visibly).
+ */
+const MAX_DIST_SLICES = 6
+const MIN_SLICE_SHARE = 0.06
+
+/**
+ * Overview page: KPI row + trend (top), agents table + distribution (middle),
+ * plan cards (bottom). All models come from lib/overview builders; this
+ * component only wires data to presentational pieces. Recent alerts live in
+ * the top bar's hover popover and the alerts page, not on this canvas.
  */
 export function OverviewPage({
   onAddAccount,
   onEditAccount,
-  onOpenAlerts,
 }: {
   onAddAccount: () => void
   /** Open the account drawer for a specific row ("providerId-index") */
   onEditAccount: (providerId: string, index: number) => void
-  onOpenAlerts: () => void
 }) {
   const t = useT()
-  const { sections, results, settings, alerts, agentFilter, agentUsage, agentUsageLoading, refreshAgentUsage, agentDailySeries } =
+  const { sections, results, settings, agentUsage, agentUsageLoading, refreshAgentUsage, agentDailySeries } =
     useData()
 
   // Low-frequency clock so stale/offline derivation (10 min STALE_MS) stays
@@ -65,16 +70,34 @@ export function OverviewPage({
   }, [sections, results, settings.displayCurrency, settings.usageDisplayMode, now, agentUsage])
   const dist = useMemo(() => {
     // Provider distribution prefers real measured spend (local agents, by
-    // provider); the API-quota share is the fallback when no local data exists.
+    // provider); the API-quota share is the fallback when no local data
+    // exists. Long tails fold into "other" so the card renders fully
+    // without scrolling (per the agreed design: chart on top, high-share
+    // providers + other below).
     if (agentUsage.monthCostByProvider.length > 0) {
-      return {
-        slices: agentUsage.monthCostByProvider.map((r, i) => ({
-          label: r.label,
-          value: r.tokens,
-          color: DIST_COLORS[i % DIST_COLORS.length],
-        })),
-        total: agentUsage.monthTotal.tokens,
+      const sorted = [...agentUsage.monthCostByProvider].sort((a, b) => b.tokens - a.tokens)
+      const monthTotal = agentUsage.monthTotal.tokens || 1
+      const slices: { label: string; value: number; color: string }[] = []
+      let rest = 0
+      for (const r of sorted) {
+        // Always keep the biggest slice even when it alone is below the floor,
+        // so a flat distribution still shows something other than "other"
+        if (
+          slices.length < MAX_DIST_SLICES &&
+          (r.tokens / monthTotal >= MIN_SLICE_SHARE || slices.length === 0)
+        ) {
+          slices.push({
+            label: r.label,
+            value: r.tokens,
+            color: DIST_COLORS[slices.length % DIST_COLORS.length],
+          })
+        } else {
+          rest += r.tokens
+        }
       }
+      // Same muted tone lib/overview's threshold fold uses
+      if (rest > 0) slices.push({ label: t.overview.distOther, value: rest, color: '#4B4B63' })
+      return { slices, total: agentUsage.monthTotal.tokens }
     }
     return buildDistribution(sections, results, t.overview.distOther)
   }, [agentUsage, sections, results, t])
@@ -88,37 +111,27 @@ export function OverviewPage({
     return archived.length >= 2 ? archived : buildTrendPoints(sections)
   }, [agentUsage, agentDailySeries, sections, settings.usageDisplayMode])
   const plans = useMemo(() => buildPlanCards(sections, results), [sections, results])
-  // Top-bar global provider filter ('all' = everything)
-  const visibleRows = useMemo(
-    () => (agentFilter === 'all' ? rows : rows.filter((r) => r.providerId === agentFilter)),
-    [rows, agentFilter],
+  // Richest-first providers behind the balance KPI (brand chips on the card)
+  const balanceProviders = useMemo(
+    () => buildBalanceProviders(sections, results, settings.displayCurrency),
+    [sections, results, settings.displayCurrency],
   )
 
-  if (rows.length === 0) {
-    return (
-      <EmptyState
-        icon={<BarChart3 className="h-6 w-6" />}
-        title={t.overview.emptyTitle}
-        description={t.overview.emptyDesc}
-        action={
-          <button
-            type="button"
-            onClick={onAddAccount}
-            className="flex items-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-transform hover:scale-[1.02] hover:bg-accent-strong"
-          >
-            <Plus className="h-4 w-4" />
-            {t.empty.openSettings}
-          </button>
-        }
-      />
-    )
-  }
+  // No early return when nothing is configured/fetched yet: the full overview
+  // framework always renders, and each card degrades to its own honest empty
+  // state (dash KPIs, hint lists, grey donut). A bare "add account" screen hid
+  // where numbers WOULD appear and read like a broken dashboard.
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-4 xl:flex-row">
         <div className="min-w-0 flex-1">
-          <KpiRow kpis={kpis} displayCurrency={settings.displayCurrency} className="h-full" />
+          <KpiRow
+            kpis={kpis}
+            displayCurrency={settings.displayCurrency}
+            balanceItems={balanceProviders}
+            className="h-full"
+          />
         </div>
         <div className="w-full shrink-0 xl:w-[360px]">
           <TrendCard points={trend} className="h-full" />
@@ -130,16 +143,17 @@ export function OverviewPage({
       <div className="flex flex-col gap-4 xl:flex-row">
         <div className="min-w-0 flex-1">
           <AgentsTable
-            rows={visibleRows}
+            rows={rows}
+            className="h-full"
             onEdit={(rowKey) => {
               const split = rowKey.lastIndexOf('-')
               onEditAccount(rowKey.slice(0, split), Number(rowKey.slice(split + 1)))
             }}
           />
         </div>
-        <div className="w-full shrink-0 space-y-4 xl:w-[360px]">
-          <DistributionCard slices={dist.slices} total={dist.total} />
-          <AlertsPanel alerts={alerts} onViewAll={onOpenAlerts} />
+        {/* Stretch to the table's height so the two columns read as one band */}
+        <div className="w-full shrink-0 xl:w-[360px]">
+          <DistributionCard slices={dist.slices} total={dist.total} className="h-full" />
         </div>
       </div>
 

@@ -60,7 +60,12 @@ export function AgentsTable({ rows, onEdit, className }: AgentsTableProps) {
   }, [rows, search, provider, status])
 
   return (
-    <section className={cn('overflow-hidden rounded-2xl border border-border bg-card', className)}>
+    <section
+      className={cn(
+        'flex flex-col overflow-hidden rounded-2xl border border-border bg-card',
+        className,
+      )}
+    >
       {/* Header: title + search / provider / status filters */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
         <h3 className="text-[15px] font-semibold text-foreground">{t.overview.agentsTitle}</h3>
@@ -98,7 +103,9 @@ export function AgentsTable({ rows, onEdit, className }: AgentsTableProps) {
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      {/* Scroll region: caps the card's height on the overview canvas and lets
+          big account lists scroll internally instead of stretching the page */}
+      <div className="max-h-[440px] flex-1 overflow-auto">
         <table className="w-full text-sm">
           <thead>
             <tr>
@@ -108,6 +115,7 @@ export function AgentsTable({ rows, onEdit, className }: AgentsTableProps) {
                 { label: t.overview.colProvider, align: 'text-left' },
                 { label: t.overview.colPlan, align: 'text-left' },
                 { label: t.overview.colUsage, align: 'text-center' },
+                { label: t.overview.colQuota, align: 'text-left' },
                 { label: t.overview.colBalance, align: 'text-right' },
                 { label: t.overview.colStatus, align: 'text-left' },
                 { label: t.overview.colActions, align: 'text-right' },
@@ -117,7 +125,7 @@ export function AgentsTable({ rows, onEdit, className }: AgentsTableProps) {
                   scope="col"
                   className={cn(
                     CELL,
-                    'whitespace-nowrap border-b border-border text-xs font-normal text-muted-foreground',
+                    'sticky top-0 z-10 whitespace-nowrap border-b border-border bg-card text-xs font-normal text-muted-foreground',
                     col.align,
                   )}
                 >
@@ -160,9 +168,9 @@ export function AgentsTable({ rows, onEdit, className }: AgentsTableProps) {
                   </td>
                   <td className={cn(CELL, 'whitespace-nowrap')}>{providerPlan(t, row.providerId)}</td>
                   <td className={CELL}>
-                    {row.usagePct == null ? (
-                      <span className="text-xs text-subtle">—</span>
-                    ) : (
+                    {/* N/A cells stay empty on purpose: dashes read as data and
+                        misalign the columns to their right */}
+                    {row.usagePct == null ? null : (
                       <div className="flex w-fit items-center gap-2">
                         <ProgressBar percent={row.usagePct} size="sm" className="w-24" />
                         <span className="text-xs tabular-nums text-muted-foreground">
@@ -176,12 +184,12 @@ export function AgentsTable({ rows, onEdit, className }: AgentsTableProps) {
                       ? t.metric.unlimited
                       : row.used != null && row.total != null
                         ? `${formatCompactValue(row.used)} / ${formatCompactValue(row.total)}`
-                        : '—'}
+                        : null}
                   </td>
                   <td className={cn(CELL, 'whitespace-nowrap text-right text-xs tabular-nums')}>
                     {row.balance
                       ? `${currencySymbol(row.balance.currency)}${formatAmount(row.balance.amount)}`
-                      : '—'}
+                      : null}
                   </td>
                   <td className={cn(CELL, 'whitespace-nowrap')}>
                     <span className="flex items-center gap-2">

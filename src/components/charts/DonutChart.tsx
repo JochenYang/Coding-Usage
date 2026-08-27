@@ -23,6 +23,8 @@ export interface DonutChartProps {
   formatValue?: (n: number) => string
   /** Render the legend list next to the ring (default true) */
   showLegend?: boolean
+  /** Ring above and legend below (vertical), or side by side (default) */
+  orientation?: 'horizontal' | 'vertical'
   /** Extra classes appended to the outer wrapper */
   className?: string
 }
@@ -39,6 +41,7 @@ export function DonutChart({
   centerLabel,
   formatValue,
   showLegend = true,
+  orientation = 'horizontal',
   className,
 }: DonutChartProps) {
   const fmt = formatValue ?? formatCompactValue
@@ -67,7 +70,13 @@ export function DonutChart({
       : []
 
   return (
-    <div className={cn('flex items-center gap-6', className)}>
+    <div
+      className={cn(
+        'flex gap-6',
+        orientation === 'vertical' ? 'w-full flex-col items-center' : 'items-center',
+        className,
+      )}
+    >
       <div className="relative shrink-0" style={{ width: size, height: size }}>
         <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} aria-hidden="true">
           {/* Rotate so dashes start at 12 o'clock and flow clockwise */}
@@ -102,7 +111,12 @@ export function DonutChart({
       </div>
 
       {showLegend && segments.length > 0 && (
-        <ul className="min-w-0 flex-1 space-y-2">
+        <ul
+          className={cn(
+            'min-w-0 space-y-2',
+            orientation === 'vertical' ? 'w-full flex-1' : 'flex-1',
+          )}
+        >
           {segments.map((s, i) => {
             const percent = total > 0 ? Math.round((s.value / total) * 100) : 0
             return (

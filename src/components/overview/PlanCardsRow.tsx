@@ -172,15 +172,19 @@ export function PlanCardsRow({ cards, onAdd, className }: PlanCardsRowProps) {
       </div>
 
       {/* No trailing "add" ghost tile: the header button is the single add entry */}
-      <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {cards.map((card) =>
-          card.windows.length === 0 && card.balance ? (
-            <BalanceCard key={card.key} card={card} />
-          ) : (
-            <PlanCard key={card.key} card={card} now={now} />
-          ),
-        )}
-      </div>
+      {cards.length === 0 ? (
+        <p className="py-8 text-center text-xs text-subtle">{t.overview.emptyTitle}</p>
+      ) : (
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {cards.map((card) =>
+            card.windows.length === 0 && card.balance ? (
+              <BalanceCard key={card.key} card={card} />
+            ) : (
+              <PlanCard key={card.key} card={card} now={now} />
+            ),
+          )}
+        </div>
+      )}
     </section>
   )
 }
