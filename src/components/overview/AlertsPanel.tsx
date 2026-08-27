@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react'
 import { CircleAlert, Info, Lock } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { AlertItem, AlertKind, AlertLevel } from '@/lib/alerts'
-import { currencySymbol, formatAmount } from '@/lib/format'
-import { formatCompactValue } from '@/components/charts/DonutChart'
+import { currencySymbol, formatAmount, formatCompactValue } from '@/lib/format'
+import { useNowTick } from '@/lib/hooks/use-now-tick'
 import { useT } from '@/i18n/useT'
 
 export interface AlertsPanelProps {
@@ -26,19 +25,6 @@ const KIND_ICON: Record<AlertKind, typeof Info> = {
   'window-reset': CircleAlert,
   'high-usage': Lock,
   'low-balance': Info,
-}
-
-/**
- * Minute-resolution clock for relative timestamps; re-renders every 30s so
- * "just now" rows age into minutes without any external timer wiring.
- */
-function useNowTick(intervalMs = 30_000): number {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), intervalMs)
-    return () => window.clearInterval(id)
-  }, [intervalMs])
-  return now
 }
 
 /** Single alert entry: level chip + title/detail column + relative time */

@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { CreditCard } from 'lucide-react'
 import type { PlanCardVM, PlanWindowVM } from '@/lib/overview'
 import { buildPlanCards } from '@/lib/overview'
 import { PROVIDERS } from '@/providers/registry'
 import { currencySymbol, formatAmount, formatCountdown } from '@/lib/format'
+import { useNowTick } from '@/lib/hooks/use-now-tick'
 import { useData } from '@/lib/data-context'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
@@ -45,19 +46,6 @@ type BalanceVM = NonNullable<PlanCardVM['balance']>
 function providerPlan(t: Dict, providerId: string): string {
   if (!(providerId in t.providers)) return '—'
   return t.providers[providerId as keyof Dict['providers']].plan
-}
-
-/**
- * Minute-resolution clock so window countdowns stay live without any external
- * timer wiring. Local copy of PlanCardsRow's hook (not exported there).
- */
-function useNowTick(intervalMs = 30_000): number {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), intervalMs)
-    return () => window.clearInterval(id)
-  }, [intervalMs])
-  return now
 }
 
 /** Logo + account name column + status badge, mirroring PlanCardsRow's header */
@@ -262,11 +250,31 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
         }
       />
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {filtered.map((card) => (
-          <PlanGridCard key={card.key} card={card} now={now} />
-        ))}
-      </div>
+      {filtered.length === 0 ? (
+        // The selected account was deleted (or the two filters combined to
+        // nothing): offer a one-click reset instead of a silent empty grid
+        <EmptyState
+          title={t.manage.planFilterEmpty}
+          action={
+            <button
+              type="button"
+              onClick={() => {
+                setPlanFilter(ALL_PLANS)
+                setAccountFilter(ALL_ACCOUNTS)
+              }}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted"
+            >
+              {t.manage.planFilterReset}
+            </button>
+          }
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {filtered.map((card) => (
+            <PlanGridCard key={card.key} card={card} now={now} />
+          ))}
+        </div>
+      )}
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-foreground">{t.manage.subscriptionTitle}</h2>

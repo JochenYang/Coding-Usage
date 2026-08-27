@@ -8,7 +8,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { LineChart } from '@/components/charts/LineChart'
 import { StatCard } from '@/components/common/StatCard'
-import { formatCompactValue } from '@/components/charts/DonutChart'
+import { formatCompactValue } from '@/lib/format'
 
 /** Trends: daily token series from the local-agent archive (accumulates from first scan) */
 export function TrendsPage() {

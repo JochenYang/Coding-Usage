@@ -4,7 +4,7 @@ import { useT } from '@/i18n/useT'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { LocalUsageCard } from '@/components/overview/LocalUsageCard'
-import { formatCompactValue } from '@/components/charts/DonutChart'
+import { formatCompactValue } from '@/lib/format'
 
 function costText(costUsd: number): string {
   return costUsd > 0 ? `$${costUsd.toFixed(costUsd < 1 ? 3 : 2)}` : '—'

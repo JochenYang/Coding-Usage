@@ -1,21 +1,5 @@
 import { cn } from '@/lib/cn'
-
-/**
- * Shared compact number formatter used by the chart + KPI components:
- * >= 1e9 -> "17.5B", >= 1e6 -> "2.71M", >= 1e3 -> "345K", else integer.
- */
-export function formatCompactValue(value: number): string {
-  const abs = Math.abs(value)
-  if (abs >= 1e9) return `${trimZeros((value / 1e9).toFixed(2))}B`
-  if (abs >= 1e6) return `${trimZeros((value / 1e6).toFixed(2))}M`
-  if (abs >= 1e3) return `${Math.round(value / 1e3)}K`
-  return `${Math.round(value)}`
-}
-
-/** Drop trailing zeros from a fixed-decimal string ("2.00" -> "2", "2.10" -> "2.1") */
-function trimZeros(fixed: string): string {
-  return fixed.includes('.') ? fixed.replace(/0+$/, '').replace(/\.$/, '') : fixed
-}
+import { formatCompactValue } from '@/lib/format'
 
 /** One slice of the donut chart */
 export interface DonutSegment {

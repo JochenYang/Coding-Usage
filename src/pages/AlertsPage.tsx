@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Bell, CircleAlert, Info, Lock } from 'lucide-react'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
@@ -14,8 +14,8 @@ import { useT } from '@/i18n/useT'
 import type { Dict } from '@/i18n/types'
 import { useData } from '@/lib/data-context'
 import type { AlertItem, AlertLevel } from '@/lib/alerts'
-import { currencySymbol, formatAmount } from '@/lib/format'
-import { formatCompactValue } from '@/components/charts/DonutChart'
+import { currencySymbol, formatAmount, formatCompactValue } from '@/lib/format'
+import { useNowTick } from '@/lib/hooks/use-now-tick'
 
 export interface AlertsPageProps {
   className?: string
@@ -28,19 +28,6 @@ const LEVEL_CHIP: Record<AlertLevel, string> = {
   danger: 'bg-danger/10 text-danger',
   warning: 'bg-warning/10 text-warning',
   info: 'bg-accent-soft text-accent',
-}
-
-/**
- * Minute-resolution clock for relative timestamps; re-renders every 30s so
- * "just now" rows age into minutes. Same approach as AlertsPanel's tick.
- */
-function useNowTick(intervalMs = 30_000): number {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), intervalMs)
-    return () => window.clearInterval(id)
-  }, [intervalMs])
-  return now
 }
 
 /** Title text per alert kind; same mapping as AlertsPanel */

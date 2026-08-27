@@ -1,6 +1,7 @@
 import { cn } from '@/lib/cn'
 import type { DistSliceVM } from '@/lib/overview'
-import { DonutChart, formatCompactValue } from '@/components/charts/DonutChart'
+import { DonutChart } from '@/components/charts/DonutChart'
+import { formatCompactValue } from '@/lib/format'
 import { useT } from '@/i18n/useT'
 
 export interface DistributionCardProps {

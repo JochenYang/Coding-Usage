@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import { Search, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { useT } from '@/i18n/useT'
 
 export interface SearchInputProps {
   value: string
@@ -11,6 +12,7 @@ export interface SearchInputProps {
 
 /** Controlled text input with a leading search icon and a clear button when non-empty */
 export function SearchInput({ value, onChange, placeholder, className }: SearchInputProps) {
+  const t = useT()
   const inputRef = useRef<HTMLInputElement>(null)
 
   return (
@@ -27,7 +29,7 @@ export function SearchInput({ value, onChange, placeholder, className }: SearchI
       {value !== '' && (
         <button
           type="button"
-          aria-label="Clear search"
+          aria-label={t.common.clearSearch}
           onClick={() => {
             onChange('')
             inputRef.current?.focus()

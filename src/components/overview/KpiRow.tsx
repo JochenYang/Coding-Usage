@@ -1,9 +1,8 @@
 import type { ReactNode } from 'react'
 import { Briefcase, CircleDollarSign, TrendingUp, Users } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { currencySymbol, formatAmount } from '@/lib/format'
+import { currencySymbol, formatAmount, formatCompactValue } from '@/lib/format'
 import type { KpisVM } from '@/lib/overview'
-import { formatCompactValue } from '@/components/charts/DonutChart'
 import { StatCard } from '@/components/common/StatCard'
 import { useT } from '@/i18n/useT'
 

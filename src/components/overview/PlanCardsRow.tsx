@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { PlanCardVM, PlanWindowVM } from '@/lib/overview'
 import { currencySymbol, formatAmount, formatCountdown } from '@/lib/format'
+import { useNowTick } from '@/lib/hooks/use-now-tick'
 import { Badge } from '@/components/common/Badge'
 import { ProgressBar } from '@/components/common/ProgressBar'
 import { ProviderLogo } from '@/components/ProviderLogo'
@@ -16,19 +16,6 @@ export interface PlanCardsRowProps {
 
 /** Balance payload of a plan card (NonNullable keeps it in sync with the VM) */
 type BalanceVM = NonNullable<PlanCardVM['balance']>
-
-/**
- * Minute-resolution clock so window countdowns stay live without any
- * external timer wiring.
- */
-function useNowTick(intervalMs = 30_000): number {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), intervalMs)
-    return () => window.clearInterval(id)
-  }, [intervalMs])
-  return now
-}
 
 /** Logo + name column + status badge shared by every card variant */
 function CardHeader({ card }: { card: PlanCardVM }) {
@@ -165,22 +152,6 @@ function BalanceCard({ card }: { card: PlanCardVM }) {
   )
 }
 
-/** Trailing dashed "add" tile that closes the row */
-function AddPlanGhost({ onAdd }: { onAdd: () => void }) {
-  const t = useT()
-
-  return (
-    <button
-      type="button"
-      onClick={onAdd}
-      className="flex w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border-strong py-10 text-muted-foreground transition-colors hover:border-accent hover:text-accent"
-    >
-      <Plus className="h-5 w-5" />
-      <span className="text-xs">{t.overview.addPlan}</span>
-    </button>
-  )
-}
-
 /** "Plan overview" block: header row plus a horizontally scrollable card row */
 export function PlanCardsRow({ cards, onAdd, className }: PlanCardsRowProps) {
   const t = useT()
@@ -200,6 +171,7 @@ export function PlanCardsRow({ cards, onAdd, className }: PlanCardsRowProps) {
         </button>
       </div>
 
+      {/* No trailing "add" ghost tile: the header button is the single add entry */}
       <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {cards.map((card) =>
           card.windows.length === 0 && card.balance ? (
@@ -208,7 +180,6 @@ export function PlanCardsRow({ cards, onAdd, className }: PlanCardsRowProps) {
             <PlanCard key={card.key} card={card} now={now} />
           ),
         )}
-        <AddPlanGhost onAdd={onAdd} />
       </div>
     </section>
   )

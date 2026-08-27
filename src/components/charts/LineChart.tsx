@@ -1,6 +1,6 @@
 import { useId, useMemo, useState } from 'react'
 import { cn } from '@/lib/cn'
-import { formatCompactValue } from './DonutChart'
+import { formatCompactValue } from '@/lib/format'
 
 export interface LineChartPoint {
   label: string
