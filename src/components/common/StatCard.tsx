@@ -6,22 +6,26 @@ export interface StatCardProps {
   title: string
   icon: LucideIcon
   iconClassName?: string
+  /** Fully replaces the default icon chip when provided (e.g. brand logos) */
+  iconSlot?: ReactNode
   value: string
   footer?: ReactNode
   className?: string
 }
 
 /** Metric card: title + icon chip, large tabular value, optional footer line */
-export function StatCard({ title, icon, iconClassName, value, footer, className }: StatCardProps) {
+export function StatCard({ title, icon, iconClassName, iconSlot, value, footer, className }: StatCardProps) {
   const Icon = icon
 
   return (
     <div className={cn('rounded-2xl border border-border bg-card p-5', className)}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs text-muted-foreground">{title}</span>
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-soft">
-          <Icon className={cn('h-4 w-4 text-accent', iconClassName)} />
-        </div>
+        {iconSlot ?? (
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-soft">
+            <Icon className={cn('h-4 w-4 text-accent', iconClassName)} />
+          </div>
+        )}
       </div>
       <div className="mt-2 text-[28px] font-semibold leading-tight tabular-nums text-foreground">
         {value}

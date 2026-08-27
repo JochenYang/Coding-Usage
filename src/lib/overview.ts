@@ -142,6 +142,50 @@ export interface DistSliceVM {
   color: string
 }
 
+/** Providers that reported a convertible balance, richest first (KPI brand chips) */
+export interface BalanceProviderInfo {
+  def: Section['def']
+  /** Converted into the display currency (what the aggregated figure uses) */
+  amount: number
+  /** Native-unit figure straight from the provider metric */
+  rawAmount: number
+  unit: string
+}
+
+/**
+ * One entry per provider (and currency), richest first. The KPI card shows
+ * the converted total with brand chips; the breakdown powers the hover list
+ * so several pay-as-you-go balances stay tellable apart.
+ */
+export function buildBalanceProviders(
+  sections: Section[],
+  results: Record<string, ProviderResult>,
+  displayCurrency: string,
+): BalanceProviderInfo[] {
+  const per = new Map<string, BalanceProviderInfo>()
+  for (const sec of sections) {
+    for (const card of sec.cards) {
+      const result = results[card.key]
+      if (result?.status !== 'ok') continue
+      const bal = result.metrics?.find(
+        (m) => m.kind === 'balance' && m.remaining != null && m.unit && m.unit !== UNLIMITED_KEY,
+      )
+      if (bal?.remaining == null || !bal.unit) continue
+      // Key includes the unit: one provider paying out in two currencies
+      // legitimately shows two lines (symbols would otherwise lie)
+      const converted = convertAmount(bal.remaining, bal.unit, displayCurrency)
+      if (converted == null) continue
+      const key = `${sec.def.id}|${bal.unit}`
+      const hit =
+        per.get(key) ?? { def: sec.def, amount: 0, rawAmount: 0, unit: bal.unit }
+      hit.amount += converted
+      hit.rawAmount += bal.remaining
+      per.set(key, hit)
+    }
+  }
+  return [...per.values()].sort((a, b) => b.amount - a.amount)
+}
+
 export const DIST_COLORS = ['#6366F1', '#F59E0B', '#EF4444', '#8B5CF6', '#0EA5E9', '#14B8A6', '#64748B']
 
 /** Provider-share slices of token quota totals; small shares fold into `otherLabel` */
