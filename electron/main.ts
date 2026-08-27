@@ -29,8 +29,11 @@ const ENC_PREFIX = 'enc:v3:'
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 // Gate for close-to-tray: only a real quit (tray menu / app.quit) may pass the
-// window close event through instead of hiding the window.
+// window close event through instead of routing it to the renderer dialog.
 let isQuitting = false
+// Close arrived before the renderer had a chance to load its listeners —
+// replayed on did-finish-load so an early Alt+F4 isn't silently swallowed.
+let pendingCloseRequest = false
 
 function showMainWindow(): void {
   const win = mainWindow
@@ -80,15 +83,10 @@ function createWindow(): void {
     backgroundColor: '#0b0b12',
     show: false,
     autoHideMenuBar: true,
-    // Integrated title bar: hide the native chrome but keep the Windows
-    // caption buttons pinned to the top-right as an overlay, so the bar
-    // follows the app theme (VS Code style) instead of the system one.
+    // Frameless-style integrated title bar (VS Code style): the native chrome
+    // is hidden and the DOM draws its own caption buttons (TopBar), which get
+    // real hover states and can intercept close for the tray-or-quit dialog.
     titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: '#0b0b12',
-      symbolColor: '#f4f4f8',
-      height: 40,
-    },
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -101,6 +99,35 @@ function createWindow(): void {
   })
   mainWindow = win
 
+  // Custom caption buttons render their own hover states in the DOM, so the
+  // native Window Controls Overlay stays off; report maximize transitions so
+  // the restore glyph can swap live.
+  const pushMaximized = () => {
+    if (!win.isDestroyed()) win.webContents.send('desktop:window-maximized', win.isMaximized())
+  }
+  win.on('maximize', pushMaximized)
+  win.on('unmaximize', pushMaximized)
+
+  // Close interception routes to the renderer's styled confirm dialog; if the
+  // event lands before the page loaded, replay once it did.
+  win.on('close', (e) => {
+    if (isQuitting || !win.webContents.isLoading()) {
+      if (!isQuitting && !win.isDestroyed()) {
+        e.preventDefault()
+        win.webContents.send('desktop:close-requested')
+      }
+      return
+    }
+    e.preventDefault()
+    pendingCloseRequest = true
+  })
+  win.webContents.on('did-finish-load', () => {
+    if (pendingCloseRequest && !win.isDestroyed()) {
+      pendingCloseRequest = false
+      win.webContents.send('desktop:close-requested')
+    }
+  })
+
   // Dark background + delayed show prevents the white flash on startup
   win.once('ready-to-show', () => win.show())
 
@@ -111,15 +138,6 @@ function createWindow(): void {
     // Packaged: main.cjs sits in dist-electron/, renderer bundle in dist/
     void win.loadFile(join(__dirname, '../dist/index.html'))
   }
-
-  // Closing the window hides it to the tray; the tray menu's Quit is the only
-  // way out (Windows-first behavior).
-  win.on('close', (e) => {
-    if (!isQuitting) {
-      e.preventDefault()
-      win.hide()
-    }
-  })
 }
 
 function createTray(): void {
@@ -319,6 +337,32 @@ function registerIpc(): void {
     app.setLoginItemSettings({ openAtLogin: open === true })
   })
 
+  // Custom caption buttons (DOM-drawn replacements for the native overlay).
+  ipcMain.handle('window:minimize', (): void => {
+    mainWindow?.minimize()
+  })
+
+  ipcMain.handle('window:maximize-toggle', (): void => {
+    const win = mainWindow
+    if (!win) return
+    if (win.isMaximized()) win.unmaximize()
+    else win.maximize()
+  })
+
+  // Styled in-app confirm dialog owns the tray-vs-quit decision; the main
+  // process only executes the renderer's final choice.
+  ipcMain.handle('window:hide', (): void => {
+    mainWindow?.hide()
+  })
+
+  ipcMain.handle('app:quit', (): void => {
+    isQuitting = true
+    app.quit()
+  })
+
+  /** Renderer subscription channel for maximize-state changes */
+  ipcMain.handle('window:get-maximized', (): boolean => mainWindow?.isMaximized() ?? false)
+
   // Applied from the update-ready toast: quitAndInstall without a downloaded
   // update throws, so the failure is swallowed (the toast only renders after
   // 'update-downloaded' anyway).
@@ -328,17 +372,6 @@ function registerIpc(): void {
     } catch {
       // No staged update — nothing to install
     }
-  })
-
-  // Keep the integrated title-bar overlay in sync with the app theme so the
-  // window chrome never shows a foreign (system-default) color band.
-  ipcMain.handle('window:set-theme', (_event, mode: unknown): void => {
-    const dark = mode === 'dark'
-    mainWindow?.setTitleBarOverlay({
-      color: dark ? '#0b0b12' : '#eef0f5',
-      symbolColor: dark ? '#f4f4f8' : '#16161f',
-      height: 40,
-    })
   })
 
   // Codex subscription quota: reads the local ChatGPT OAuth login and queries
