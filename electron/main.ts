@@ -14,6 +14,7 @@ import {
   Tray,
 } from 'electron'
 import { autoUpdater } from 'electron-updater'
+import { fetchClaudeUsage, fetchGeminiUsage, type QuotaOutcome } from './subscription-quotas'
 
 // Tray icon: 16x16 solid indigo (#6366F1) RGBA PNG. Generated offline with a
 // small Node script (hand-built PNG chunks + zlib deflate) and inlined as base64
@@ -126,6 +127,24 @@ interface TokScanResult {
 }
 
 let tokScanCache: { at: number; result: TokScanResult } | null = null
+
+// Subscription probes cost upstream API calls (Gemini up to three round-trips),
+// so successful outcomes are cached briefly to survive Plans-page revisits.
+// Failures stay uncached: a fresh login must show up on the very next visit.
+const QUOTA_CACHE_MS = 2 * 60_000
+const quotaCache = new Map<string, { at: number; result: QuotaOutcome }>()
+
+async function cachedQuotaOutcome(
+  key: string,
+  probe: () => Promise<QuotaOutcome>,
+): Promise<QuotaOutcome> {
+  const hit = quotaCache.get(key)
+  const now = Date.now()
+  if (hit && now - hit.at < QUOTA_CACHE_MS) return hit.result
+  const result = await probe()
+  if (result.available) quotaCache.set(key, { at: now, result })
+  return result
+}
 
 /**
  * Resolve the tokscale binary shipped via the platform optional dependency
@@ -315,6 +334,25 @@ function registerIpc(): void {
       return { available: false, reason: 'no-auth-file' }
     }
   })
+
+  // Claude Code subscription quota: reads the local ~/.claude OAuth login and
+  // queries the official usage endpoint. Credential handling lives in
+  // subscription-quotas.ts; only usage numbers cross the IPC boundary.
+  ipcMain.handle(
+    'claude:usage',
+    async (): Promise<QuotaOutcome> =>
+      cachedQuotaOutcome('claude', () =>
+        fetchClaudeUsage(net.fetch, homedir(), process.env.CLAUDE_CONFIG_DIR || undefined),
+      ),
+  )
+
+  // Gemini Code Assist subscription quota via the local Gemini CLI login
+  // (~/.gemini/oauth_creds.json), including in-memory token refresh.
+  ipcMain.handle(
+    'gemini:usage',
+    async (): Promise<QuotaOutcome> =>
+      cachedQuotaOutcome('gemini', () => fetchGeminiUsage(net.fetch, homedir())),
+  )
 
   // Local agent usage scan. Cached in the main process: a full three-period
   // scan takes tens of seconds, so repeated renderer refreshes are cheap.

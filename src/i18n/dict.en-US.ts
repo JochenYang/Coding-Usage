@@ -235,6 +235,23 @@ export const enUS: Dict = {
     subscriptionTitle: 'Official subscription quota',
     codexNoAuth:
       'No ChatGPT-authenticated Codex login found (~/.codex/auth.json) — official subscription quota unavailable.',
+    claudeNoAuth:
+      'No Claude Code login found (~/.claude/.credentials.json) — official subscription quota unavailable.',
+    claudeReauth: 'Your Claude login has expired. Run `claude` again in a terminal to sign in.',
+    claudeWindows: {
+      fiveHour: '5-hour window',
+      sevenDay: 'Weekly window',
+      sevenDayOpus: 'Weekly Opus window',
+      sevenDaySonnet: 'Weekly Sonnet window',
+    },
+    geminiNoAuth:
+      'No Gemini CLI login found (~/.gemini/oauth_creds.json) — official subscription quota unavailable.',
+    geminiReauth: 'Your Gemini login has expired. Run `gemini` again to sign in.',
+    geminiGroups: {
+      pro: 'Pro',
+      flash: 'Flash',
+      flashLite: 'Flash Lite',
+    },
     addAgent: 'Add agent',
     showAll: 'Show disabled',
     enabled: 'Enabled',

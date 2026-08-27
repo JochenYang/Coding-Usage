@@ -12,6 +12,8 @@ import { ProgressBar } from '@/components/common/ProgressBar'
 import { ProviderLogo } from '@/components/ProviderLogo'
 import { AddAccountMenu } from '@/components/account/AddAccountMenu'
 import { CodexQuotaCard } from '@/components/overview/CodexQuotaCard'
+import { ClaudeQuotaCard } from '@/components/overview/ClaudeQuotaCard'
+import { GeminiQuotaCard } from '@/components/overview/GeminiQuotaCard'
 import {
   Select,
   SelectContent,
@@ -268,7 +270,11 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-foreground">{t.manage.subscriptionTitle}</h2>
-        <CodexQuotaCard />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <CodexQuotaCard />
+          <ClaudeQuotaCard />
+          <GeminiQuotaCard />
+        </div>
       </section>
     </div>
   )

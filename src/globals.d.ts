@@ -26,6 +26,10 @@ declare global {
     tokscaleScan(): Promise<TokScaleRaw>
     /** Codex subscription quota from the local ChatGPT login (official wham endpoint) */
     codexQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /** Claude subscription quota from the local Claude Code OAuth login (official usage endpoint) */
+    claudeUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /** Gemini Code Assist quota via the local Gemini CLI OAuth login (refresh happens in main) */
+    geminiUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Mirror the encrypted v3 settings document to a userData file */
     settingsBackupWrite(payload: string): Promise<void>
     /** Read the mirrored settings document, or null when none exists */

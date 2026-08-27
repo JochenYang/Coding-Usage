@@ -232,6 +232,21 @@ export interface Dict {
     apiAccounts: string
     subscriptionTitle: string
     codexNoAuth: string
+    claudeNoAuth: string
+    claudeReauth: string
+    claudeWindows: {
+      fiveHour: string
+      sevenDay: string
+      sevenDayOpus: string
+      sevenDaySonnet: string
+    }
+    geminiNoAuth: string
+    geminiReauth: string
+    geminiGroups: {
+      pro: string
+      flash: string
+      flashLite: string
+    }
     addAgent: string
     showAll: string
     enabled: string
