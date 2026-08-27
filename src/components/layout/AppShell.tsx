@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
+import { UpdateToast } from './UpdateToast'
 import type { View } from '@/lib/router'
 
 /** Desktop shell: fixed sidebar + top bar + scrollable content column */
@@ -22,6 +23,8 @@ export function AppShell({
           <div className="mx-auto w-full max-w-[1280px] px-6 py-6">{children}</div>
         </main>
       </div>
+      {/* Fixed-position overlay; self-hides in browser dev (no desktop bridge) */}
+      <UpdateToast />
     </div>
   )
 }

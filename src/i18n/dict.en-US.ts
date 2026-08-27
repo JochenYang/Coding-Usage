@@ -78,6 +78,8 @@ export const enUS: Dict = {
     openrouter: { name: 'OpenRouter', tagline: 'Pay-as-you-go · balance query', plan: 'Pay-as-you-go' },
     minimax: { name: 'MiniMax Token Plan', tagline: 'Subscription · 5h/weekly window + video bonus', plan: 'Token Plan' },
     volcengine: { name: 'Volcengine Ark', tagline: 'Subscription · 5h/weekly/monthly window', plan: 'Coding Plan' },
+    stepfun: { name: 'StepFun', tagline: 'Pay-as-you-go · CNY balance', plan: 'Pay-as-you-go' },
+    novita: { name: 'Novita', tagline: 'Pay-as-you-go · USD balance', plan: 'Pay-as-you-go' },
   },
   provider: {
     balanceLabel: (currency: string) => `Balance (${currency})`,
@@ -282,6 +284,11 @@ export const enUS: Dict = {
     ruleReset: 'Window resets within 60 minutes',
     ruleHigh: 'Any window usage ≥ 90%',
     ruleLow: 'Balance below the per-currency floor',
+    planFilterEmpty: 'No plan accounts match the current filters',
+    planFilterReset: 'Clear filters',
+  },
+  common: {
+    clearSearch: 'Clear search',
   },
   prefs: {
     appearance: 'Appearance',
@@ -311,5 +318,11 @@ export const enUS: Dict = {
     volcSignature: 'Volcengine AK/SK signature rejected (check credentials)',
     volcCredFormat: 'Volcengine credentials must be in the AK:SK form',
     volcNoWindows: 'No quota windows in the Volcengine response',
+  },
+  updater: {
+    readyTitle: 'Update ready',
+    readyBody: (version: string) => `v${version} has been downloaded. Restart to install.`,
+    installNow: 'Restart & install',
+    later: 'Later',
   },
 }

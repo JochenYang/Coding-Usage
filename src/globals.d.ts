@@ -36,6 +36,10 @@ declare global {
     settingsBackupRead(): Promise<string | null>
     /** Sync the integrated title-bar overlay colors with the resolved app theme */
     setWindowTheme(mode: 'light' | 'dark'): Promise<void>
+    /** Quit and install the downloaded auto-update (no-op when nothing is staged) */
+    installUpdate(): Promise<void>
+    /** Subscribe to autoUpdater's update-downloaded event; returns an unsubscribe function */
+    onUpdateDownloaded(callback: (version: string) => void): () => void
   }
 
   /** Raw result of one tokscale scan round-trip (`tokscale:scan` IPC) */

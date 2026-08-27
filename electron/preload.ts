@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { IpcRendererEvent } from 'electron'
 
 /**
  * Secure bridge between the renderer and the main process. Channel names and
@@ -17,6 +18,12 @@ const desktopBridge: DesktopBridge = {
   settingsBackupWrite: (payload) => ipcRenderer.invoke('settings:backup-write', payload),
   settingsBackupRead: () => ipcRenderer.invoke('settings:backup-read'),
   setWindowTheme: (mode) => ipcRenderer.invoke('window:set-theme', mode),
+  installUpdate: () => ipcRenderer.invoke('app:install-update'),
+  onUpdateDownloaded: (callback) => {
+    const listener = (_event: IpcRendererEvent, version: string) => callback(version)
+    ipcRenderer.on('desktop:update-downloaded', listener)
+    return () => ipcRenderer.removeListener('desktop:update-downloaded', listener)
+  },
 }
 
 contextBridge.exposeInMainWorld('desktopBridge', desktopBridge)

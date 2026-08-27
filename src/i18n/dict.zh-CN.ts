@@ -77,6 +77,8 @@ export const zhCN: Dict = {
     openrouter: { name: 'OpenRouter', tagline: '按量计费 · 余额查询', plan: '按量计费' },
     minimax: { name: 'MiniMax Token Plan', tagline: '订阅套餐 · 5h/周窗口 + 视频赠送', plan: 'Token Plan' },
     volcengine: { name: 'Volcengine Ark', tagline: '订阅套餐 · 5h/周/月窗口', plan: 'Coding Plan' },
+    stepfun: { name: 'StepFun', tagline: '按量计费 · CNY 余额', plan: '按量计费' },
+    novita: { name: 'Novita', tagline: '按量计费 · USD 余额', plan: '按量计费' },
   },
   provider: {
     balanceLabel: (currency: string) => `账户余额（${currency}）`,
@@ -276,6 +278,11 @@ export const zhCN: Dict = {
     ruleReset: '窗口将在 60 分钟内重置',
     ruleHigh: '任一窗口用量 ≥ 90%',
     ruleLow: '余额低于对应币种阈值',
+    planFilterEmpty: '没有符合当前筛选的套餐账号',
+    planFilterReset: '清除筛选',
+  },
+  common: {
+    clearSearch: '清空搜索',
   },
   prefs: {
     appearance: '外观',
@@ -304,5 +311,11 @@ export const zhCN: Dict = {
     volcSignature: '火山 AK/SK 签名被拒绝（检查凭据）',
     volcCredFormat: '火山凭据格式应为 AK:SK',
     volcNoWindows: '火山响应中没有任何额度窗口',
+  },
+  updater: {
+    readyTitle: '更新已就绪',
+    readyBody: (version: string) => `v${version} 已下载完成，重启应用即可安装。`,
+    installNow: '立即重启安装',
+    later: '稍后',
   },
 }

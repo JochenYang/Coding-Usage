@@ -11,6 +11,7 @@ import {
   nativeImage,
   net,
   safeStorage,
+  session,
   Tray,
 } from 'electron'
 import { autoUpdater } from 'electron-updater'
@@ -39,6 +40,37 @@ function showMainWindow(): void {
   win.focus()
 }
 
+/**
+ * Renderer CSP. Everything (icons, fonts, scripts) ships inside the bundle, so
+ * the packaged policy can pin every directive to 'self'. The dev server needs
+ * two extra doors: the Vite HMR websocket and the inline react-refresh
+ * preamble that @vitejs/plugin-react injects into index.html.
+ */
+function applyCsp(): void {
+  const dev = !app.isPackaged && Boolean(process.env.ELECTRON_RENDERER_URL)
+  const csp = [
+    "default-src 'self'",
+    dev ? "script-src 'self' 'unsafe-inline'" : "script-src 'self'",
+    // React writes element style attributes; Tailwind emits a plain stylesheet
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    "connect-src 'self'" +
+      (dev ? ' ws://localhost:* ws://127.0.0.1:* http://localhost:* http://127.0.0.1:*' : ''),
+    "object-src 'none'",
+    "base-uri 'none'",
+  ].join('; ')
+
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [csp],
+      },
+    })
+  })
+}
+
 function createWindow(): void {
   const win = new BrowserWindow({
     width: 1280,
@@ -61,7 +93,9 @@ function createWindow(): void {
       preload: join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      // Preload only touches contextBridge/ipcRenderer, so it stays compatible
+      // with the Chromium sandbox; keep the renderer's Node access off.
+      sandbox: true,
       spellcheck: false,
     },
   })
@@ -285,6 +319,17 @@ function registerIpc(): void {
     app.setLoginItemSettings({ openAtLogin: open === true })
   })
 
+  // Applied from the update-ready toast: quitAndInstall without a downloaded
+  // update throws, so the failure is swallowed (the toast only renders after
+  // 'update-downloaded' anyway).
+  ipcMain.handle('app:install-update', (): void => {
+    try {
+      autoUpdater.quitAndInstall()
+    } catch {
+      // No staged update — nothing to install
+    }
+  })
+
   // Keep the integrated title-bar overlay in sync with the app theme so the
   // window chrome never shows a foreign (system-default) color band.
   ipcMain.handle('window:set-theme', (_event, mode: unknown): void => {
@@ -376,8 +421,7 @@ function setupAutoUpdater(): void {
     // Offline or GitHub unreachable — retried on next launch
   })
   autoUpdater.on('update-downloaded', (info) => {
-    // TODO(renderer): subscribe to this channel and surface an
-    // "update ready, restart to apply" toast in the UI.
+    // Consumed by the renderer's UpdateToast ("update ready, restart to apply")
     mainWindow?.webContents.send('desktop:update-downloaded', info.version)
   })
 }
@@ -390,6 +434,7 @@ if (!gotSingleInstanceLock) {
   app.on('second-instance', () => showMainWindow())
 
   void app.whenReady().then(() => {
+    applyCsp()
     registerIpc()
     createWindow()
     createTray()

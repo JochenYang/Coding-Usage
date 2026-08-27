@@ -15,6 +15,12 @@ asarUnpack:
 win:
   # Rounded transparent app icon generated from assets/images/logo.png
   icon: build/icon.png
+  # TODO(signing): wire Authenticode signing once a certificate is purchased.
+  # With a physical/token cert (EV or OV) use one of:
+  #   certificateSubjectName: "Your Company Ltd"     # OV, cert in the store
+  #   certificateFile + certificatePassword          # PFX file via env var
+  # electron-updater benefits from signed binaries: without a signature,
+  # Windows SmartScreen and some AVs warn on install and on delta updates.
   target:
     - nsis
     - portable

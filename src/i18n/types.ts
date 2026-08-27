@@ -78,6 +78,8 @@ export interface Dict {
     openrouter: { name: string; tagline: string; plan: string }
     minimax: { name: string; tagline: string; plan: string }
     volcengine: { name: string; tagline: string; plan: string }
+    stepfun: { name: string; tagline: string; plan: string }
+    novita: { name: string; tagline: string; plan: string }
   }
   provider: {
     balanceLabel: (currency: string) => string
@@ -277,6 +279,11 @@ export interface Dict {
     ruleReset: string
     ruleHigh: string
     ruleLow: string
+    planFilterEmpty: string
+    planFilterReset: string
+  }
+  common: {
+    clearSearch: string
   }
   prefs: {
     appearance: string
@@ -305,5 +312,11 @@ export interface Dict {
     volcSignature: string
     volcCredFormat: string
     volcNoWindows: string
+  }
+  updater: {
+    readyTitle: string
+    readyBody: (version: string) => string
+    installNow: string
+    later: string
   }
 }
