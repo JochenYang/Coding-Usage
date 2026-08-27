@@ -189,6 +189,7 @@ export function SettingsPage({ className }: SettingsPageProps) {
       providers: { ...settings.providers, ...migrated.providers },
       autoRefreshMin: migrated.autoRefreshMin ?? settings.autoRefreshMin,
       displayCurrency: migrated.displayCurrency ?? settings.displayCurrency,
+      usageDisplayMode: settings.usageDisplayMode,
     })
     mergeSnapshots(wrapper.snapshots)
   }
@@ -257,6 +258,23 @@ export function SettingsPage({ className }: SettingsPageProps) {
       {/* Data */}
       <section className="space-y-5 rounded-2xl border border-border bg-card p-5">
         <h2 className="text-sm font-semibold">{t.prefs.data}</h2>
+
+        <SettingRow label={t.prefs.usageMode}>
+          <Select
+            value={settings.usageDisplayMode}
+            onValueChange={(v) =>
+              updateSettings({ ...settings, usageDisplayMode: v === 'no-cache' ? 'no-cache' : 'all' })
+            }
+          >
+            <SelectTrigger className="w-36 rounded-lg border-border bg-card px-3 py-1.5 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t.prefs.usageAll}</SelectItem>
+              <SelectItem value="no-cache">{t.prefs.usageNoCache}</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingRow>
 
         <SettingRow label={t.prefs.displayCurrency}>
           <Select

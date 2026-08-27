@@ -11,6 +11,7 @@ import { Badge } from '@/components/common/Badge'
 import { ProgressBar } from '@/components/common/ProgressBar'
 import { ProviderLogo } from '@/components/ProviderLogo'
 import { AddAccountMenu } from '@/components/account/AddAccountMenu'
+import { CodexQuotaCard } from '@/components/overview/CodexQuotaCard'
 import {
   Select,
   SelectContent,
@@ -263,16 +264,12 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
         {filtered.map((card) => (
           <PlanGridCard key={card.key} card={card} now={now} />
         ))}
-
-        {/* Trailing dashed tile opens the same picker as the header button */}
-        <div className="flex h-full min-h-[180px] w-full items-center justify-center rounded-2xl border border-dashed border-border-strong transition-colors hover:border-accent">
-          <AddAccountMenu
-            onAdd={onAddAccount}
-            label={t.overview.addPlan}
-            className="bg-transparent hover:bg-transparent"
-          />
-        </div>
       </div>
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold text-foreground">{t.manage.subscriptionTitle}</h2>
+        <CodexQuotaCard />
+      </section>
     </div>
   )
 }

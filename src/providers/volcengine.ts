@@ -101,7 +101,7 @@ function isAuthError(json: unknown): boolean {
 }
 
 /** Priority-1 attempt: GetAFPUsage (Agent Plan). Returns metrics when subscribed. */
-async function tryAfp(fetchFn: (u: string, h: Record<string, string>) => Promise<Response>, ak: string, sk: string, region: string, t: (typeof zhCN)['windows']): Promise<UsageMetric[] | null> {
+async function tryAfp(fetchFn: (u: string, h: Record<string, string>) => Promise<Response>, ak: string, sk: string, region: string, t: (typeof zhCN)['windows'], errs: (typeof zhCN)['providerErrors']): Promise<UsageMetric[] | null> {
   const res = await buildArkRequest('GetAFPUsage', ak, sk, region, fetchFn)
   const json = (await res.json().catch(() => ({}))) as {
     ResponseMetadata?: { Error?: { Code?: string; Message?: string } }
@@ -112,7 +112,7 @@ async function tryAfp(fetchFn: (u: string, h: Record<string, string>) => Promise
       AFPMonthly?: { Quota?: number; Used?: number; ResetTime?: number }
     }
   } | null
-  if (isAuthError(json)) throw new Error('火山 AK/SK 签名被拒绝（检查凭据）')
+  if (isAuthError(json)) throw new Error(errs.volcSignature)
   const plan = json?.Result
   if (!plan) return null
   // Not subscribed: every window quota <= 0
@@ -147,13 +147,13 @@ async function tryAfp(fetchFn: (u: string, h: Record<string, string>) => Promise
 }
 
 /** Priority-2: GetCodingPlanUsage (Coding Plan). */
-async function tryCodingPlan(fetchFn: (u: string, h: Record<string, string>) => Promise<Response>, ak: string, sk: string, region: string, t: (typeof zhCN)['windows']): Promise<UsageMetric[]> {
+async function tryCodingPlan(fetchFn: (u: string, h: Record<string, string>) => Promise<Response>, ak: string, sk: string, region: string, t: (typeof zhCN)['windows'], errs: (typeof zhCN)['providerErrors']): Promise<UsageMetric[]> {
   const res = await buildArkRequest('GetCodingPlanUsage', ak, sk, region, fetchFn)
   const json = (await res.json().catch(() => ({}))) as {
     ResponseMetadata?: { Error?: { Code?: string; Message?: string } }
     Result?: { QuotaUsage?: ArkTier[]; Usages?: ArkTier[]; Details?: ArkTier[] }
   }
-  if (isAuthError(json)) throw new Error('火山 AK/SK 签名被拒绝（检查凭据）')
+  if (isAuthError(json)) throw new Error(errs.volcSignature)
   const tiers: ArkTier[] = json.Result?.QuotaUsage ?? json.Result?.Usages ?? json.Result?.Details ?? []
   const out: UsageMetric[] = []
   for (let i = 0; i < tiers.length; i++) {
@@ -172,7 +172,7 @@ async function tryCodingPlan(fetchFn: (u: string, h: Record<string, string>) => 
       resetsAt: reset != null ? (reset < 1e12 ? reset * 1000 : reset) : undefined,
     })
   }
-  if (out.length === 0) throw new Error('火山响应中没有任何额度窗口')
+  if (out.length === 0) throw new Error(errs.volcNoWindows)
   return out
 }
 
@@ -204,17 +204,18 @@ export const volcengine: ProviderDef = {
   async parseResponse(_json, ctx) {
     const fetchFn = ctx?.fetch
     if (!fetchFn) return []
+    const vErrors = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN'].providerErrors
     // apiKey slot carries "AK:SK" (see module docstring)
     const raw = (ctx?.key ?? '').trim()
     const sep = raw.indexOf(':')
-    if (sep <= 0) throw new Error('火山凭据格式应为 AK:SK')
+    if (sep <= 0) throw new Error(vErrors.volcCredFormat)
     const ak = raw.slice(0, sep)
     const sk = raw.slice(sep + 1)
     const region = DEFAULT_REGION
     const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN'].windows
 
-    const afp = await tryAfp(fetchFn, ak, sk, region, t)
+    const afp = await tryAfp(fetchFn, ak, sk, region, t, vErrors)
     if (afp && afp.length > 0) return afp
-    return tryCodingPlan(fetchFn, ak, sk, region, t)
+    return tryCodingPlan(fetchFn, ak, sk, region, t, vErrors)
   },
 }

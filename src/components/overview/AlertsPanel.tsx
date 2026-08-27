@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Info, TriangleAlert } from 'lucide-react'
+import { CircleAlert, Info, Lock } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import type { AlertItem, AlertLevel } from '@/lib/alerts'
+import type { AlertItem, AlertKind, AlertLevel } from '@/lib/alerts'
 import { currencySymbol, formatAmount } from '@/lib/format'
 import { formatCompactValue } from '@/components/charts/DonutChart'
 import { useT } from '@/i18n/useT'
@@ -14,11 +14,18 @@ export interface AlertsPanelProps {
   className?: string
 }
 
-/** Icon chip pairing per alert level; danger/warning share the same glyph */
+/** Icon chip pairing per alert level */
 const LEVEL_CHIP: Record<AlertLevel, string> = {
   danger: 'bg-danger/10 text-danger',
   warning: 'bg-warning/10 text-warning',
   info: 'bg-accent-soft text-accent',
+}
+
+/** Glyph per alert kind: reset windows, quota usage, low balance */
+const KIND_ICON: Record<AlertKind, typeof Info> = {
+  'window-reset': CircleAlert,
+  'high-usage': Lock,
+  'low-balance': Info,
 }
 
 /**
@@ -69,11 +76,10 @@ function AlertRow({ alert, now }: { alert: AlertItem; now: number }) {
           LEVEL_CHIP[alert.level],
         )}
       >
-        {alert.level === 'info' ? (
-          <Info className="h-4 w-4" />
-        ) : (
-          <TriangleAlert className="h-4 w-4" />
-        )}
+        {(() => {
+          const Icon = KIND_ICON[alert.kind]
+          return <Icon className="h-4 w-4" />
+        })()}
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-xs font-medium text-foreground">{title}</div>

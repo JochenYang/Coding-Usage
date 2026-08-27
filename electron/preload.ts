@@ -12,6 +12,8 @@ const desktopBridge: DesktopBridge = {
   setLoginItem: (open) => ipcRenderer.invoke('app:set-login-item', open),
   tokscaleScan: () => ipcRenderer.invoke('tokscale:scan'),
   codexQuota: () => ipcRenderer.invoke('codex:quota'),
+  settingsBackupWrite: (payload) => ipcRenderer.invoke('settings:backup-write', payload),
+  settingsBackupRead: () => ipcRenderer.invoke('settings:backup-read'),
   setWindowTheme: (mode) => ipcRenderer.invoke('window:set-theme', mode),
 }
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Codex } from '@lobehub/icons'
 import { useT } from '@/i18n/useT'
 import { formatCountdown } from '@/lib/format'
 import { summarizeCodexQuota, type CodexQuotaVM } from '@/lib/codex-quota'
@@ -20,10 +21,14 @@ export function CodexQuotaCard({ className }: { className?: string }) {
     const bridge = window.desktopBridge
     if (!bridge) return
     setLoading(true)
-    bridge
-      .codexQuota()
+    // Race against a hard timeout: the main-process abort is best-effort on
+    // Electron's net.fetch, and a hung IPC must not leave the card loading.
+    const timeout = new Promise<never>((_resolve, reject) =>
+      setTimeout(() => reject(new Error('timeout')), 12_000),
+    )
+    Promise.race([bridge.codexQuota(), timeout])
       .then((raw) => setVm(summarizeCodexQuota(raw)))
-      .catch(() => setVm(summarizeCodexQuota({ available: false, reason: 'ipc-failed' })))
+      .catch(() => setVm(summarizeCodexQuota({ available: false, reason: 'timeout' })))
       .finally(() => setLoading(false))
   }, [])
 
@@ -31,7 +36,15 @@ export function CodexQuotaCard({ className }: { className?: string }) {
 
   return (
     <section className={cn('rounded-2xl border border-border bg-card p-5', className)}>
-      <h2 className="text-sm font-semibold text-foreground">{t.manage.subscriptionTitle}</h2>
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted [&>svg]:h-5 [&>svg]:w-5" aria-hidden>
+          <Codex.Color />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-foreground">Codex</h2>
+          <p className="text-[11px] text-subtle">{t.manage.subscriptionTitle}</p>
+        </div>
+      </div>
 
       {loading ? (
         <p className="mt-3 text-xs text-subtle">{t.card.loading}</p>

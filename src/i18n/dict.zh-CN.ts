@@ -270,6 +270,9 @@ export const zhCN: Dict = {
     refreshInterval: '自动刷新间隔',
     data: '数据',
     displayCurrency: '显示币种',
+    usageMode: '用量口径',
+    usageAll: '含缓存读取',
+    usageNoCache: '仅输入+输出',
     exportData: '导出数据',
     importData: '导入数据',
     clearSnapshots: '清除趋势快照',
@@ -279,5 +282,12 @@ export const zhCN: Dict = {
     importBad: '备份文件格式无效',
     about: '关于',
     version: '版本',
+  },
+  providerErrors: {
+    keyInvalid: 'Key 无效或请求被拒绝',
+    badResponse: '响应格式变化：缺少 available_balance',
+    volcSignature: '火山 AK/SK 签名被拒绝（检查凭据）',
+    volcCredFormat: '火山凭据格式应为 AK:SK',
+    volcNoWindows: '火山响应中没有任何额度窗口',
   },
 }

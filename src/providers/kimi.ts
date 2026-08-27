@@ -38,11 +38,11 @@ export const kimi: ProviderDef = {
       data?: { available_balance?: number; voucher_balance?: number; cash_balance?: number }
     }
     if (body.code !== 0 || !body.data) {
-      throw new Error('Key 无效或请求被拒绝')
+      throw new Error(DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN'].providerErrors.keyInvalid)
     }
     const d = body.data
     if (typeof d.available_balance !== 'number') {
-      throw new Error('响应格式变化：缺少 available_balance')
+      throw new Error(DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN'].providerErrors.badResponse)
     }
     const metric: UsageMetric = {
       id: 'kimi-available',

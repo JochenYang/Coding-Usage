@@ -274,6 +274,9 @@ export const enUS: Dict = {
     refreshInterval: 'Auto refresh interval',
     data: 'Data',
     displayCurrency: 'Display currency',
+    usageMode: 'Usage accounting',
+    usageAll: 'Include cache reads',
+    usageNoCache: 'Input + output only',
     exportData: 'Export data',
     importData: 'Import data',
     clearSnapshots: 'Clear trend snapshots',
@@ -284,5 +287,12 @@ export const enUS: Dict = {
     importBad: 'Invalid backup file',
     about: 'About',
     version: 'Version',
+  },
+  providerErrors: {
+    keyInvalid: 'Invalid key or the request was rejected',
+    badResponse: 'Response format changed: available_balance missing',
+    volcSignature: 'Volcengine AK/SK signature rejected (check credentials)',
+    volcCredFormat: 'Volcengine credentials must be in the AK:SK form',
+    volcNoWindows: 'No quota windows in the Volcengine response',
   },
 }

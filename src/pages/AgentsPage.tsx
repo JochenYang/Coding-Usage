@@ -2,7 +2,6 @@ import { useT } from '@/i18n/useT'
 import { useData } from '@/lib/data-context'
 import { PageHeader } from '@/components/common/PageHeader'
 import { LocalUsageCard } from '@/components/overview/LocalUsageCard'
-import { CodexQuotaCard } from '@/components/overview/CodexQuotaCard'
 
 /**
  * Agent management page (desktop-only capability): local AI coding agents
@@ -25,11 +24,6 @@ export function AgentsPage() {
           loading={agentUsageLoading}
           onRefresh={refreshAgentUsage}
         />
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="text-sm font-semibold text-foreground">{t.manage.subscriptionTitle}</h2>
-        <CodexQuotaCard />
       </section>
     </div>
   )

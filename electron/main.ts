@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -238,6 +238,25 @@ function registerIpc(): void {
     try {
       // Throws on tampered/garbage ciphertext — normalized to null for the renderer
       return safeStorage.decryptString(Buffer.from(blob.slice(ENC_PREFIX.length), 'base64'))
+    } catch {
+      return null
+    }
+  })
+
+  // Settings mirror: the renderer writes the encrypted v3 document to a file
+  // in userData so a corrupted/lost localStorage leveldb can be restored.
+  ipcMain.handle('settings:backup-write', (_event, payload: unknown): void => {
+    try {
+      if (typeof payload !== 'string' || payload.length === 0) return
+      void writeFile(join(app.getPath('userData'), 'settings-backup.json'), payload, 'utf8')
+    } catch {
+      // best-effort mirror
+    }
+  })
+
+  ipcMain.handle('settings:backup-read', async (): Promise<string | null> => {
+    try {
+      return await readFile(join(app.getPath('userData'), 'settings-backup.json'), 'utf8')
     } catch {
       return null
     }

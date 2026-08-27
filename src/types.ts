@@ -96,6 +96,8 @@ export interface Settings {
   autoRefreshMin: number
   /** Currency used for cross-account balance totals (uppercase code) */
   displayCurrency: string
+  /** Token accounting口径: 'all' counts cache reads, 'no-cache' only input+output */
+  usageDisplayMode: 'all' | 'no-cache'
 }
 
 export interface ProviderResult {

@@ -2,7 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { BarChart3, Plus } from 'lucide-react'
 import { useData } from '@/lib/data-context'
 import { useT } from '@/i18n/useT'
-import { DIST_COLORS, buildAgentRows, buildDistribution, buildKpis, buildPlanCards, buildTrendPoints } from '@/lib/overview'
+import {
+  DIST_COLORS,
+  buildAgentRows,
+  buildDistribution,
+  buildKpis,
+  buildPlanCards,
+  buildTrendPoints,
+} from '@/lib/overview'
+import { displayTokens } from '@/lib/agent-usage'
 import { KpiRow } from '@/components/overview/KpiRow'
 import { TrendCard } from '@/components/overview/TrendCard'
 import { DistributionCard } from '@/components/overview/DistributionCard'
@@ -46,13 +54,15 @@ export function OverviewPage({
       results,
       settings.displayCurrency,
       now,
-      agentUsage.allTimeTotal.tokens > 0 ? agentUsage.allTimeTotal.tokens : null,
+      agentUsage.allTimeTotal.tokens > 0 ? displayTokens(agentUsage.allTimeTotal, settings.usageDisplayMode) : null,
     )
     // Today's consumption prefers the measured local-agent total over the
     // API-snapshot delta (which only accumulates while the app runs).
-    if (agentUsage.todayTotal.tokens > 0) k.todayUsed = agentUsage.todayTotal.tokens
+    if (agentUsage.todayTotal.tokens > 0) {
+      k.todayUsed = displayTokens(agentUsage.todayTotal, settings.usageDisplayMode)
+    }
     return k
-  }, [sections, results, settings.displayCurrency, now, agentUsage])
+  }, [sections, results, settings.displayCurrency, settings.usageDisplayMode, now, agentUsage])
   const dist = useMemo(() => {
     // Provider distribution prefers real measured spend (local agents, by
     // provider); the API-quota share is the fallback when no local data exists.
@@ -70,11 +80,13 @@ export function OverviewPage({
   }, [agentUsage, sections, results, t])
   // Trend prefers the graph-derived daily series; daily archive is the fallback
   const trend = useMemo(() => {
+    const toValue = (p: { value: number; input: number; output: number }) =>
+      settings.usageDisplayMode === 'no-cache' ? p.input + p.output : p.value
     const local = agentUsage.dailySeries.slice(-7)
-    if (local.length >= 2) return local
+    if (local.length >= 2) return local.map((p) => ({ label: p.label, value: toValue(p) }))
     const archived = agentDailySeries(7)
     return archived.length >= 2 ? archived : buildTrendPoints(sections)
-  }, [agentUsage, agentDailySeries, sections])
+  }, [agentUsage, agentDailySeries, sections, settings.usageDisplayMode])
   const plans = useMemo(() => buildPlanCards(sections, results), [sections, results])
   // Top-bar global provider filter ('all' = everything)
   const visibleRows = useMemo(

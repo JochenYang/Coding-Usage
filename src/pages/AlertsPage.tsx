@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bell, Info, TriangleAlert } from 'lucide-react'
+import { Bell, CircleAlert, Info, Lock } from 'lucide-react'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import {
@@ -98,7 +98,15 @@ function AlertRow({ alert, now, onRead }: AlertRowProps) {
             LEVEL_CHIP[alert.level],
           )}
         >
-          {alert.level === 'info' ? <Info className="h-4 w-4" /> : <TriangleAlert className="h-4 w-4" />}
+          {
+            alert.kind === 'window-reset' ? (
+              <CircleAlert className="h-4 w-4" />
+            ) : alert.kind === 'high-usage' ? (
+              <Lock className="h-4 w-4" />
+            ) : (
+              <Info className="h-4 w-4" />
+            )
+          }
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-xs font-medium text-foreground">

@@ -271,6 +271,9 @@ export interface Dict {
     refreshInterval: string
     data: string
     displayCurrency: string
+    usageMode: string
+    usageAll: string
+    usageNoCache: string
     exportData: string
     importData: string
     clearSnapshots: string
@@ -280,5 +283,12 @@ export interface Dict {
     importBad: string
     about: string
     version: string
+  }
+  providerErrors: {
+    keyInvalid: string
+    badResponse: string
+    volcSignature: string
+    volcCredFormat: string
+    volcNoWindows: string
   }
 }

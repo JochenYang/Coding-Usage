@@ -18,6 +18,7 @@ import {
   isSameEntry,
   loadSettings,
   persistSettings,
+  KEY_V3,
 } from './storage'
 import { fetchUsage } from './query'
 import { recordSnapshot } from './snapshots'
@@ -124,11 +125,37 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const editBaseRef = useRef<Settings>(settings)
 
   useEffect(() => {
-    // Fire-and-forget: persistSettings handles encryption + round-trip
-    // verification internally and never throws (browser falls back to the
-    // plaintext v2 write inside it).
-    void persistSettings(settings)
+    // Persist first, then mirror the encrypted v3 document to a userData file
+    // so a lost/corrupt localStorage can be restored on next launch.
+    void (async () => {
+      await persistSettings(settings)
+      const bridge = window.desktopBridge
+      if (bridge) {
+        const rawV3 = localStorage.getItem(KEY_V3)
+        if (rawV3) void bridge.settingsBackupWrite(rawV3)
+      }
+    })()
   }, [settings])
+
+  // Startup recovery: when localStorage has no settings at all (fresh profile
+  // or a wiped/corrupt leveldb), fall back to the userData file mirror.
+  useEffect(() => {
+    void (async () => {
+      const bridge = window.desktopBridge
+      if (!bridge) return
+      if (localStorage.getItem(KEY_V3) || localStorage.getItem('coding-usage.settings.v2')) return
+      const backup = await bridge.settingsBackupRead()
+      if (backup) {
+        try {
+          localStorage.setItem(KEY_V3, backup)
+          setSettings(loadSettings())
+        } catch {
+          // ignore — user can re-enter accounts
+        }
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount
+  }, [])
 
   // One-shot hydration/migration after mount (Electron only):
   // 1. v3 data loads with ciphertext keys — decrypt them into memory so the UI

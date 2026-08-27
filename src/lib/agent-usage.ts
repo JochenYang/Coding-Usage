@@ -57,7 +57,8 @@ export interface AgentUsageVM {
   todayByModel: CostSliceVM[]
   monthCostByProvider: CostSliceVM[]
   monthCostByModel: CostSliceVM[]
-  dailySeries: { label: string; value: number }[]
+  /** per-day total tokens (oldest first) — powers the trend chart */
+  dailySeries: { label: string; value: number; input: number; output: number }[]
   scannedAt: number | null
   error: string | null
   loading?: boolean
@@ -289,6 +290,8 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
   const dailySeries = contribs.map((c) => ({
     label: c.date.slice(5),
     value: numberOr(c.totals.tokens),
+    input: numberOr(c.tokenBreakdown?.input),
+    output: numberOr(c.tokenBreakdown?.output),
   }))
 
   return {
@@ -306,7 +309,7 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
   }
 }
 
-/** period a minus b, clamped at zero */
+/** period p minus b, clamped at zero */
 function subtract(a: AgentPeriodVM, b: AgentPeriodVM): AgentPeriodVM {
   return {
     tokens: Math.max(0, a.tokens - b.tokens),
@@ -316,6 +319,14 @@ function subtract(a: AgentPeriodVM, b: AgentPeriodVM): AgentPeriodVM {
     costUsd: Math.max(0, a.costUsd - b.costUsd),
     messages: Math.max(0, a.messages - b.messages),
   }
+}
+
+/**
+ * Apply the user's accounting mode to a period's headline token figure:
+ * 'all' counts cache reads too, 'no-cache' counts input+output only.
+ */
+export function displayTokens(p: AgentPeriodVM, mode: 'all' | 'no-cache'): number {
+  return mode === 'no-cache' ? p.input + p.output : p.tokens
 }
 
 // ===== daily archive (fallback so history survives without graph) =====

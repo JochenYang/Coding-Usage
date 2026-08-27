@@ -5,6 +5,8 @@ import type { AgentClientId, AgentPeriodVM, AgentUsageVM } from '@/lib/agent-usa
 import { formatCompactValue } from '../charts/DonutChart'
 import { useT } from '@/i18n/useT'
 import { useTheme } from '@/components/ThemeProvider'
+import { useData } from '@/lib/data-context'
+import { displayTokens } from '@/lib/agent-usage'
 import { cn } from '@/lib/cn'
 
 export interface LocalUsageCardProps {
@@ -43,15 +45,17 @@ interface PeriodColumnProps {
   label: string
   period: AgentPeriodVM
   exists: boolean
+  /** Accounting mode: 'all' counts cache reads, 'no-cache' input+output only */
+  mode: 'all' | 'no-cache'
 }
 
 /** One right-aligned stat column: label, token count, cost */
-function PeriodColumn({ label, period, exists }: PeriodColumnProps) {
+function PeriodColumn({ label, period, exists, mode }: PeriodColumnProps) {
   return (
     <div className="text-right">
       <div className="text-[11px] text-subtle">{label}</div>
       <div className="text-sm font-medium tabular-nums text-foreground">
-        {exists ? formatCompactValue(period.tokens) : '—'}
+        {exists ? formatCompactValue(displayTokens(period, mode)) : '—'}
       </div>
       <div className="text-[11px] text-muted-foreground">{formatCost(period.costUsd)}</div>
     </div>
@@ -66,6 +70,8 @@ function PeriodColumn({ label, period, exists }: PeriodColumnProps) {
 export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUsageCardProps) {
   const t = useT()
   const { resolved } = useTheme()
+  const { settings } = useData()
+  const mode = settings.usageDisplayMode
   const hasAnyData = usage.clients.some((c) => c.exists)
   // Kimi's brand mark is a white K on a dark tile: flip it on the light theme
   // the same way ProviderLogo handles logoDarkInvert marks.
@@ -129,6 +135,7 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
                     label={col.label}
                     period={col.period}
                     exists={client.exists}
+                    mode={mode}
                   />
                 ))}
               </div>
@@ -149,8 +156,8 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
                 </span>
               </span>
               <div className="grid min-w-[220px] grid-cols-3 gap-2">
-                <PeriodColumn label={t.overview.monthCol} period={usage.other.month} exists />
-                <PeriodColumn label={t.overview.allTimeCol} period={usage.other.all} exists />
+                <PeriodColumn label={t.overview.monthCol} period={usage.other.month} exists mode={mode} />
+                <PeriodColumn label={t.overview.allTimeCol} period={usage.other.all} exists mode={mode} />
               </div>
             </div>
           )}

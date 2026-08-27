@@ -1,6 +1,6 @@
 import type { ProviderConfig, Settings } from '../types'
 
-const KEY_V3 = 'coding-usage.settings.v3'
+export const KEY_V3 = 'coding-usage.settings.v3'
 const KEY_V2 = 'coding-usage.settings.v2'
 const KEY_V1 = 'coding-usage.settings.v1'
 
@@ -10,7 +10,12 @@ const KEY_V1 = 'coding-usage.settings.v1'
  */
 export const ENC_PREFIX = 'enc:v3:'
 
-const DEFAULT_SETTINGS: Settings = { providers: {}, autoRefreshMin: 0, displayCurrency: 'CNY' }
+const DEFAULT_SETTINGS: Settings = {
+  providers: {},
+  autoRefreshMin: 0,
+  displayCurrency: 'CNY',
+  usageDisplayMode: 'all',
+}
 
 function migrate(raw: unknown): Settings {
   const obj = (raw ?? {}) as Partial<Settings> & { providers?: Record<string, unknown> }
@@ -28,17 +33,24 @@ function migrate(raw: unknown): Settings {
     providers,
     autoRefreshMin: typeof obj.autoRefreshMin === 'number' ? obj.autoRefreshMin : 0,
     displayCurrency: typeof obj.displayCurrency === 'string' ? obj.displayCurrency : 'CNY',
+    usageDisplayMode: obj.usageDisplayMode === 'no-cache' ? 'no-cache' : 'all',
   }
 }
 
+
 export function loadSettings(): Settings {
+  // Corruption-tolerant cascade: fresh v3 → legacy v2 → v1 → defaults.
+  // A broken v3 must NOT fall through to empty settings — v2 may still hold
+  // the plaintext copy and a file mirror (via IPC) may exist too.
   try {
-    // v3 stores safeStorage-encrypted keys (Electron only). Keys stay prefixed
-    // here; data-context's post-mount hydration pass decrypts them in memory.
     const rawV3 = localStorage.getItem(KEY_V3)
-    if (rawV3 && window.desktopBridge) return migrate(JSON.parse(rawV3))
-    // v3 without a bridge should not happen (different runtimes never share a
-    // localStorage); ciphertext would be unusable, so fall through to plaintext.
+    if (rawV3 && window.desktopBridge) {
+      try {
+        return migrate(JSON.parse(rawV3))
+      } catch {
+        // v3 is corrupt — fall through to v2 instead of losing accounts
+      }
+    }
     const rawV2 = localStorage.getItem(KEY_V2)
     if (rawV2) return migrate(JSON.parse(rawV2))
     const rawV1 = localStorage.getItem(KEY_V1)
@@ -50,7 +62,7 @@ export function loadSettings(): Settings {
       return migrated
     }
   } catch {
-    // ignore
+    // ignore — file mirror (Electron) or defaults below
   }
   return DEFAULT_SETTINGS
 }

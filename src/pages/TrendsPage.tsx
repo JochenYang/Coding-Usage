@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import { useData } from '@/lib/data-context'
 import { useT } from '@/i18n/useT'
 import { buildTrendPoints } from '@/lib/overview'
+import { displayTokens } from '@/lib/agent-usage'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { LineChart } from '@/components/charts/LineChart'
@@ -12,14 +13,22 @@ import { formatCompactValue } from '@/components/charts/DonutChart'
 /** Trends: daily token series from the local-agent archive (accumulates from first scan) */
 export function TrendsPage() {
   const t = useT()
-  const { agentUsage, agentDailySeries, sections } = useData()
+  const { agentUsage, agentDailySeries, sections, settings } = useData()
+  const { usageDisplayMode: mode } = settings
   // Graph-derived daily series (immediately available), archive as fallback
-  const points = agentUsage.dailySeries.length >= 2 ? agentUsage.dailySeries.slice(-30) : agentDailySeries(30)
+  const localPoints = agentUsage.dailySeries.length >= 2 ? agentUsage.dailySeries.slice(-30) : null
+  const archived = localPoints ? [] : agentDailySeries(30)
   // Fallback: API-snapshot consumption series when no local agent data exists
   const apiFallback = useMemo(() => buildTrendPoints(sections), [sections])
-  const hasLocal = agentUsage.allTimeTotal.tokens > 0 || points.length > 0
+  const hasLocal = agentUsage.allTimeTotal.tokens > 0 || !!localPoints || archived.length > 0
   const chart =
-    points.length >= 2 ? points : !hasLocal && apiFallback.length >= 2 ? apiFallback : null
+    localPoints
+      ? localPoints.map((p) => ({ label: p.label, value: mode === 'no-cache' ? p.input + p.output : p.value }))
+      : archived.length >= 2
+        ? archived
+        : !hasLocal && apiFallback.length >= 2
+          ? apiFallback
+          : null
 
   if (!hasLocal && apiFallback.length === 0) {
     return (
@@ -42,17 +51,17 @@ export function TrendsPage() {
         <StatCard
           title={t.overview.todayCol}
           icon={TrendingUp}
-          value={formatCompactValue(agentUsage.todayTotal.tokens)}
+          value={formatCompactValue(displayTokens(agentUsage.todayTotal, mode))}
         />
         <StatCard
           title={t.overview.monthCol}
           icon={TrendingUp}
-          value={formatCompactValue(agentUsage.monthTotal.tokens)}
+          value={formatCompactValue(displayTokens(agentUsage.monthTotal, mode))}
         />
         <StatCard
           title={t.overview.allTimeCol}
           icon={TrendingUp}
-          value={formatCompactValue(agentUsage.allTimeTotal.tokens)}
+          value={formatCompactValue(displayTokens(agentUsage.allTimeTotal, mode))}
         />
       </div>
 

@@ -26,6 +26,10 @@ declare global {
     tokscaleScan(): Promise<TokScaleRaw>
     /** Codex subscription quota from the local ChatGPT login (official wham endpoint) */
     codexQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /** Mirror the encrypted v3 settings document to a userData file */
+    settingsBackupWrite(payload: string): Promise<void>
+    /** Read the mirrored settings document, or null when none exists */
+    settingsBackupRead(): Promise<string | null>
     /** Sync the integrated title-bar overlay colors with the resolved app theme */
     setWindowTheme(mode: 'light' | 'dark'): Promise<void>
   }
