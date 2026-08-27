@@ -24,6 +24,12 @@ import { fetchUsage } from './query'
 import { recordSnapshot } from './snapshots'
 import { summarizeScan, archiveDailyUsage, getDailyUsageSeries, type AgentUsageVM } from './agent-usage'
 import {
+  loadCachedAgentUsage,
+  loadCachedResults,
+  saveCachedAgentUsage,
+  saveCachedResults,
+} from './startup-cache'
+import {
   deriveAlerts,
   loadAlerts,
   markAllRead,
@@ -76,9 +82,6 @@ interface DataContextValue {
   sections: Section[]
   configuredCount: number
   okCount: number
-  /** Global "agent" filter (provider id or 'all') driven by the top bar select */
-  agentFilter: string
-  setAgentFilter: (id: string) => void
   /** Local agent usage (tokscale) view model, null-ish until the first Electron scan */
   agentUsage: AgentUsageVM
   agentUsageLoading: boolean
@@ -111,13 +114,17 @@ const DataContext = createContext<DataContextValue | null>(null)
 export function DataProvider({ children }: { children: ReactNode }) {
   const { locale } = useLocale()
   const [settings, setSettings] = useState<Settings>(loadSettings)
-  const [results, setResults] = useState<Record<string, ProviderResult>>({})
+  // Replaying the last persisted fetch results makes the first paint show
+  // real numbers; the rows' stale derivation keeps the honesty (10 min mark).
+  const [results, setResults] = useState<Record<string, ProviderResult>>(loadCachedResults)
   const [refreshingAll, setRefreshingAll] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<number | null>(null)
-  const [agentFilter, setAgentFilter] = useState('all')
   const [alerts, setAlerts] = useState<AlertItem[]>(loadAlerts)
-  // Local agent (tokscale) usage view — populated only under Electron
-  const [agentUsage, setAgentUsage] = useState<AgentUsageVM>(() => summarizeScan(null))
+  // Local agent (tokscale) usage view — replayed from the startup cache, then
+  // corrected by the first scan (whose full run can take tens of seconds)
+  const [agentUsage, setAgentUsage] = useState<AgentUsageVM>(
+    () => loadCachedAgentUsage() ?? summarizeScan(null),
+  )
   const [agentUsageLoading, setAgentUsageLoading] = useState(false)
 
   // Snapshot of settings taken before an edit session (e.g. the accounts drawer
@@ -197,11 +204,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         // ciphertext entries stay and keep failing visibly instead of vanishing.
         if (allOk) {
           updateSettings({ ...settings, providers })
-          // The mount refresh raced hydration and went out with ciphertext keys
-          // (401s); re-run silently so the decrypted keys take effect at once
-          // instead of waiting for the next manual/auto refresh.
-          void refreshAll({ silent: true })
         }
+        // Exactly one startup fetch cycle, driven from here with the best keys
+        // available: the mount refresh would have raced the decryption above
+        // (ciphertext keys → 401s) and needed this re-run anyway.
+        void refreshAll({ silent: true })
       })()
     } else if (hasLegacyV2Store()) {
       void persistSettings(settings)
@@ -266,9 +273,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
   )
 
   useEffect(() => {
+    // Under Electron with encrypted keys the mount fetch would race key
+    // decryption (ciphertext keys → 401s); hydration drives the single
+    // startup fetch cycle instead. Every other path fetches immediately.
+    if (window.desktopBridge && hasEncryptedKeys(settings)) return
     void refreshAll()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Persist the latest fetch results for the next launch's instant paint
+  useEffect(() => {
+    saveCachedResults(results)
+  }, [results])
 
   // Re-fetch silently when locale changes so adapter metric labels update immediately
   const prevLocaleRef = useRef(locale)
@@ -294,14 +310,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const bridge = window.desktopBridge
     if (!bridge) return
     setAgentUsageLoading(true)
+    // A warm main-process cache answers in milliseconds — hold the spinner up
+    // briefly anyway so the press always reads as "a refresh happened".
+    const startedAt = Date.now()
     try {
       const raw = await bridge.tokscaleScan()
       const summary = summarizeScan(raw)
-      if (summary.error == null) archiveDailyUsage(summary.todayTotal.tokens)
+      if (summary.error == null) {
+        archiveDailyUsage(summary.todayTotal.tokens)
+        saveCachedAgentUsage(summary)
+      }
       setAgentUsage(summary)
     } catch (e) {
       setAgentUsage(summarizeScan({ error: String(e) }))
     } finally {
+      const elapsed = Date.now() - startedAt
+      const MIN_SPIN_MS = 600
+      if (elapsed < MIN_SPIN_MS) await new Promise((r) => setTimeout(r, MIN_SPIN_MS - elapsed))
       setAgentUsageLoading(false)
     }
   }, [])
@@ -431,8 +456,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       sections,
       configuredCount,
       okCount,
-      agentFilter,
-      setAgentFilter,
       alerts,
       unreadAlerts: unread,
       markAllAlertsRead,
@@ -457,7 +480,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       sections,
       configuredCount,
       okCount,
-      agentFilter,
       alerts,
       unread,
       markAllAlertsRead,
