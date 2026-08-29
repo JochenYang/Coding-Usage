@@ -6,19 +6,27 @@
 
 <p align="center"><a href="./README.md">中文</a> | English</p>
 
-<p align="center">View <strong>plan quotas</strong> and <strong>account balances</strong> for multiple AI coding services on a single dashboard.</p>
+<p align="center">A Windows desktop app that unifies <strong>real local AI coding-tool usage</strong> with <strong>provider plan quotas, account balances and official subscription limits</strong>.</p>
 
-<p align="center">Pure static · No backend · No tracking · All data stays in your browser</p>
+<p align="center">Fully local · No backend · No tracking · Keys encrypted via the OS keyring, never uploaded</p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Vite-7.0-646CFF?style=flat-square&logo=vite" alt="Vite" />
+  <img src="https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron" alt="Electron" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react" alt="React" />
-  <img src="https://img.shields.io/badge/TypeScript-5.5-3178C6?style=flat-square&logo=typescript" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/Tailwind-4.0-06B6D4?style=flat-square&logo=tailwindcss" alt="Tailwind" />
+  <img src="https://img.shields.io/badge/TypeScript-5.8-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Tailwind-4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white" alt="Tailwind" />
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License" /></a>
 </p>
 
 ---
+
+## What it does
+
+- **Real local agent usage**: [tokscale](https://github.com/junhoyeo/tokscale) scans local session logs covering 20 mainstream tools — Codex, Claude Code, Kimi Code, OpenCode, Gemini CLI, Cursor, GitHub Copilot, Qwen Code, Trae, Cline, Roo Code and more. Only tools with data are listed; today / month / all-time columns with an "as of" timestamp. Aggregate numbers only — message content never leaves your machine
+- **Provider plans & balances**: multi-account management for 10 providers (table below), each with its own official-endpoint adapter; balances aggregate into the display currency, with a hover breakdown when several pay-as-you-go providers coexist
+- **Official subscription quotas**: three cards for Codex (ChatGPT login), Claude Code and Gemini CLI read only the local login state, showing 5-hour / weekly / per-model windows with reset countdowns — credentials stay inside the main process, never reaching the renderer or disk
+- **Alerts**: window-reset, high-usage (≥90%) and low-balance rules; hover the top-bar bell for a preview (opening marks them read), with a full alerts center
+- **Desktop experience**: tray-resident, close dialog (minimize to tray or quit), launch on login, light/dark/system themes, zh-CN/en-US locales, auto-update via GitHub Releases
 
 ## Supported Providers
 
@@ -26,37 +34,44 @@
 |---|---|---|
 | **OpenCode Zen Go** | Plan quota | 5h rolling / weekly / monthly windows |
 | **Z.ai (Zhipu GLM)** | Plan quota | 5h / weekly windows + MCP monthly calls; China + International |
+| **MiniMax Token Plan** | Plan quota | 5h / weekly quota + video bonus; China + International |
+| **Volcengine Ark** | Plan quota | Coding Plan windows; AK/SK request signing |
 | **Kimi / Moonshot** | Account balance | Cash + vouchers; CNY (China) / USD (International) |
 | **DeepSeek** | Account balance | Multi-currency (CNY / USD), topped-up + granted |
-| **SiliconFlow** | Account balance | Total = balance + chargeBalance |
-| **OpenRouter** | Credits balance | Remaining = total purchases − usage |
-| **MiniMax Token Plan** | Plan quota | Subscription key 5h / weekly window + video bonus |
+| **SiliconFlow** | Account balance | `.cn` CNY / `.com` USD |
+| **OpenRouter** | Account balance | Remaining = total credits − usage (USD) |
+| **StepFun** | Account balance | Account balance (CNY) |
+| **Novita** | Account balance | Available balance (USD) |
 
-## Features
+## Privacy & Security Boundaries
 
-- **Multi-account management**: Add multiple accounts per provider with independent API keys and aliases
-- **Smart refresh**: Only refresh changed entries when closing settings; silent auto-refresh without loading flash
-- **Full i18n**: Chinese / English toggle, all text updates instantly
-- **Theme modes**: Light / Dark / System follow, favicon adapts
-- **Multi-currency filter**: DeepSeek and others support currency filtering
-- **beUI components**: Select / Popover / Switch / Drawer / Loader with spring animations
-- **Desktop-first**: under the Electron shell, keys are encrypted via safeStorage (DPAPI) and requests go through the main process directly to each provider API (no CORS); in browser mode keys live in localStorage with an automatic corsproxy.io fallback
+- Everything (keys, snapshots, scan results) stays local: localStorage + safeStorage encryption (`enc:v3:`) + a userData file mirror; v1→v2→v3 migration is automatic
+- The renderer runs inside the Chromium sandbox with a strict CSP; all outbound requests go through the main process `net.fetch` straight to official endpoints — **no third-party proxy involved**
+- The local agent scan only produces aggregates (tokens, cost estimates, message counts); raw session content never leaves the machine
+- Unsigned builds trigger a Windows SmartScreen warning — the Authenticode hookup is prepared (`electron-builder.yml` and the release workflow); configure `WIN_CSC_LINK` secrets once a certificate is purchased
 
 ## Quick Start
 
+Node.js 22+ required.
+
 ```bash
 npm install
-npm run dev        # Launch the Electron desktop app (dev mode with HMR)
-npm run dev:web    # Browser mode at http://localhost:5173
-npm run build      # electron-vite build (dist-electron/ + dist/)
+npm run dev        # Electron desktop app (electron-vite dev, HMR)
+npm run dev:web    # Renderer only (http://localhost:5173, desktop features degrade to empty states)
+npm run build      # Full build (dist/ + dist-electron/)
 npm run dist:win   # Package Windows installers (NSIS + portable)
 ```
 
+## Releasing
+
+Push a `v*` tag (e.g. `v0.1.0`) to trigger the release workflow: a draft release is created → Windows build (tsc → build → electron-builder `--publish always`) → bilingual release notes generated from `CHANGELOG.md` into the draft; review and publish manually. Maintain changes in `CHANGELOG.md` (`### 中文` / `### English` entries kept one-to-one); preview locally with `node scripts/gen-release-notes.mjs v0.1.0`.
+
 ## Adding a New Provider
 
-1. Create an adapter in `src/providers/` implementing `ProviderDef`
-2. Register it in `src/providers/registry.ts`
-3. In browser mode, CORS-blocked APIs fall back to corsproxy.io automatically via `src/lib/query.ts`; under Electron the main process connects directly — no proxy needed
+1. Create an adapter in `src/providers/` implementing `ProviderDef` (`buildRequest` + `parseResponse`)
+2. Register it in `src/providers/registry.ts` and add i18n keys in all three `src/i18n/` files
+3. Under Electron the main process connects directly (no proxy); browser mode is covered by `src/lib/query.ts`
+4. Brand icons come from `@lobehub/icons` (register the slug in `src/components/ProviderLogo.tsx`)
 
 ## Tech Stack
 
@@ -68,8 +83,9 @@ npm run dist:win   # Package Windows installers (NSIS + portable)
 | **Styling** | Tailwind CSS v4 (`@theme` token driven) |
 | **Animation** | `motion/react` + beui.dev |
 | **Icons** | `lucide-react` + `@lobehub/icons` (bundled offline) |
-| **State** | React hooks + `localStorage` |
+| **Local scan** | tokscale 4.14 (platform binary as optional dependency) |
+| **State** | React hooks + `localStorage` (no state library) |
 
 ## License
 
-MIT
+[MIT](./LICENSE)

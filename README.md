@@ -6,19 +6,27 @@
 
 <p align="center"><a href="./README.en-US.md">English</a> | 中文</p>
 
-<p align="center">在统一面板上查看多家 AI 编程服务的<strong>套餐配额</strong>与<strong>账户余额</strong>。</p>
+<p align="center">一个 Windows 桌面应用，统一查看<strong>本地 AI 编程工具的真实用量</strong>与<strong>各家服务商的套餐配额、账户余额、官方订阅额度</strong>。</p>
 
-<p align="center">纯静态 · 无后端 · 无追踪 · 数据仅存于本浏览器</p>
+<p align="center">纯本地 · 无后端 · 无追踪 · 密钥经系统密钥环加密，永不上传</p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Vite-7.0-646CFF?style=flat-square&logo=vite" alt="Vite" />
+  <img src="https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron" alt="Electron" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react" alt="React" />
-  <img src="https://img.shields.io/badge/TypeScript-5.5-3178C6?style=flat-square&logo=typescript" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/Tailwind-4.0-06B6D4?style=flat-square&logo=tailwindcss" alt="Tailwind" />
+  <img src="https://img.shields.io/badge/TypeScript-5.8-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Tailwind-4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white" alt="Tailwind" />
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License" /></a>
 </p>
 
 ---
+
+## 它能做什么
+
+- **本地 Agent 真实用量**：经 [tokscale](https://github.com/junhoyeo/tokscale) 扫描本机会话日志，覆盖 Codex、Claude Code、Kimi Code、OpenCode、Gemini CLI、Cursor、GitHub Copilot、Qwen Code、Trae、Cline、Roo Code 等 20 种主流工具——只显示检测到数据的工具，今日 / 本月 / 累计三栏 + 「数据截至」时间标注；仅聚合数字上屏，永远不读取消息内容
+- **服务商套餐与余额**：多账号管理 10 家服务商（见下表），每家独立适配官方端点；余额按显示币种聚合，多家并存时悬停可看逐家明细
+- **官方订阅额度**：Codex（ChatGPT 登录）、Claude Code、Gemini CLI 三张订阅卡只读本机登录态，展示 5 小时 / 每周 / 逐模型配额窗口与重置倒计时——凭据始终留在主进程内存，不进渲染层、不落磁盘
+- **告警体系**：窗口即将重置、用量 ≥90%、低余额三类规则；顶栏铃铛悬停预览（打开即视为已读），告警中心集中管理
+- **桌面体验**：托盘常驻、关窗可选「最小化到托盘 / 退出」、开机自启、深浅色主题（跟随系统）、中英双语、自动更新（GitHub Releases）
 
 ## 支持的 Provider
 
@@ -26,37 +34,44 @@
 |---|---|---|
 | **OpenCode Zen Go** | 套餐配额 | 5h 滚动 / 每周 / 每月窗口 |
 | **Z.ai（智谱 GLM）** | 套餐配额 | 5h / 每周窗口 + MCP 月度次数；国内 + 国际站 |
+| **MiniMax Token Plan** | 套餐配额 | 5h / 周配额 + 视频赠送额度；国内 + 国际 |
+| **火山方舟 Ark** | 套餐配额 | Coding Plan 窗口；AK/SK 请求签名 |
 | **Kimi / Moonshot** | 账户余额 | 现金 + 代金券；国内站 CNY / 国际站 USD |
 | **DeepSeek** | 账户余额 | 多币种（CNY / USD），区分充值与赠送 |
-| **SiliconFlow** | 账户余额 | 总余额 = 充值 + 赠送 |
-| **OpenRouter** | Credits 余额 | 剩余 = 累计充值 − 已用 |
-| **MiniMax Token Plan** | 套餐配额 | 订阅 Key 的 5h / 周窗口 + 视频赠送 |
+| **SiliconFlow 硅基流动** | 账户余额 | `.cn` CNY / `.com` USD 双站 |
+| **OpenRouter** | 账户余额 | 剩余 = 累计充值 − 已用（USD） |
+| **StepFun** | 账户余额 | 账户余额（CNY） |
+| **Novita** | 账户余额 | 可用余额（USD） |
 
-## 功能
+## 隐私与安全边界
 
-- **多账号管理**：每个 Provider 支持添加多个账号，独立配置 API Key 与别名
-- **智能刷新**：关闭设置时仅刷新配置变化的条目；定时自动刷新静默更新，不闪 loading
-- **全站国际化**：中文 / 英文一键切换，所有文案随语言切换同步更新
-- **主题模式**：浅色 / 深色 / 跟随系统，favicon 同步适配
-- **多币种过滤**：DeepSeek 等支持按币种筛选显示余额
-- **beUI 组件库**：Select / Popover / Switch / Drawer / Loader 均使用 spring 动效
-- **桌面优先**：Electron 壳下 Key 经 safeStorage(DPAPI) 加密存储、请求由主进程直连各官方接口（无 CORS）；浏览器模式下 Key 存 localStorage，直连失败自动回退 corsproxy.io
+- 所有数据（密钥、快照、扫描结果）只存本机：localStorage + safeStorage 加密（`enc:v3:`）+ userData 文件备份镜像；带 v1→v2→v3 自动迁移
+- 渲染进程运行在 Chromium 沙箱中并加载严格 CSP；所有对外请求经主进程 `net.fetch` 直连官方端点，**不经过任何第三方代理**
+- 本地 Agent 扫描只输出聚合数字（token 数、成本估算、消息数），会话原文永不离开本机
+- 未签名的构建会被 Windows SmartScreen 提示——Authenticode 签名接入点已预留（`electron-builder.yml` 与 release workflow），购证后配置 `WIN_CSC_LINK` 等 secrets 即可
 
 ## 快速开始
 
+需要 Node.js 22+。
+
 ```bash
 npm install
-npm run dev        # 启动 Electron 桌面应用（开发模式，含 HMR）
-npm run dev:web    # 浏览器模式，打开 http://localhost:5173
-npm run build      # electron-vite 构建（dist-electron/ + dist/）
+npm run dev        # Electron 桌面应用（electron-vite dev，HMR）
+npm run dev:web    # 仅浏览器渲染层（http://localhost:5173，桌面能力降级为空态）
+npm run build      # 全量构建（dist/ + dist-electron/）
 npm run dist:win   # 打包 Windows 安装包（NSIS + portable）
 ```
 
+## 发布
+
+推 `v*` tag（如 `v0.1.0`）触发 release workflow：预建 draft release → Windows 构建（tsc → build → electron-builder `--publish always`）→ 从 `CHANGELOG.md` 生成双语 release notes 写入草稿，人工核对后发布。变更记录在 `CHANGELOG.md` 维护（`### 中文` / `### English` 条目一一对应），本地可用 `node scripts/gen-release-notes.mjs v0.1.0` 预览。
+
 ## 新增 Provider
 
-1. 在 `src/providers/` 新建 adapter，实现 `ProviderDef`
-2. 在 `src/providers/registry.ts` 注册
-3. 浏览器模式下若接口不支持 CORS，`src/lib/query.ts` 会自动回退 corsproxy.io；Electron 下主进程直连，无需任何代理
+1. 在 `src/providers/` 新建 adapter，实现 `ProviderDef`（`buildRequest` + `parseResponse`）
+2. 在 `src/providers/registry.ts` 注册，`src/i18n/` 三处补文案键
+3. Electron 下主进程直连无需代理；浏览器模式由 `src/lib/query.ts` 兜底
+4. 品牌图标用 `@lobehub/icons`（`src/components/ProviderLogo.tsx` 注册 slug）
 
 ## 技术栈
 
@@ -68,8 +83,9 @@ npm run dist:win   # 打包 Windows 安装包（NSIS + portable）
 | **样式** | Tailwind CSS v4（`@theme` token 驱动） |
 | **动画** | `motion/react` + beui.dev |
 | **图标** | `lucide-react` + `@lobehub/icons`（离线打包） |
-| **状态** | React hooks + `localStorage` |
+| **本地扫描** | tokscale 4.14（平台二进制可选依赖） |
+| **状态** | React hooks + `localStorage`（无状态库） |
 
-## 许可
+## License
 
-MIT
+[MIT](./LICENSE)
