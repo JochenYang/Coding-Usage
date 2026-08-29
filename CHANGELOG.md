@@ -18,6 +18,16 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 ### English
 - (nothing yet)
 
+## [v0.1.1] - 2026-08-29
+
+### 中文
+- 修复打包版本地 Agent 用量扫描报错（`spawn ...app.asar\...\tokscale.exe ENOENT`）：二进制解析到了 asar 包内虚拟路径，而真实文件在 `app.asar.unpacked`；现在 spawn 前把路径段替换为解包目录。Windows / macOS / Linux 打包版同时受影响，本版全部修复
+- v0.1.0 已安装用户会通过应用内自动更新收到本版
+
+### English
+- Fixed the packaged build's local agent scan failing with `spawn ...app.asar\...\tokscale.exe ENOENT`: the binary resolved to the virtual in-asar path while the real file lives in `app.asar.unpacked`; the path segment is now swapped before spawn. All three packaged platforms were affected, all fixed in this release
+- v0.1.0 installs receive this fix through the in-app auto-updater
+
 ## [v0.1.0] - 2026-08-29
 
 ### 中文

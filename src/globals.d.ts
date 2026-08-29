@@ -6,6 +6,9 @@
 export {}
 
 declare global {
+  /** Build-time constant injected by electron-vite from package.json#version */
+  const __APP_VERSION__: string
+
   /** Result of a main-process `net.fetch` round-trip (`net:fetch` IPC) */
   interface DesktopFetchResult {
     status: number

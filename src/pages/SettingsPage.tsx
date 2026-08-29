@@ -21,10 +21,9 @@ export interface SettingsPageProps {
   className?: string
 }
 
-// App version. Kept as a literal because tsconfig.json does not enable
-// resolveJsonModule, so `import pkg from '../../package.json'` would fail
-// type-checking; bump alongside package.json.
-const APP_VERSION = '0.1.0'
+// Injected by electron-vite's renderer `define` from package.json — always in
+// sync with the release version, no manual bumping.
+const APP_VERSION = __APP_VERSION__
 
 // Storage key of the local time-series store; must stay in sync with the
 // private KEY constant in src/lib/snapshots.ts (snapshots.ts is not modified).
