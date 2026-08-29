@@ -73,6 +73,52 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  build-mac:
+    if: startsWith(github.ref, 'refs/tags/v')
+    name: build (macos)
+    needs: prepare-release
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      # npm ci installs only the native-arch optional tokscale binary; the
+      # x64 slice of the dual-arch mac build needs the darwin-x64 binary too
+      - name: Add darwin-x64 tokscale binary
+        run: |
+          VER=$(node -p "require('tokscale/package.json').version")
+          npm install --no-save --force @tokscale/cli-darwin-x64@$VER
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Build renderer + main
+        run: npm run build
+
+      # Both arches in ONE invocation: electron-updater publishes a single
+      # latest-mac.yml per release, so parallel cells would race on it.
+      # Unsigned (identity: null in electron-builder.yml) — Gatekeeper bypass
+      # documented in the README.
+      - name: Package and publish
+        run: npx electron-builder --mac --x64 --arm64 --publish always
+
+      - name: Upload build artifacts (traceability)
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-macos
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/latest-mac.yml
+          if-no-files-found: warn
+          retention-days: 7
+
   # Fill the draft release body from CHANGELOG.md so the published notes match
   # the repository's bilingual changelog exactly (see scripts/gen-release-notes).
   release-notes:

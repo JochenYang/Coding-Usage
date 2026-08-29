@@ -25,6 +25,17 @@ win:
   target:
     - nsis
     - portable
+mac:
+  # Unsigned by design until an Apple Developer cert exists: Gatekeeper asks
+  # for a one-time bypass (right-click Open / `xattr -cr`), documented in the
+  # README and release notes. identity:null keeps CI from hunting keychains.
+  icon: ./assets/images/logo.png
+  category: public.app-category.developer-tools
+  identity: null
+  target:
+    # zip feeds electron-updater on macOS; dmg is the human-facing installer
+    - dmg
+    - zip
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true

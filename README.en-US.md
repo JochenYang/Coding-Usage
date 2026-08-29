@@ -50,6 +50,13 @@
 - The local agent scan only produces aggregates (tokens, cost estimates, message counts); raw session content never leaves the machine
 - Unsigned builds trigger a Windows SmartScreen warning — the Authenticode hookup is prepared (`electron-builder.yml` and the release workflow); configure `WIN_CSC_LINK` secrets once a certificate is purchased
 
+## Download & Install
+
+Grab a build from [Releases](https://github.com/JochenYang/Coding-Usage/releases):
+
+- **Windows**: NSIS installer or portable build. Unsigned builds trigger SmartScreen — click "More info" → "Run anyway"
+- **macOS** (Apple Silicon / Intel): currently unsigned — on first launch **right-click the App → Open**, or run `xattr -cr "/Applications/Coding Usage.app"` to drop the quarantine flag; it opens normally afterwards
+
 ## Quick Start
 
 Node.js 22+ required.

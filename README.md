@@ -50,6 +50,13 @@
 - 本地 Agent 扫描只输出聚合数字（token 数、成本估算、消息数），会话原文永不离开本机
 - 未签名的构建会被 Windows SmartScreen 提示——Authenticode 签名接入点已预留（`electron-builder.yml` 与 release workflow），购证后配置 `WIN_CSC_LINK` 等 secrets 即可
 
+## 下载与安装
+
+从 [Releases](https://github.com/JochenYang/Coding-Usage/releases) 获取：
+
+- **Windows**：NSIS 安装版或便携版。未签名构建会触发 SmartScreen——点「更多信息」→「仍要运行」
+- **macOS**（Apple Silicon / Intel 双架构）：当前为未签名构建，首次打开请**右键 App → 「打开」**，或执行 `xattr -cr "/Applications/Coding Usage.app"` 移除隔离属性，之后正常启动
+
 ## 快速开始
 
 需要 Node.js 22+。
