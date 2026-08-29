@@ -1,8 +1,9 @@
 # electron-builder packaging configuration.
-# TODO(packaging): add a real app icon (build/icon.ico, >=256px) before the
-# first release — without it installers fall back to the default Electron icon.
 appId: com.coding-usage.app
 productName: Coding Usage
+# Explicit output dir (also the path the release workflow uploads from)
+directories:
+  output: release
 files:
   - dist/**
   - dist-electron/**

@@ -1,0 +1,89 @@
+name: release
+
+# Builds the Windows installer + portable target with electron-builder and
+# publishes them to a GitHub Release (latest.yml auto-update feed included).
+# Triggers: pushing a tag like v0.1.0. The release stays a DRAFT — edit the
+# generated bilingual notes and publish manually, mirroring the DSH-APP flow.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  # One draft release created up-front so parallel build cells never race
+  # electron-builder's internal release creation.
+  prepare-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ github.ref_name }}"
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --title "$tag" --draft
+
+  build:
+    if: startsWith(github.ref, 'refs/tags/v')
+    name: build (windows/x64)
+    needs: prepare-release
+    runs-on: windows-latest
+    env:
+      # Optional Authenticode signing: set these repo secrets once a
+      # certificate exists; without them the build ships unsigned (SmartScreen
+      # will warn — documented in the README).
+      CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Build renderer + main
+        run: npm run build
+
+      # --publish always uploads the NSIS installer, the portable exe and
+      # latest.yml (electron-updater feed) to the draft release created above.
+      - name: Package and publish
+        run: npx electron-builder --win --x64 --publish always
+
+      - name: Upload build artifacts (traceability)
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-win-x64
+          path: |
+            release/*.exe
+            release/latest.yml
+          if-no-files-found: warn
+          retention-days: 7
+
+  # Fill the draft release body from CHANGELOG.md so the published notes match
+  # the repository's bilingual changelog exactly (see scripts/gen-release-notes).
+  release-notes:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate bilingual notes
+        run: node scripts/gen-release-notes.mjs "${{ github.ref_name }}" > release-notes.md
+      - name: Update draft release body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ github.ref_name }}" --notes-file release-notes.md
