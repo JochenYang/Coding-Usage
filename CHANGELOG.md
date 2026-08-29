@@ -18,6 +18,17 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 ### English
 - (nothing yet)
 
+## [v0.1.2] - 2026-08-29
+
+### 中文
+- 修复部分用户机器上本地 Agent 用量整体为空的问题：tokscale 在定价目录拉取失败时可能以非零码退出（exit 101），导致整次扫描被丢弃。现在非零退出但输出为完整 JSON 时直接采用输出，扫描失败自动重试一次，错误信息保留 1200 字符以便定位真实原因
+- 成本改为按官方模型定价计算：内置 OpenRouter 全量目录（396 个模型，含缓存读/写单价），应用内每日后台刷新并落盘缓存，断网时离线可用；扫描结果中每个模型的成本按官方单价重算，`-free` 免费变体计为 $0，未收录模型保留 tokscale 原值
+- macOS 未签名构建的 Gatekeeper 绕过说明与 Linux AppImage 使用方式已写入 README
+
+### English
+- Fixed empty local agent usage on some machines: tokscale could exit non-zero (exit 101) when its pricing catalog fetch failed, discarding the whole scan. Complete-JSON output is now accepted on non-zero exits, scans retry once, and error text keeps 1200 chars so the real cause is visible
+- Costs now follow official per-model pricing: the full OpenRouter catalog (396 models, including cache read/write rates) ships as an offline seed, refreshes daily in the background, and every matched model's cost is recomputed; `-free` variants price at $0 and unknown models keep tokscale's value
+
 ## [v0.1.1] - 2026-08-29
 
 ### 中文

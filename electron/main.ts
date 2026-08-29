@@ -16,6 +16,7 @@ import {
 } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { fetchClaudeUsage, fetchGeminiUsage, type QuotaOutcome } from './subscription-quotas'
+import { getPricingTable, priceTokens } from './model-pricing'
 
 // Tray icon: 16x16 solid indigo (#6366F1) RGBA PNG. Generated offline with a
 // small Node script (hand-built PNG chunks + zlib deflate) and inlined as base64
@@ -281,7 +282,19 @@ function runTokscale(args: string[]): Promise<unknown> {
     child.stderr.on('data', (d: Buffer) => (err += d.toString()))
     child.on('close', (code) => {
       clearTimeout(timer)
-      if (code !== 0) return reject(new Error(`tokscale exited ${code}: ${err.slice(0, 160)}`))
+      if (code !== 0) {
+        // tokscale occasionally exits non-zero AFTER printing complete JSON
+        // (e.g. a panic in its pricing refresh). Valid output beats no output:
+        // accept it, otherwise fail with enough stderr to diagnose (the old
+        // 160-char slice hid the real panic behind the first warning line).
+        try {
+          const parsed = JSON.parse(out)
+          if (parsed && typeof parsed === 'object') return resolve(parsed)
+        } catch {
+          // fall through to the rejection
+        }
+        return reject(new Error(`tokscale exited ${code}: ${err.slice(0, 1200)}`))
+      }
       try {
         resolve(JSON.parse(out))
       } catch {
@@ -299,16 +312,64 @@ function runTokscale(args: string[]): Promise<unknown> {
  * Full scan: one `graph` invocation returns per-day contributions for every
  * configured client (token/cost/message totals + client/model detail), which
  * the renderer aggregates into today / month / all-time / daily series.
+ * One silent retry: transient failures (AV scans, spawn hiccups) resolve on
+ * the second attempt.
  */
 async function scanTokscaleUsage(): Promise<TokScanResult> {
-  const daily = await runTokscale([
+  const args = [
     'graph',
     '--client',
     TOKSCALE_CLIENTS.join(','),
     '--since',
     '2020-01-01',
-  ])
-  return { daily }
+  ]
+  let daily: unknown
+  try {
+    daily = await runTokscale(args)
+  } catch {
+    daily = await runTokscale(args)
+  }
+  return { daily: await overrideCosts(daily) }
+}
+
+/**
+ * Replace tokscale's per-entry cost with our own OpenRouter-catalog pricing
+ * wherever the model is known, then fold the delta back into the day total so
+ * the renderer's "other" derivation (totals minus clients) stays balanced.
+ * Unknown models keep tokscale's cost untouched.
+ */
+async function overrideCosts(daily: unknown): Promise<unknown> {
+  try {
+    const table = await getPricingTable()
+    const root = daily as {
+      contributions?: Array<{
+        totals?: { cost?: number }
+        clients?: Array<{
+          cost?: number
+          modelId?: unknown
+          tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
+        }>
+      }>
+    }
+    if (!Array.isArray(root?.contributions)) return daily
+    for (const c of root.contributions) {
+      if (!Array.isArray(c.clients)) continue
+      let dayDelta = 0
+      for (const e of c.clients) {
+        if (typeof e.modelId !== 'string' || e.tokens == null) continue
+        const computed = priceTokens(table, e.modelId, e.tokens)
+        if (computed == null) continue
+        dayDelta += computed - (typeof e.cost === 'number' ? e.cost : 0)
+        e.cost = Math.round(computed * 1e6) / 1e6
+      }
+      if (dayDelta !== 0 && typeof c.totals?.cost === 'number') {
+        c.totals.cost = Math.round((c.totals.cost + dayDelta) * 1e6) / 1e6
+      }
+    }
+  } catch {
+    // Pricing is cosmetic: a failure here must never break the scan
+  }
+  return daily
 }
 
 function registerIpc(): void {
