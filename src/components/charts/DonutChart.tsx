@@ -110,14 +110,15 @@ export function DonutChart({
         </div>
       </div>
 
-      {showLegend && segments.length > 0 && (
+      {showLegend && positive.length > 0 && (
         <ul
           className={cn(
             'min-w-0 space-y-2',
             orientation === 'vertical' ? 'w-full flex-1' : 'flex-1',
           )}
         >
-          {segments.map((s, i) => {
+          {/* Zero-value slices would draw legend rows the ring can't show */}
+          {positive.map((s, i) => {
             const percent = total > 0 ? Math.round((s.value / total) * 100) : 0
             return (
               <li key={`${s.label}-${i}`} className="flex items-center gap-2 text-xs">

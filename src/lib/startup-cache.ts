@@ -13,7 +13,9 @@ import type { AgentUsageVM } from './agent-usage'
 const RESULTS_KEY = 'coding-usage.results.v1'
 const USAGE_KEY = 'coding-usage.agent-usage.v1'
 
-const CACHED_STATUSES: ReadonlySet<string> = new Set(['ok', 'error', 'unconfigured'])
+// Replay-worthy terminal states only: a persisted error would re-paint a
+// stale failure (e.g. a 401 from undecrypted keys) on the next first paint
+const CACHED_STATUSES: ReadonlySet<string> = new Set(['ok', 'unconfigured'])
 
 /** Load the last persisted fetch results; `loading` entries are never cached */
 export function loadCachedResults(): Record<string, ProviderResult> {
@@ -39,12 +41,12 @@ export function loadCachedResults(): Record<string, ProviderResult> {
   }
 }
 
-/** Best-effort persist; metrics-bearing results only (loading is transient) */
+/** Best-effort persist; ok/unconfigured results only (loading/error excluded) */
 export function saveCachedResults(results: Record<string, ProviderResult>): void {
   try {
     const out: Record<string, ProviderResult> = {}
     for (const [key, r] of Object.entries(results)) {
-      if (r.status !== 'loading') out[key] = r
+      if (CACHED_STATUSES.has(r.status)) out[key] = r
     }
     localStorage.setItem(RESULTS_KEY, JSON.stringify(out))
   } catch {

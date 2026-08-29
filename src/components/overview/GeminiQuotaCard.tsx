@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Gemini } from '@lobehub/icons'
 import { useT } from '@/i18n/useT'
 import { formatCountdown } from '@/lib/format'
+import { useNowTick } from '@/lib/hooks/use-now-tick'
 import { summarizeGeminiQuota, type GeminiQuotaVM } from '@/lib/gemini-quota'
 import { ProgressBar } from '@/components/common/ProgressBar'
 import { cn } from '@/lib/cn'
@@ -32,7 +33,8 @@ export function GeminiQuotaCard({ className }: { className?: string }) {
       .finally(() => setLoading(false))
   }, [])
 
-  const now = Date.now()
+  // Minute-resolution clock so reset countdowns stay live on this card alone
+  const now = useNowTick()
   // 401/403 or a failed token refresh means the login exists but is stale
   const staleLogin = vm != null && ['http-401', 'http-403', 'refresh-failed'].includes(vm.reason ?? '')
 

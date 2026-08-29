@@ -165,3 +165,9 @@ export function markAllRead(items: AlertItem[]): AlertItem[] {
 export function markRead(items: AlertItem[], id: string): AlertItem[] {
   return items.map((a) => (a.id === id ? { ...a, read: true } : a))
 }
+
+/** Mark a batch of ids read in one pass (callers must persist the result) */
+export function markReadMany(items: AlertItem[], ids: string[]): AlertItem[] {
+  const idSet = new Set(ids)
+  return items.map((a) => (idSet.has(a.id) ? { ...a, read: true } : a))
+}

@@ -206,7 +206,7 @@ export interface Dict {
     colCache: string
     statusOnline: string
     statusOffline: string
-    totalAgents: (n: number) => string
+    shownAgents: (n: number) => string
     distTitle: string
     distTotal: string
     distOther: string

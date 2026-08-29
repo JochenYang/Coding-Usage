@@ -44,7 +44,7 @@ export function TopBar({ onNavigate }: { onNavigate: (v: View) => void }) {
     refreshingAll,
     alerts,
     unreadAlerts,
-    markAlertRead,
+    markAlertsRead,
   } = useData()
   // Hover-controlled notification popover; closed again when "view all" jumps
   const [notifOpen, setNotifOpen] = useState(false)
@@ -170,11 +170,14 @@ export function TopBar({ onNavigate }: { onNavigate: (v: View) => void }) {
           onOpenChange={(open) => {
             setNotifOpen(open)
             // Seeing the preview counts as seeing those alerts: the badge
-            // drops without forcing a trip to the alerts center
+            // drops without forcing a trip to the alerts center. One batched
+            // call — looping markAlertRead would race its stale closure.
             if (open) {
-              for (const alert of alerts.slice(0, NOTIF_PREVIEW_COUNT)) {
-                if (!alert.read) markAlertRead(alert.id)
-              }
+              const previewIds = alerts
+                .slice(0, NOTIF_PREVIEW_COUNT)
+                .filter((a) => !a.read)
+                .map((a) => a.id)
+              if (previewIds.length > 0) markAlertsRead(previewIds)
             }
           }}
           trigger="hover"
@@ -265,6 +268,11 @@ export function TopBar({ onNavigate }: { onNavigate: (v: View) => void }) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: reduceMotion ? 0 : 0.15 }}
+            // Backdrop click and Escape both cancel (focus sits on the primary
+            // button via autoFocus, so keydown reaches this handler)
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setCloseOpen(false)
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Escape') setCloseOpen(false)
             }}

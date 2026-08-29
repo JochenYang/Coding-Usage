@@ -207,7 +207,7 @@ export const enUS: Dict = {
     colCache: 'Cache',
     statusOnline: 'Online',
     statusOffline: 'Offline',
-    totalAgents: (n: number) => `${n} accounts`,
+    shownAgents: (n: number) => `Showing ${n} accounts`,
     distTitle: 'Provider distribution',
     distTotal: 'Total quota',
     distOther: 'Others',

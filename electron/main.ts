@@ -34,6 +34,9 @@ let isQuitting = false
 // Close arrived before the renderer had a chance to load its listeners —
 // replayed on did-finish-load so an early Alt+F4 isn't silently swallowed.
 let pendingCloseRequest = false
+// Same replay idea for the update toast: if the download completes while the
+// window is still loading, the renderer subscribes too late and misses it.
+let lastUpdateVersion: string | null = null
 
 function showMainWindow(): void {
   const win = mainWindow
@@ -122,9 +125,14 @@ function createWindow(): void {
     pendingCloseRequest = true
   })
   win.webContents.on('did-finish-load', () => {
-    if (pendingCloseRequest && !win.isDestroyed()) {
+    if (win.isDestroyed()) return
+    if (pendingCloseRequest) {
       pendingCloseRequest = false
       win.webContents.send('desktop:close-requested')
+    }
+    // Replay a download that finished before the toast could subscribe
+    if (lastUpdateVersion) {
+      win.webContents.send('desktop:update-downloaded', lastUpdateVersion)
     }
   })
 
@@ -311,7 +319,12 @@ function registerIpc(): void {
         }
       }
       try {
-        const res = await net.fetch(url, { headers: cleanHeaders })
+        // Bounded: a hung provider connection must not keep refreshAll's
+        // Promise.all (and the manual-refresh spinner) pending forever
+        const res = await net.fetch(url, {
+          headers: cleanHeaders,
+          signal: AbortSignal.timeout(30_000),
+        })
         return { status: res.status, body: await res.text() }
       } catch (error) {
         return { status: 0, body: String(error) }
@@ -341,12 +354,12 @@ function registerIpc(): void {
   // Settings mirror: the renderer writes the encrypted v3 document to a file
   // in userData so a corrupted/lost localStorage leveldb can be restored.
   ipcMain.handle('settings:backup-write', (_event, payload: unknown): void => {
-    try {
-      if (typeof payload !== 'string' || payload.length === 0) return
-      void writeFile(join(app.getPath('userData'), 'settings-backup.json'), payload, 'utf8')
-    } catch {
-      // best-effort mirror
-    }
+    if (typeof payload !== 'string' || payload.length === 0) return
+    // Fire-and-forget mirror; the catch swallows async rejections the outer
+    // (synchronous) handler could never see
+    void writeFile(join(app.getPath('userData'), 'settings-backup.json'), payload, 'utf8').catch(
+      () => {},
+    )
   })
 
   ipcMain.handle('settings:backup-read', async (): Promise<string | null> => {
@@ -402,40 +415,40 @@ function registerIpc(): void {
   // the official wham endpoint. The credential stays on this machine; only the
   // request to chatgpt.com is made. Returns {available:false, reason} when
   // there is no ChatGPT-authenticated Codex login (e.g. API-key mode).
-  ipcMain.handle('codex:quota', async (): Promise<{ available: boolean; body?: string; reason?: string }> => {
-    try {
-      const home = process.env.CODEX_HOME ?? homedir()
-      const authRaw = await readFile(join(home, '.codex', 'auth.json'), 'utf8')
-      const auth = JSON.parse(authRaw) as {
-        auth_mode?: string
-        tokens?: { access_token?: string; account_id?: string }
-      }
-      if (auth.auth_mode !== 'chatgpt' || !auth.tokens?.access_token) {
-        return { available: false, reason: 'no-chatgpt-auth' }
-      }
-      const headers: Record<string, string> = {
-        Authorization: `Bearer ${auth.tokens.access_token}`,
-        'User-Agent': 'codex-cli',
-        Accept: 'application/json',
-      }
-      if (auth.tokens.account_id) headers['ChatGPT-Account-Id'] = auth.tokens.account_id
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 10_000)
-      try {
-        const res = await net.fetch('https://chatgpt.com/backend-api/wham/usage', {
-          headers,
-          redirect: 'error',
-          signal: controller.signal,
-        })
-        if (!res.ok) return { available: false, reason: `http-${res.status}` }
-        return { available: true, body: await res.text() }
-      } finally {
-        clearTimeout(timer)
-      }
-    } catch {
-      return { available: false, reason: 'no-auth-file' }
-    }
-  })
+  ipcMain.handle(
+    'codex:quota',
+    async (): Promise<QuotaOutcome> =>
+      cachedQuotaOutcome('codex', async () => {
+        try {
+          const home = process.env.CODEX_HOME ?? homedir()
+          const authRaw = await readFile(join(home, '.codex', 'auth.json'), 'utf8')
+          const auth = JSON.parse(authRaw) as {
+            auth_mode?: string
+            tokens?: { access_token?: string; account_id?: string }
+          }
+          if (auth.auth_mode !== 'chatgpt' || !auth.tokens?.access_token) {
+            return { available: false, reason: 'no-chatgpt-auth' }
+          }
+          const headers: Record<string, string> = {
+            Authorization: `Bearer ${auth.tokens.access_token}`,
+            'User-Agent': 'codex-cli',
+            Accept: 'application/json',
+          }
+          if (auth.tokens.account_id) headers['ChatGPT-Account-Id'] = auth.tokens.account_id
+          const res = await net.fetch('https://chatgpt.com/backend-api/wham/usage', {
+            headers,
+            redirect: 'error',
+            signal: AbortSignal.timeout(10_000),
+          })
+          if (!res.ok) return { available: false, reason: `http-${res.status}` }
+          return { available: true, body: await res.text() }
+        } catch (e) {
+          // Distinguish "never logged in" from "the request failed" — the
+          // card copy differs (no-auth-file reads as an honest empty state)
+          return { available: false, reason: e instanceof Error && e.name === 'AbortError' ? 'timeout' : 'network' }
+        }
+      }),
+  )
 
   // Claude Code subscription quota: reads the local ~/.claude OAuth login and
   // queries the official usage endpoint. Credential handling lives in
@@ -479,6 +492,7 @@ function setupAutoUpdater(): void {
   })
   autoUpdater.on('update-downloaded', (info) => {
     // Consumed by the renderer's UpdateToast ("update ready, restart to apply")
+    lastUpdateVersion = info.version
     mainWindow?.webContents.send('desktop:update-downloaded', info.version)
   })
 }

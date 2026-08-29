@@ -5,6 +5,7 @@ import { currencySymbol, formatAmount, formatCompactValue } from '@/lib/format'
 import type { BalanceProviderInfo, KpisVM } from '@/lib/overview'
 import { ProviderLogo } from '@/components/ProviderLogo'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/beui/popover'
+import { useLocale } from '@/i18n/LocaleProvider'
 import { StatCard } from '@/components/common/StatCard'
 import { useT } from '@/i18n/useT'
 
@@ -25,6 +26,7 @@ function Dash() {
 /** Top row of overview KPI cards: quota / balance / online / today's usage */
 export function KpiRow({ kpis, displayCurrency, balanceItems, className }: KpiRowProps) {
   const t = useT()
+  const { locale } = useLocale()
 
   const balanceInfos = balanceItems ?? []
   // Distinct provider marks for the chip cluster (a provider may appear twice
@@ -32,7 +34,7 @@ export function KpiRow({ kpis, displayCurrency, balanceItems, className }: KpiRo
   const chipDefs = [...new Map(balanceInfos.map((i) => [i.def.id, i.def])).values()]
   const balanceValue =
     kpis.balanceDisplay != null
-      ? `${currencySymbol(displayCurrency)}${formatAmount(kpis.balanceDisplay)}`
+      ? `${currencySymbol(displayCurrency)}${formatAmount(kpis.balanceDisplay, locale)}`
       : '—'
 
   // 0 providers → generic glyph; 1 → its brand mark; several → overlapped
@@ -98,7 +100,7 @@ export function KpiRow({ kpis, displayCurrency, balanceItems, className }: KpiRo
                   <span className="ml-1 text-subtle">{info.unit}</span>
                 </span>
                 <span className="tabular-nums text-foreground">
-                  {`${currencySymbol(info.unit)}${formatAmount(info.rawAmount)}`}
+                  {`${currencySymbol(info.unit)}${formatAmount(info.rawAmount, locale)}`}
                 </span>
               </li>
             ))}

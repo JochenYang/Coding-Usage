@@ -214,7 +214,9 @@ export function buildDistribution(
     else main.push({ label: p.label, value: p.value, color: '' })
   }
   if (otherValue > 0) main.push({ label: otherLabel, value: otherValue, color: '#4B4B63' })
+  // The muted "other" tone must survive the palette assignment
   main.forEach((s, i) => {
+    if (s.color) return
     s.color = DIST_COLORS[i % DIST_COLORS.length]
   })
   return { slices: main, total }

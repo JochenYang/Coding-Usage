@@ -3,7 +3,7 @@ import type { IpcRendererEvent } from 'electron'
 
 /**
  * Secure bridge between the renderer and the main process. Channel names and
- * signatures mirror the global `DesktopBridge` interface (src/types.d.ts),
+ * signatures mirror the global `DesktopBridge` interface (src/globals.d.ts),
  * backed by handlers registered in electron/main.ts.
  */
 const desktopBridge: DesktopBridge = {

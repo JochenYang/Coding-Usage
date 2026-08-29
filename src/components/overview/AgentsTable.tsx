@@ -114,7 +114,7 @@ export function AgentsTable({ rows, onEdit, className }: AgentsTableProps) {
                 { label: t.overview.colAgent, align: 'text-left' },
                 { label: t.overview.colProvider, align: 'text-left' },
                 { label: t.overview.colPlan, align: 'text-left' },
-                { label: t.overview.colUsage, align: 'text-center' },
+                { label: t.overview.colUsage, align: 'text-left' },
                 { label: t.overview.colQuota, align: 'text-left' },
                 { label: t.overview.colBalance, align: 'text-right' },
                 { label: t.overview.colStatus, align: 'text-left' },
@@ -137,7 +137,7 @@ export function AgentsTable({ rows, onEdit, className }: AgentsTableProps) {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} className={cn(CELL, 'py-10 text-center text-xs text-subtle')}>
+                <td colSpan={8} className={cn(CELL, 'py-10 text-center text-xs text-subtle')}>
                   {t.overview.emptyTitle}
                 </td>
               </tr>
@@ -230,7 +230,7 @@ export function AgentsTable({ rows, onEdit, className }: AgentsTableProps) {
       </div>
 
       {/* Footer count reflects the currently filtered rows */}
-      <div className="px-5 py-3 text-xs text-subtle">{t.overview.totalAgents(filtered.length)}</div>
+      <div className="px-5 py-3 text-xs text-subtle">{t.overview.shownAgents(filtered.length)}</div>
     </section>
   )
 }

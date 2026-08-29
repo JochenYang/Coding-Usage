@@ -34,6 +34,7 @@ import {
   loadAlerts,
   markAllRead,
   markRead,
+  markReadMany,
   saveAlerts,
   unreadCount,
 } from './alerts'
@@ -93,6 +94,8 @@ interface DataContextValue {
   unreadAlerts: number
   markAllAlertsRead: () => void
   markAlertRead: (id: string) => void
+  /** Batch variant: one state update + one persist for many ids */
+  markAlertsRead: (ids: string[]) => void
   updateSettings: (next: Settings) => void
   /** Snapshot settings before opening an edit surface; endSettingsEdit diffs against it */
   beginSettingsEdit: () => void
@@ -281,9 +284,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Persist the latest fetch results for the next launch's instant paint
+  // Persist the latest fetch results for the next launch's instant paint.
+  // Debounced: a manual refresh flips results N times and only the settled
+  // state is worth a synchronous localStorage round-trip.
+  const resultsSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
-    saveCachedResults(results)
+    if (resultsSaveTimer.current) clearTimeout(resultsSaveTimer.current)
+    resultsSaveTimer.current = setTimeout(() => saveCachedResults(results), 500)
+    return () => {
+      if (resultsSaveTimer.current) clearTimeout(resultsSaveTimer.current)
+    }
   }, [results])
 
   // Re-fetch silently when locale changes so adapter metric labels update immediately
@@ -316,8 +326,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     try {
       const raw = await bridge.tokscaleScan()
       const summary = summarizeScan(raw)
-      if (summary.error == null) {
+      // Only archive REAL today numbers: with the corrected bucketing an empty
+      // today now yields 0, and writing 0 would clobber today's archived value
+      if (summary.error == null && summary.todayTotal.tokens > 0) {
         archiveDailyUsage(summary.todayTotal.tokens)
+        saveCachedAgentUsage(summary)
+      } else if (summary.error == null) {
         saveCachedAgentUsage(summary)
       }
       setAgentUsage(summary)
@@ -349,6 +363,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const markAlertRead = useCallback(
     (id: string) => {
       const next = markRead(alerts, id)
+      setAlerts(next)
+      saveAlerts(next)
+    },
+    [alerts],
+  )
+
+  const markAlertsRead = useCallback(
+    (ids: string[]) => {
+      // One computed next + one persist: calling markAlertRead in a loop
+      // would base every pass on the same stale closure and lose all but
+      // the last id
+      const next = markReadMany(alerts, ids)
       setAlerts(next)
       saveAlerts(next)
     },
@@ -418,9 +444,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
       return { ...s, providers: { ...s.providers, [providerId]: entries } }
     })
     setResults((r) => {
+      // Shift-down bound = the largest index this provider actually has
+      let maxIndex = index
+      for (const key of Object.keys(r)) {
+        if (key.startsWith(`${providerId}-`)) {
+          const i = Number(key.slice(providerId.length + 1))
+          if (Number.isFinite(i) && i > maxIndex) maxIndex = i
+        }
+      }
       const next = { ...r }
       delete next[`${providerId}-${index}`]
-      for (let i = index + 1; i < 50; i++) {
+      for (let i = index + 1; i <= maxIndex; i++) {
         const oldKey = `${providerId}-${i}`
         if (next[oldKey]) {
           next[`${providerId}-${i - 1}`] = next[oldKey]
@@ -460,6 +494,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       unreadAlerts: unread,
       markAllAlertsRead,
       markAlertRead,
+      markAlertsRead,
       agentUsage,
       agentUsageLoading,
       refreshAgentUsage,
@@ -484,6 +519,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       unread,
       markAllAlertsRead,
       markAlertRead,
+      markAlertsRead,
       agentUsage,
       agentUsageLoading,
       refreshAgentUsage,

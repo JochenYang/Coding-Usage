@@ -204,7 +204,7 @@ export const zhCN: Dict = {
     colCache: '缓存',
     statusOnline: '在线',
     statusOffline: '离线',
-    totalAgents: (n: number) => `共 ${n} 个账号`,
+    shownAgents: (n: number) => `显示 ${n} 个账号`,
     distTitle: '服务商分布',
     distTotal: '总额度',
     distOther: '其他',

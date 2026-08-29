@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Codex } from '@lobehub/icons'
 import { useT } from '@/i18n/useT'
 import { formatCountdown } from '@/lib/format'
+import { useNowTick } from '@/lib/hooks/use-now-tick'
 import { summarizeCodexQuota, type CodexQuotaVM } from '@/lib/codex-quota'
 import { ProgressBar } from '@/components/common/ProgressBar'
 import { cn } from '@/lib/cn'
@@ -32,7 +33,8 @@ export function CodexQuotaCard({ className }: { className?: string }) {
       .finally(() => setLoading(false))
   }, [])
 
-  const now = Date.now()
+  // Minute-resolution clock so reset countdowns stay live on this card alone
+  const now = useNowTick()
 
   return (
     <section className={cn('rounded-2xl border border-border bg-card p-5', className)}>

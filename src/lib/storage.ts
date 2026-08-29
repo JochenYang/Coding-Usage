@@ -97,8 +97,20 @@ export function hasLegacyV2Store(): boolean {
  * unavailable) it degrades to the unchanged plaintext KEY_V2 write.
  *
  * Async and fire-and-forget safe: never throws, all failures are contained.
+ * Calls are serialized through a module-level promise chain: two overlapping
+ * settings writes must never interleave their encrypt/verify IPC rounds, or
+ * the older snapshot could land after the newer one.
  */
-export async function persistSettings(s: Settings): Promise<void> {
+let persistChain: Promise<void> = Promise.resolve()
+
+export function persistSettings(s: Settings): Promise<void> {
+  const run = persistChain.then(() => persistSettingsInner(s))
+  // Keep the chain alive regardless of individual failures
+  persistChain = run.catch(() => {})
+  return run
+}
+
+async function persistSettingsInner(s: Settings): Promise<void> {
   try {
     const bridge = window.desktopBridge
     if (!bridge) {

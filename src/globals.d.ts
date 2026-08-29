@@ -56,9 +56,8 @@ declare global {
 
   /** Raw result of one tokscale scan round-trip (`tokscale:scan` IPC) */
   interface TokScaleRaw {
-    today?: unknown
-    month?: unknown
-    allTime?: unknown
+    /** Per-day contributions from `tokscale graph` (aggregated renderer-side) */
+    daily?: unknown
     /** Set when the scan failed (binary missing, exit code, timeout, ...) */
     error?: string
   }
