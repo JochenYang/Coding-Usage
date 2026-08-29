@@ -75,8 +75,8 @@ export interface CostSliceVM {
 export interface AgentUsageVM {
   clients: AgentClientVM[]
   /** Unclassified contributions (missing/synthetic client ids) — keeps the
-   *  four agent rows summing to the real totals */
-  other: { month: AgentPeriodVM; all: AgentPeriodVM } | null
+   *  per-agent rows summing to the real totals */
+  other: { today: AgentPeriodVM; month: AgentPeriodVM; all: AgentPeriodVM } | null
   todayTotal: AgentPeriodVM
   monthTotal: AgentPeriodVM
   allTimeTotal: AgentPeriodVM
@@ -241,13 +241,19 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
 
   if (contribs.length === 0) return emptyVM('no data')
 
-  const monthPrefix = contribs[contribs.length - 1].date.slice(0, 7)
+  // Buckets anchor to the REAL local date, not "the last row": a dataset that
+  // ends yesterday (no usage today yet) must show 0 for today, not relabel
+  // yesterday as today — and must not write yesterday's numbers into today's
+  // daily archive.
+  const todayStr = todayKey()
+  const monthPrefix = todayStr.slice(0, 7)
 
   let todayTotal = zero()
   let monthTotal = zero()
   let allTimeTotal = zero()
   let otherAll: AgentPeriodVM = zero()
   let otherMonth: AgentPeriodVM = zero()
+  let otherToday: AgentPeriodVM = zero()
 
   const monthByClient = new Map<string, SliceAgg>()
   const allByClient = new Map<string, SliceAgg>()
@@ -258,7 +264,7 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
 
   for (let i = 0; i < contribs.length; i++) {
     const c = contribs[i]
-    const isToday = i === contribs.length - 1
+    const isToday = c.date === todayStr
     const isMonthDay = c.date.startsWith(monthPrefix)
     const p = dayPeriod(c.totals, c.tokenBreakdown)
     allTimeTotal = addPeriod(allTimeTotal, p)
@@ -273,6 +279,15 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
         const period = entryPeriod(e)
         dayFromClients = addPeriod(dayFromClients, period)
         const owner = typeof e.client === 'string' && e.client ? e.client : '__other__'
+        // Unclassified entries take the same route as the historical branch:
+        // straight into the "other" buckets. They stay out of dayFromClients
+        // so the diff below only captures the synthetic totals-vs-clients gap.
+        if (owner === '__other__') {
+          otherToday = addPeriod(otherToday, period)
+          otherAll = addPeriod(otherAll, period)
+          if (isMonthDay) otherMonth = addPeriod(otherMonth, period)
+          continue
+        }
         addSlice(todayByClient, owner, period)
         // All-time buckets live here (not just in the non-today branch):
         // today is part of the cumulative totals too
@@ -291,8 +306,10 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
       }
       // Unclassified balance for today (synthetic rows are in totals.tokens
       // but not in any client entry)
-      otherAll = addPeriod(otherAll, subtract(p, dayFromClients))
-      otherMonth = addPeriod(otherMonth, subtract(p, dayFromClients))
+      const dayOther = subtract(p, dayFromClients)
+      otherToday = addPeriod(otherToday, dayOther)
+      otherAll = addPeriod(otherAll, dayOther)
+      otherMonth = addPeriod(otherMonth, dayOther)
     } else {
       for (const e of c.clients ?? []) {
         const period = entryPeriod(e)
@@ -334,7 +351,10 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
 
   return {
     clients,
-    other: otherAll.tokens > 0 ? { month: otherMonth, all: otherAll } : null,
+    other:
+      otherToday.tokens > 0 || otherMonth.tokens > 0 || otherAll.tokens > 0
+        ? { today: otherToday, month: otherMonth, all: otherAll }
+        : null,
     todayTotal,
     monthTotal,
     allTimeTotal,

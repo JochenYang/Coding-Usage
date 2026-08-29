@@ -200,6 +200,7 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
                 </span>
               </span>
               <div className="grid min-w-[220px] grid-cols-3 gap-2">
+                <PeriodColumn label={t.overview.todayCol} period={usage.other.today} exists mode={mode} />
                 <PeriodColumn label={t.overview.monthCol} period={usage.other.month} exists mode={mode} />
                 <PeriodColumn label={t.overview.allTimeCol} period={usage.other.all} exists mode={mode} />
               </div>
