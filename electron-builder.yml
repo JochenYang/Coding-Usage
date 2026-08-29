@@ -36,6 +36,13 @@ mac:
     # zip feeds electron-updater on macOS; dmg is the human-facing installer
     - dmg
     - zip
+linux:
+  # AppImage needs no signing and runs on any glibc distro; deb/rpm can be
+  # added later once install-method preferences are known.
+  icon: ./assets/images/logo.png
+  category: Development
+  target:
+    - AppImage
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true

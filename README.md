@@ -56,6 +56,7 @@
 
 - **Windows**：NSIS 安装版或便携版。未签名构建会触发 SmartScreen——点「更多信息」→「仍要运行」
 - **macOS**（Apple Silicon / Intel 双架构）：当前为未签名构建，首次打开请**右键 App → 「打开」**，或执行 `xattr -cr "/Applications/Coding Usage.app"` 移除隔离属性，之后正常启动
+- **Linux**（x64）：下载 AppImage 后 `chmod +x Coding-Usage-*.AppImage` 直接运行，无需安装
 
 ## 快速开始
 

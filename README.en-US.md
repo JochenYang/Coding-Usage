@@ -56,6 +56,7 @@ Grab a build from [Releases](https://github.com/JochenYang/Coding-Usage/releases
 
 - **Windows**: NSIS installer or portable build. Unsigned builds trigger SmartScreen — click "More info" → "Run anyway"
 - **macOS** (Apple Silicon / Intel): currently unsigned — on first launch **right-click the App → Open**, or run `xattr -cr "/Applications/Coding Usage.app"` to drop the quarantine flag; it opens normally afterwards
+- **Linux** (x64): `chmod +x Coding-Usage-*.AppImage` and run — no installation needed
 
 ## Quick Start
 
