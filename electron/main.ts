@@ -254,7 +254,12 @@ function resolveTokscaleBin(): string | null {
   try {
     const nodeRequire = createRequire(join(app.getAppPath(), 'noop.js'))
     const pkgJson = nodeRequire.resolve(`${pkgName}/package.json`)
-    return join(dirname(pkgJson), 'bin', process.platform === 'win32' ? 'tokscale.exe' : 'tokscale')
+    // require.resolve answers with the VIRTUAL in-asar path; the real binary
+    // lives in app.asar.unpacked (asarUnpack), so spawn needs that directory
+    const binPath = join(dirname(pkgJson), 'bin', process.platform === 'win32' ? 'tokscale.exe' : 'tokscale')
+    return binPath.includes('app.asar')
+      ? binPath.replace('app.asar', 'app.asar.unpacked')
+      : binPath
   } catch {
     return null
   }
