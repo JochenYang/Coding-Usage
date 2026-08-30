@@ -1,6 +1,6 @@
 import type { Section } from './data-context'
 import type { ProviderDef, ProviderResult, ProviderStatus } from '../types'
-import { convertAmount } from './rates'
+import { convertAmount, type FxRates } from './rates'
 import { getConsumedSeries, getTodayConsume } from './snapshots'
 import { UNLIMITED_KEY } from './metric-helpers'
 
@@ -100,6 +100,7 @@ export function buildKpis(
   displayCurrency: string,
   now = Date.now(),
   localAllTimeTokens: number | null = null,
+  fxRates: FxRates | null = null,
 ): KpisVM {
   const rows = buildAgentRows(sections, results, now)
   const online = rows.filter((r) => r.status === 'online')
@@ -115,7 +116,7 @@ export function buildKpis(
         (m) => m.kind === 'balance' && m.remaining != null && m.unit && m.unit !== UNLIMITED_KEY,
       )
       if (bal?.remaining != null && bal.unit) {
-        const converted = convertAmount(bal.remaining, bal.unit, displayCurrency)
+        const converted = convertAmount(bal.remaining, bal.unit, displayCurrency, fxRates)
         if (converted != null) balance = (balance ?? 0) + converted
       }
     }
@@ -161,6 +162,7 @@ export function buildBalanceProviders(
   sections: Section[],
   results: Record<string, ProviderResult>,
   displayCurrency: string,
+  fxRates: FxRates | null = null,
 ): BalanceProviderInfo[] {
   const per = new Map<string, BalanceProviderInfo>()
   for (const sec of sections) {
@@ -173,7 +175,7 @@ export function buildBalanceProviders(
       if (bal?.remaining == null || !bal.unit) continue
       // Key includes the unit: one provider paying out in two currencies
       // legitimately shows two lines (symbols would otherwise lie)
-      const converted = convertAmount(bal.remaining, bal.unit, displayCurrency)
+      const converted = convertAmount(bal.remaining, bal.unit, displayCurrency, fxRates)
       if (converted == null) continue
       const key = `${sec.def.id}|${bal.unit}`
       const hit =

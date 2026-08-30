@@ -41,7 +41,7 @@ export function OverviewPage({
   onEditAccount: (providerId: string, index: number) => void
 }) {
   const t = useT()
-  const { sections, results, settings, agentUsage, agentUsageLoading, refreshAgentUsage, agentDailySeries } =
+  const { sections, results, settings, agentUsage, agentUsageLoading, refreshAgentUsage, agentDailySeries, fxRates } =
     useData()
 
   // Low-frequency clock so stale/offline derivation (10 min STALE_MS) stays
@@ -60,6 +60,7 @@ export function OverviewPage({
       settings.displayCurrency,
       now,
       agentUsage.allTimeTotal.tokens > 0 ? displayTokens(agentUsage.allTimeTotal, settings.usageDisplayMode) : null,
+      fxRates,
     )
     // Today's consumption prefers the measured local-agent total over the
     // API-snapshot delta (which only accumulates while the app runs).
@@ -113,8 +114,8 @@ export function OverviewPage({
   const plans = useMemo(() => buildPlanCards(sections, results), [sections, results])
   // Richest-first providers behind the balance KPI (brand chips on the card)
   const balanceProviders = useMemo(
-    () => buildBalanceProviders(sections, results, settings.displayCurrency),
-    [sections, results, settings.displayCurrency],
+    () => buildBalanceProviders(sections, results, settings.displayCurrency, fxRates),
+    [sections, results, settings.displayCurrency, fxRates],
   )
 
   // No early return when nothing is configured/fetched yet: the full overview

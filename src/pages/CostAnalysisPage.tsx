@@ -3,19 +3,27 @@ import { useData } from '@/lib/data-context'
 import { useT } from '@/i18n/useT'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
-import { formatCompactValue } from '@/lib/format'
+import { formatCompactValue, currencySymbol } from '@/lib/format'
+import { convertAmount, type FxRates } from '@/lib/rates'
 
-function costText(costUsd: number): string {
-  return costUsd > 0 ? `$${costUsd.toFixed(costUsd < 1 ? 3 : 2)}` : '—'
+/** Cost formatter honoring the settings display currency (source data is USD) */
+function makeCostText(displayCurrency: string, fxRates: FxRates | null): (costUsd: number) => string {
+  return (costUsd) => {
+    if (!(costUsd > 0)) return '—'
+    const converted = convertAmount(costUsd, 'USD', displayCurrency, fxRates) ?? costUsd
+    return `${currencySymbol(displayCurrency)}${converted.toFixed(converted < 1 ? 3 : 2)}`
+  }
 }
 
 /** Shared cost bar list: label + token/cost with a proportional accent bar */
 function CostList({
   rows,
   maxCost,
+  costText,
 }: {
   rows: { label: string; tokens: number; costUsd: number }[]
   maxCost: number
+  costText: (costUsd: number) => string
 }) {
   return (
     <div className="mt-3 space-y-2">
@@ -38,10 +46,11 @@ function CostList({
   )
 }
 
-/** Cost analysis: current-month spend by provider and by model (real tokscale cost) */
+/** Cost analysis: current-month spend by provider and by model (official per-model pricing) */
 export function CostAnalysisPage() {
   const t = useT()
-  const { agentUsage } = useData()
+  const { agentUsage, settings, fxRates } = useData()
+  const costText = makeCostText(settings.displayCurrency, fxRates)
   const hasCost = agentUsage.monthTotal.costUsd > 0
 
   if (!hasCost) {
@@ -78,11 +87,11 @@ export function CostAnalysisPage() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <section className="rounded-2xl border border-border bg-card p-5">
           <h2 className="text-sm font-semibold text-foreground">{t.overview.colProvider}</h2>
-          <CostList rows={agentUsage.monthCostByProvider} maxCost={maxProvider} />
+          <CostList rows={agentUsage.monthCostByProvider} maxCost={maxProvider} costText={costText} />
         </section>
         <section className="rounded-2xl border border-border bg-card p-5">
           <h2 className="text-sm font-semibold text-foreground">{t.overview.colModel}</h2>
-          <CostList rows={agentUsage.monthCostByModel.slice(0, 10)} maxCost={maxModel} />
+          <CostList rows={agentUsage.monthCostByModel.slice(0, 10)} maxCost={maxModel} costText={costText} />
         </section>
       </div>
     </div>

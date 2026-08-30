@@ -38,6 +38,54 @@ import {
   saveAlerts,
   unreadCount,
 } from './alerts'
+import { normalizeOpenErRates, type FxRates } from './rates'
+
+const FX_CACHE_KEY = 'coding-usage.fx.v1'
+const FX_TTL_MS = 24 * 60 * 60_000
+
+function readFxCache(): { fetchedAt: number; rates: FxRates } | null {
+  try {
+    const raw = localStorage.getItem(FX_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { fetchedAt?: unknown; rates?: unknown }
+    if (typeof parsed.fetchedAt !== 'number' || !parsed.rates || typeof parsed.rates !== 'object') return null
+    return { fetchedAt: parsed.fetchedAt, rates: parsed.rates as FxRates }
+  } catch {
+    return null
+  }
+}
+
+function saveFxCache(rates: FxRates): void {
+  try {
+    localStorage.setItem(FX_CACHE_KEY, JSON.stringify({ fetchedAt: Date.now(), rates }))
+  } catch {
+    // best-effort cache
+  }
+}
+
+/**
+ * Live FX rates (1 unit = ? CNY) for every display-currency conversion.
+ * open.er-api.com daily refresh → localStorage cache → static fallback in
+ * convertAmount. Electron routes the request through the main process
+ * (CSP blocks renderer-side external fetches); plain browser dev goes direct.
+ */
+async function fetchFxRates(): Promise<FxRates | null> {
+  const url = 'https://open.er-api.com/v6/latest/USD'
+  let json: unknown = null
+  try {
+    const bridge = window.desktopBridge
+    if (bridge) {
+      const r = await bridge.fetch(url, {})
+      if (r.status === 200) json = JSON.parse(r.body)
+    } else {
+      const r = await fetch(url, { signal: AbortSignal.timeout(10_000) })
+      json = await r.json()
+    }
+  } catch {
+    json = null
+  }
+  return normalizeOpenErRates(json)
+}
 import type { AlertItem } from './alerts'
 import { useLocale } from '../i18n/LocaleProvider'
 
@@ -87,6 +135,8 @@ interface DataContextValue {
   agentUsage: AgentUsageVM
   agentUsageLoading: boolean
   refreshAgentUsage: () => Promise<void>
+  /** Live FX rates (1 unit = ? CNY); null until fetched — conversions then use the static table */
+  fxRates: FxRates | null
   /** Daily local-agent token series (trend chart); [] until history accumulates */
   agentDailySeries: (days: number) => { label: string; value: number }[]
   /** Live alert set (already merged with the persisted store) */
@@ -129,6 +179,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
     () => loadCachedAgentUsage() ?? summarizeScan(null),
   )
   const [agentUsageLoading, setAgentUsageLoading] = useState(false)
+  // Live FX rates for display-currency conversion; null = static fallback in use
+  const [fxRates, setFxRates] = useState<FxRates | null>(null)
+
+  useEffect(() => {
+    void (async () => {
+      const cached = readFxCache()
+      if (cached && Date.now() - cached.fetchedAt < FX_TTL_MS) {
+        setFxRates(cached.rates)
+        return
+      }
+      const fresh = await fetchFxRates()
+      if (fresh) {
+        setFxRates(fresh)
+        saveFxCache(fresh)
+      } else if (cached) {
+        setFxRates(cached.rates)
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount
+  }, [])
 
   // Snapshot of settings taken before an edit session (e.g. the accounts drawer
   // opening); endSettingsEdit diffs against it.
@@ -498,6 +568,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       agentUsage,
       agentUsageLoading,
       refreshAgentUsage,
+      fxRates,
       agentDailySeries: getDailyUsageSeries,
       updateSettings,
       beginSettingsEdit,
@@ -523,6 +594,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       agentUsage,
       agentUsageLoading,
       refreshAgentUsage,
+      fxRates,
       updateSettings,
       beginSettingsEdit,
       endSettingsEdit,

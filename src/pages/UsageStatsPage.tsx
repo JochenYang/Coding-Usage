@@ -4,18 +4,21 @@ import { useT } from '@/i18n/useT'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { LocalUsageCard } from '@/components/overview/LocalUsageCard'
-import { formatCompactValue } from '@/lib/format'
-
-function costText(costUsd: number): string {
-  return costUsd > 0 ? `$${costUsd.toFixed(costUsd < 1 ? 3 : 2)}` : '—'
-}
+import { currencySymbol, formatCompactValue } from '@/lib/format'
+import { convertAmount } from '@/lib/rates'
 
 /** Usage statistics: live local-agent totals (today/month/all-time) + model detail */
 export function UsageStatsPage() {
   const t = useT()
-  const { agentUsage, agentUsageLoading, refreshAgentUsage, settings } = useData()
+  const { agentUsage, agentUsageLoading, refreshAgentUsage, settings, fxRates } = useData()
   const mode = settings.usageDisplayMode
   const hasData = agentUsage.allTimeTotal.tokens > 0
+  // Cost figures are sourced in USD; render them in the display currency
+  const costText = (costUsd: number): string => {
+    if (!(costUsd > 0)) return '—'
+    const converted = convertAmount(costUsd, 'USD', settings.displayCurrency, fxRates) ?? costUsd
+    return `${currencySymbol(settings.displayCurrency)}${converted.toFixed(converted < 1 ? 3 : 2)}`
+  }
 
   if (!hasData) {
     return (
