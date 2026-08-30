@@ -259,6 +259,9 @@ export interface Dict {
       flash: string
       flashLite: string
     }
+    grokNoAuth: string
+    grokReauth: string
+    grokBilling: string
     addAgent: string
     showAll: string
     enabled: string
@@ -316,6 +319,20 @@ export interface Dict {
     importBad: string
     about: string
     version: string
+    updates: {
+      title: string
+      hint: string
+      check: string
+      checking: string
+      upToDate: string
+      available: (version: string) => string
+      downloading: (percent: number) => string
+      downloaded: (version: string) => string
+      installNow: string
+      error: string
+      devMode: string
+      via: (mirror: string) => string
+    }
   }
   providerErrors: {
     keyInvalid: string

@@ -8,6 +8,15 @@ export {}
 declare global {
   /** Build-time constant injected by electron-vite from package.json#version */
   const __APP_VERSION__: string
+  /** Snapshot of the auto-update state machine (desktop:update-status) */
+  interface DesktopUpdateState {
+    status: 'idle' | 'checking' | 'not-available' | 'available' | 'downloading' | 'downloaded' | 'error'
+    version?: string
+    percent?: number
+    /** Active mirror, e.g. "gh-proxy.com" when GitHub direct failed */
+    mirror?: string
+    message?: string
+  }
 
   /** Result of a main-process `net.fetch` round-trip (`net:fetch` IPC) */
   interface DesktopFetchResult {
@@ -33,6 +42,8 @@ declare global {
     claudeUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Gemini Code Assist quota via the local Gemini CLI OAuth login (refresh happens in main) */
     geminiUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /** Grok Build (SuperGrok) quota via the local `grok login` state; body is a normalized {percent,resetsAt,plan,email} */
+    grokUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Mirror the encrypted v3 settings document to a userData file */
     settingsBackupWrite(payload: string): Promise<void>
     /** Read the mirrored settings document, or null when none exists */
@@ -53,6 +64,10 @@ declare global {
     onCloseRequested(callback: () => void): () => void
     /** Quit and install the downloaded auto-update (no-op when nothing is staged) */
     installUpdate(): Promise<void>
+    /** Kick a manual update check; resolves with the current state snapshot */
+    checkForUpdates(): Promise<DesktopUpdateState>
+    /** Subscribe to update-state transitions; returns an unsubscribe function */
+    onUpdateStatus(callback: (status: DesktopUpdateState) => void): () => void
     /** Subscribe to autoUpdater's update-downloaded event; returns an unsubscribe function */
     onUpdateDownloaded(callback: (version: string) => void): () => void
   }

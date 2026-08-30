@@ -28,6 +28,7 @@ export const AGENT_CLIENTS = [
   'copilot',
   'qwen',
   'trae',
+  'workbuddy',
   'cline',
   'roocode',
   'kilocode',

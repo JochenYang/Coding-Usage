@@ -16,6 +16,7 @@ import {
 } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { fetchClaudeUsage, fetchGeminiUsage, type QuotaOutcome } from './subscription-quotas'
+import { fetchGrokUsage } from './grok-usage'
 import { getPricingTable, priceTokens } from './model-pricing'
 
 // Tray icon: 16x16 solid indigo (#6366F1) RGBA PNG. Generated offline with a
@@ -191,6 +192,7 @@ const TOKSCALE_CLIENTS = [
   'copilot',
   'qwen',
   'trae',
+  'workbuddy',
   'cline',
   'roocode',
   'kilocode',
@@ -323,6 +325,10 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
     '--since',
     '2020-01-01',
   ]
+  // Trae usage lives behind an account sync (tokscale trae sync), not local
+  // session files. Best-effort: silently skipped when unauthenticated, and a
+  // no-op for variants whose API returns nothing.
+  await runTokscale(['trae', 'sync', '--since', '30']).catch(() => {})
   let daily: unknown
   try {
     daily = await runTokscale(args)
@@ -479,6 +485,13 @@ function registerIpc(): void {
     }
   })
 
+  // Manual check from the settings page: resolves with the current snapshot,
+  // then pushes status changes over desktop:update-status
+  ipcMain.handle('app:check-updates', (): typeof updateState => {
+    void checkForUpdates()
+    return updateState
+  })
+
   // Codex subscription quota: reads the local ChatGPT OAuth login and queries
   // the official wham endpoint. The credential stays on this machine; only the
   // request to chatgpt.com is made. Returns {available:false, reason} when
@@ -537,6 +550,14 @@ function registerIpc(): void {
       cachedQuotaOutcome('gemini', () => fetchGeminiUsage(net.fetch, homedir())),
   )
 
+  // Grok Build (SuperGrok) subscription quota via the local `grok login`
+  // state (~/.grok/auth.json); the CLI refreshes its own token, we never do.
+  ipcMain.handle(
+    'grok:usage',
+    async (): Promise<QuotaOutcome> =>
+      cachedQuotaOutcome('grok', () => fetchGrokUsage(net.fetch, homedir())),
+  )
+
   // Local agent usage scan. Cached in the main process: a full three-period
   // scan takes tens of seconds, so repeated renderer refreshes are cheap.
   ipcMain.handle('tokscale:scan', async (): Promise<TokScanResult> => {
@@ -552,17 +573,78 @@ function registerIpc(): void {
   })
 }
 
+// ===== auto-update =====
+
+// Feed failover: GitHub direct first; when unreachable (common in mainland
+// China) the same feed through the gh-proxy.com mirror. The choice lives for
+// the session only — every launch retries GitHub first.
+const GH_PROXY_FEED =
+  'https://gh-proxy.com/https://github.com/JochenYang/Coding-Usage/releases/latest/download'
+
+/** Feed options shared by both channels; a short timeout keeps the China
+ * mirror failover from hanging on a black-holed GitHub link */
+const FEED_TIMEOUT_MS = 10_000
+const GH_FEED = { provider: 'github' as const, owner: 'JochenYang', repo: 'Coding-Usage', timeout: FEED_TIMEOUT_MS }
+const PROXY_FEED = { provider: 'generic' as const, url: GH_PROXY_FEED, timeout: FEED_TIMEOUT_MS }
+
+type UpdateStatus = 'idle' | 'checking' | 'not-available' | 'available' | 'downloading' | 'downloaded' | 'error'
+let updateState: {
+  status: UpdateStatus
+  version?: string
+  percent?: number
+  mirror?: string
+  message?: string
+} = { status: 'idle' }
+let usingProxy = false
+
+function setUpdateState(patch: Partial<typeof updateState>): void {
+  updateState = { ...updateState, ...patch }
+  mainWindow?.webContents.send('desktop:update-status', updateState)
+}
+
+async function checkForUpdates(): Promise<void> {
+  if (!app.isPackaged) {
+    setUpdateState({ status: 'error', message: 'dev' })
+    return
+  }
+  setUpdateState({ status: 'checking', mirror: usingProxy ? 'gh-proxy.com' : undefined })
+  try {
+    await autoUpdater.setFeedURL(GH_FEED)
+    await autoUpdater.checkForUpdates()
+  } catch (e) {
+    if (usingProxy) {
+      setUpdateState({ status: 'error', message: String(e instanceof Error ? e.message : e).slice(0, 200) })
+      return
+    }
+    // GitHub unreachable → mirror through gh-proxy.com and try once more
+    usingProxy = true
+    autoUpdater.setFeedURL(PROXY_FEED)
+    setUpdateState({ status: 'checking', mirror: 'gh-proxy.com' })
+    try {
+      await autoUpdater.checkForUpdates()
+    } catch (e2) {
+      setUpdateState({ status: 'error', message: String(e2 instanceof Error ? e2.message : e2).slice(0, 200) })
+    }
+  }
+}
+
 function setupAutoUpdater(): void {
   // Auto-update only makes sense for the packaged install; dev builds skip it
   if (!app.isPackaged) return
-  autoUpdater.checkForUpdates().catch(() => {
-    // Offline or GitHub unreachable — retried on next launch
-  })
+  autoUpdater.on('update-available', (info) => setUpdateState({ status: 'available', version: info.version }))
+  autoUpdater.on('update-not-available', () => setUpdateState({ status: 'not-available' }))
+  autoUpdater.on('download-progress', (p) => setUpdateState({ status: 'downloading', percent: Math.round(p.percent) }))
   autoUpdater.on('update-downloaded', (info) => {
-    // Consumed by the renderer's UpdateToast ("update ready, restart to apply")
     lastUpdateVersion = info.version
+    setUpdateState({ status: 'downloaded', version: info.version, percent: 100 })
     mainWindow?.webContents.send('desktop:update-downloaded', info.version)
   })
+  autoUpdater.on('error', (e) => {
+    // Surfaces download-phase failures (check-phase errors land in the
+    // checkForUpdates catch); keep the last meaningful state visible
+    setUpdateState({ status: 'error', message: String(e instanceof Error ? e.message : e).slice(0, 200) })
+  })
+  void checkForUpdates()
 }
 
 // Single instance: launching the app twice focuses the existing window instead

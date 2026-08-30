@@ -15,6 +15,7 @@ import {
 } from '@lobehub/icons'
 import type { AgentClientId, AgentPeriodVM, AgentUsageVM } from '@/lib/agent-usage'
 import { formatCompactValue } from '@/lib/format'
+import workbuddyLogo from '@/components/logos/workbuddy.png'
 import { useT } from '@/i18n/useT'
 import { useTheme } from '@/components/ThemeProvider'
 import { useData } from '@/lib/data-context'
@@ -46,6 +47,9 @@ const AGENT_ICONS: Partial<Record<AgentClientId, ReactNode>> = {
   kiro: <Kiro.Color />,
   amp: <Amp.Color />,
   dsh: <DeepSeek.Color />,
+  // WorkBuddy has no bundled brand mark; use the app's own icon (from its
+  // install dir, committed at 1024px)
+  workbuddy: <img src={workbuddyLogo} className="h-5 w-5 rounded" alt="" />,
 }
 
 /** Proper nouns — brand names, not translated. Ids = tokscale client ids. */
@@ -59,6 +63,7 @@ const AGENT_LABELS: Record<AgentClientId, string> = {
   copilot: 'GitHub Copilot',
   qwen: 'Qwen Code',
   trae: 'Trae',
+  workbuddy: 'WorkBuddy',
   cline: 'Cline',
   roocode: 'Roo Code',
   kilocode: 'Kilo Code',

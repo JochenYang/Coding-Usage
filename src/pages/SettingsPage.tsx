@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, ReactNode } from 'react'
 import { PageHeader } from '@/components/common/PageHeader'
 import { LocaleSwitcher } from '@/components/LocaleSwitcher'
@@ -24,6 +24,54 @@ export interface SettingsPageProps {
 // Injected by electron-vite's renderer `define` from package.json — always in
 // sync with the release version, no manual bumping.
 const APP_VERSION = __APP_VERSION__
+
+/** Live auto-update state, driven by the main process's status events */
+function useUpdateState(): {
+  update: DesktopUpdateState | null
+  updateText: string
+  setUpdate: (s: DesktopUpdateState) => void
+} {
+  const t = useT()
+  const [update, setUpdate] = useState<DesktopUpdateState | null>(null)
+
+  useEffect(() => {
+    const bridge = window.desktopBridge
+    if (!bridge) return
+    return bridge.onUpdateStatus(setUpdate)
+  }, [])
+
+  let updateText: string
+  if (!update) {
+    updateText = t.prefs.updates.hint
+  } else {
+    switch (update.status) {
+      case 'checking':
+        updateText = t.prefs.updates.checking
+        break
+      case 'not-available':
+        updateText = t.prefs.updates.upToDate
+        break
+      case 'available':
+        updateText = t.prefs.updates.available(update.version ?? '')
+        break
+      case 'downloading':
+        updateText = t.prefs.updates.downloading(update.percent ?? 0)
+        break
+      case 'downloaded':
+        updateText = t.prefs.updates.downloaded(update.version ?? '')
+        break
+      case 'error':
+        updateText = update.message === 'dev' ? t.prefs.updates.devMode : t.prefs.updates.error
+        break
+      default:
+        updateText = t.prefs.updates.hint
+    }
+    if (update.mirror && update.status !== 'error') {
+      updateText += ` · ${t.prefs.updates.via(update.mirror)}`
+    }
+  }
+  return { update, updateText, setUpdate }
+}
 
 // Storage key of the local time-series store; must stay in sync with the
 // private KEY constant in src/lib/snapshots.ts (snapshots.ts is not modified).
@@ -125,6 +173,7 @@ export function SettingsPage({ className }: SettingsPageProps) {
   const t = useT()
   const { theme, setTheme } = useTheme()
   const { settings, updateSettings } = useData()
+  const { update, updateText, setUpdate } = useUpdateState()
   const fileRef = useRef<HTMLInputElement>(null)
 
   // Auto-refresh options mirror TopBar's autoOptions; numeric values stay
@@ -335,7 +384,7 @@ export function SettingsPage({ className }: SettingsPageProps) {
         </div>
       </section>
 
-      {/* About */}
+      {/* About — version row followed by the update block */}
       <section className="space-y-5 rounded-2xl border border-border bg-card p-5">
         <h2 className="text-sm font-semibold">{t.prefs.about}</h2>
 
@@ -344,6 +393,33 @@ export function SettingsPage({ className }: SettingsPageProps) {
 
         <SettingRow label={t.prefs.version}>
           <span className="text-xs text-muted-foreground">{APP_VERSION}</span>
+        </SettingRow>
+
+        <SettingRow label={t.prefs.updates.title}>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">{updateText}</span>
+            {update?.status === 'downloaded' && (
+              <button
+                type="button"
+                onClick={() => void window.desktopBridge?.installUpdate()}
+                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-strong"
+              >
+                {t.prefs.updates.installNow}
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={update?.status === 'checking' || update?.status === 'downloading'}
+              onClick={() => {
+                const bridge = window.desktopBridge
+                if (!bridge) return
+                void bridge.checkForUpdates().then(setUpdate)
+              }}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+            >
+              {t.prefs.updates.check}
+            </button>
+          </div>
         </SettingRow>
       </section>
     </div>

@@ -15,6 +15,7 @@ const desktopBridge: DesktopBridge = {
   codexQuota: () => ipcRenderer.invoke('codex:quota'),
   claudeUsage: () => ipcRenderer.invoke('claude:usage'),
   geminiUsage: () => ipcRenderer.invoke('gemini:usage'),
+  grokUsage: () => ipcRenderer.invoke('grok:usage'),
   settingsBackupWrite: (payload) => ipcRenderer.invoke('settings:backup-write', payload),
   settingsBackupRead: () => ipcRenderer.invoke('settings:backup-read'),
   minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
@@ -33,6 +34,12 @@ const desktopBridge: DesktopBridge = {
     return () => ipcRenderer.removeListener('desktop:close-requested', listener)
   },
   installUpdate: () => ipcRenderer.invoke('app:install-update'),
+  checkForUpdates: () => ipcRenderer.invoke('app:check-updates'),
+  onUpdateStatus: (callback) => {
+    const listener = (_event: IpcRendererEvent, status: DesktopUpdateState) => callback(status)
+    ipcRenderer.on('desktop:update-status', listener)
+    return () => ipcRenderer.removeListener('desktop:update-status', listener)
+  },
   onUpdateDownloaded: (callback) => {
     const listener = (_event: IpcRendererEvent, version: string) => callback(version)
     ipcRenderer.on('desktop:update-downloaded', listener)
