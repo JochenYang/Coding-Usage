@@ -18,6 +18,24 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 ### English
 - (nothing yet)
 
+## [v0.1.3] - 2026-08-30
+
+### 中文
+- 显示币种换算升级为实时汇率：每日后台从公开汇率源刷新（166 种货币全表），落盘缓存，断网时自动回落静态参考表；成本分析与用量统计的金额随显示币种实时换算（实测 USD→CNY 静态值 7.16 已漂移至 6.75，误差约 6%）
+- 官方订阅额度新增 Grok 卡：读取本地 `grok login` 凭据（~/.grok/auth.json），经官方 billing 接口显示 SuperGrok 用量百分比与重置时间，套餐名（SuperGrok / SuperGrok Heavy）随卡片展示；凭据不出主进程，令牌过期会提示重新 `grok login`
+- 本地 Agent 用量新增 WorkBuddy（tokscale 直接读取 `~/.workbuddy` 会话，实测接入即出数据）；Trae 改为扫描前自动同步账号用量（`tokscale trae sync`，已认证即生效——国内版 Trae SOLO 的 API 当前不返回用量记录，国际版用户自动可用）
+- 系统设置新增「软件更新」区块：手动检查、发现新版本、下载进度、一键重启安装
+- 更新下载双通道：默认走 GitHub 直连，检测失败自动切换加速镜像重试（主要面向中国大陆网络），本次会话内记住选择
+- macOS / Linux 同步获得以上全部能力
+
+### English
+- Display-currency conversion now uses live FX rates: refreshed daily in the background from a public rates source (166 currencies), cached to disk, falling back to the static reference table offline; cost analysis and usage-stat figures convert in the selected currency (the stale static USD→CNY 7.16 had drifted ~6% from the live 6.75)
+- Subscription quota adds a Grok card: reads the local `grok login` credentials (~/.grok/auth.json), queries the official billing endpoint for SuperGrok usage percentage and reset time, with the plan name on the card; credentials never leave the main process and an expired token points to `grok login`
+- Local agent usage adds WorkBuddy (tokscale reads `~/.workbuddy` sessions directly — data appears on first scan); Trae now syncs account usage automatically before each scan (`tokscale trae sync`, effective once authenticated — the China Trae SOLO API currently returns no usage records, international editions work out of the box)
+- Settings gains a "Software updates" section: manual check, new-version discovery, download progress and one-click restart-and-install
+- Update downloads fail over: GitHub direct by default, automatically switching to a regional mirror when unreachable (mainland China networks); the choice sticks for the session
+- macOS / Linux builds ship with all of the above
+
 ## [v0.1.2] - 2026-08-29
 
 ### 中文
