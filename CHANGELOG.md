@@ -10,13 +10,19 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
-## [Unreleased]
+## [v0.2.0] - 2026-09-02
 
 ### 中文
-- （暂无）
+- 概览「服务商分布」卡片重构：改为展示本月实际用量占比并按成本分析页同源排布（按成本排序、降低折叠阈值展示更多真实服务商），中心标注改为「本月用量」并显示「数据截至 HH:MM」扫描时间戳，不再误标为「总额度」
+- 本地 Agent 扫描增加三层弹性：预置 LiteLLM 定价缓存（走加速镜像，中国大陆网络不再因超时降级）；整批扫描失败时自动降级为逐客户端扫描并合并健康客户端数据；被跳过的客户端在「本地 Agent 用量」卡片显示橙色提示
+- 修复服务商虚假归属：tokscale 对 Kimi Code 会话硬编码 provider 为 moonshot，即使实际使用第三方路由（DeepSeek / GLM / SenseNova 等）也被归到 Moonshot；现在按模型 id 的路由前缀重新归因（如 `opencode/deepseek-…` → OpenCode Go），未知前缀保留原文，并提供友好显示名映射表
+- 本地 Agent 扫描失败时保留上次成功数据并显示部分结果提示，而不是整卡清空
 
 ### English
-- (nothing yet)
+- Overview "Provider distribution" card reworked: shows the actual month usage share ordered like the cost-analysis page (sorted by cost, lower fold threshold to reveal more real providers), the center label now reads "This month usage" with an "As of HH:MM" scan timestamp instead of the misleading "Total quota"
+- Local-agent scan gained three resilience layers: pre-seeded LiteLLM pricing cache via the regional mirror (no more timeout degradation on mainland China networks); automatic per-client fallback that merges healthy clients when the combined scan dies; skipped clients are shown with an amber notice on the "Local agent usage" card
+- Fixed false provider attribution: tokscale hardcodes `moonshot` as the provider for every Kimi Code session even when a third-party router (DeepSeek / GLM / SenseNova …) actually served the traffic; provider is now re-attributed from the model id's router prefix (e.g. `opencode/deepseek-…` → OpenCode Go), unknown prefixes stay raw, plus a friendly display-name map
+- When the local-agent scan fails, last-known-good data is kept and a partial-result notice is shown instead of blanking the whole card
 
 ## [v0.1.3] - 2026-08-30
 
