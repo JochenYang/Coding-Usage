@@ -146,6 +146,16 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
         <div className="py-4 text-center text-xs text-subtle">{t.overview.localUsageEmpty}</div>
       ) : (
         <div>
+          {/* Degraded fallback: the per-client retry skipped some clients; say
+              so instead of silently showing a partial picture */}
+          {usage.skippedClients != null && usage.skippedClients.length > 0 && (
+            <div
+              className="mt-1 truncate text-[11px] text-warning"
+              title={usage.skippedClients.join(', ')}
+            >
+              {t.overview.localUsagePartial(usage.skippedClients.join(', '))}
+            </div>
+          )}
           {usage.clients
             .filter((client) => client.exists)
             .map((client) => (

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -18,6 +18,8 @@ import { autoUpdater } from 'electron-updater'
 import { fetchClaudeUsage, fetchGeminiUsage, type QuotaOutcome } from './subscription-quotas'
 import { fetchGrokUsage } from './grok-usage'
 import { getPricingTable, priceTokens } from './model-pricing'
+import { mergeGraphPayloads } from './tokscale-merge'
+import { reconcileProviderAttribution } from './provider-reconcile'
 
 // Tray icon: 16x16 solid indigo (#6366F1) RGBA PNG. Generated offline with a
 // small Node script (hand-built PNG chunks + zlib deflate) and inlined as base64
@@ -211,6 +213,8 @@ interface TokScanResult {
   /** Daily contributions from `tokscale graph` (per-day totals + client/model detail) */
   daily?: unknown
   error?: string
+  /** Client ids whose per-client scan failed in the degraded fallback path */
+  skippedClients?: string[]
 }
 
 let tokScanCache: { at: number; result: TokScanResult } | null = null
@@ -310,32 +314,179 @@ function runTokscale(args: string[]): Promise<unknown> {
   })
 }
 
+// ===== tokscale resilience helpers =====
+
+/**
+ * tokscale's pricing cache lives at `<config_dir>/cache/pricing-litellm.json`
+ * (older layouts fall back to `~/.cache/tokscale/` and `<cache_dir>/tokscale/`;
+ * the loader probes canonical first, then legacy). The file format is
+ * `{ "timestamp": <secs>, "data": { <model-prices map> } }` with a 1h TTL.
+ *
+ * raw.githubusercontent.com is often unreachable from mainland China — the
+ * "LiteLLM pricing failed (network error)" warning users see. tokscale merely
+ * degrades (costs fall back to our own override), but the failing network probe
+ * also delays every scan by retry timeouts. Pre-seeding the cache through the
+ * same gh-proxy mirror used for update feeds removes the probe entirely.
+ */
+const PRICING_CACHE_FILENAME = 'pricing-litellm.json'
+const PRICING_CACHE_TTL_SECS = 60 * 60
+const PRICING_URL = 'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json'
+const PRICING_MIRROR_URL = `https://gh-proxy.com/${PRICING_URL}`
+
+/** Cache dir candidates in tokscale's loader order (canonical first) */
+function pricingCacheCandidates(): string[] {
+  const home = homedir()
+  const dirs: string[] = []
+  // TOKSCALE_CONFIG_DIR redirects the whole config root; the canonical cache
+  // dir then sits under `<override>/cache` and legacy probing is disabled.
+  const override = process.env.TOKSCALE_CONFIG_DIR
+  if (override && override.trim()) {
+    dirs.push(join(override.trim(), 'cache'))
+    return dirs
+  }
+  // Canonical: <config_dir>/cache. Windows config root is %APPDATA%\tokscale;
+  // macOS/Linux unify on ~/.config/tokscale (paths.rs keeps platform default
+  // on Windows, unifies the rest).
+  if (process.platform === 'win32') {
+    const ap = process.env.APPDATA
+    if (ap) dirs.push(join(ap, 'tokscale', 'cache'))
+    const lap = process.env.LOCALAPPDATA
+    if (lap) dirs.push(join(lap, 'tokscale'))
+    dirs.push(join(home, '.cache', 'tokscale'))
+  } else {
+    dirs.push(join(home, '.config', 'tokscale', 'cache'), join(home, '.cache', 'tokscale'))
+  }
+  return dirs
+}
+
+async function readPricingCache(): Promise<{ timestamp: number; data: unknown } | null> {
+  for (const dir of pricingCacheCandidates()) {
+    try {
+      const parsed = JSON.parse(await readFile(join(dir, PRICING_CACHE_FILENAME), 'utf8')) as {
+        timestamp?: unknown
+        data?: unknown
+      }
+      if (typeof parsed.timestamp === 'number' && parsed.data != null) return parsed as { timestamp: number; data: unknown }
+    } catch {
+      // miss or corrupt — try the next location
+    }
+  }
+  return null
+}
+
+/** Best-effort fetch of the LiteLLM pricing catalog, direct then gh-proxy mirror */
+async function fetchLiteLlmPricing(): Promise<unknown | null> {
+  for (const url of [PRICING_URL, PRICING_MIRROR_URL]) {
+    try {
+      const res = await net.fetch(url, { signal: AbortSignal.timeout(15_000) })
+      if (!res.ok) continue
+      const data: unknown = await res.json()
+      if (data != null && typeof data === 'object') return data
+    } catch {
+      // try the next source
+    }
+  }
+  return null
+}
+
+/**
+ * Make tokscale's pricing probe a no-op before every full scan: rewrite the
+ * cache when it's missing or stale, through the same mirror the update feed
+ * uses. Never throws; a failed fetch leaves whatever cache exists in place.
+ */
+async function ensurePricingCache(): Promise<void> {
+  try {
+    const cached = await readPricingCache()
+    const nowSecs = Math.floor(Date.now() / 1000)
+    if (cached && nowSecs - cached.timestamp < PRICING_CACHE_TTL_SECS) return
+    const data = await fetchLiteLlmPricing()
+    if (data == null) return
+    const content = JSON.stringify({ timestamp: nowSecs, data })
+    const dir = pricingCacheCandidates()[0]
+    // Atomic-ish write: direct write is fine here (tokscale tolerates a
+    // corrupt cache by re-fetching), but temp+rename avoids half-written JSON.
+    await mkdir(dir, { recursive: true })
+    const tmp = join(dir, `.${PRICING_CACHE_FILENAME}.${process.pid}.tmp`)
+    await writeFile(tmp, content, 'utf8')
+    // rename() replaces atomically on POSIX; on Windows fs.rename overwrites
+    // the destination too (libuv uses MoveFileEx REPLACE_EXISTING).
+    await rename(tmp, join(dir, PRICING_CACHE_FILENAME))
+  } catch {
+    // best-effort: tokscale's own degrade path still applies
+  }
+}
+
 /**
  * Full scan: one `graph` invocation returns per-day contributions for every
  * configured client (token/cost/message totals + client/model detail), which
  * the renderer aggregates into today / month / all-time / daily series.
- * One silent retry: transient failures (AV scans, spawn hiccups) resolve on
- * the second attempt.
+ *
+ * Resilience (tokscale is an upstream binary we cannot patch):
+ * 1. The LiteLLM pricing probe is pre-seeded (gh-proxy mirror) so blocked
+ *    raw.githubusercontent.com never delays or degrades the run.
+ * 2. One silent retry covers transient failures (AV scans, spawn hiccups).
+ * 3. If the combined scan still dies — the known exit-101 panic class on
+ *    non-ASCII model/provider ids — retry per client and merge the healthy
+ *    ones, so one bad session set never blanks the whole local-usage view.
  */
 async function scanTokscaleUsage(): Promise<TokScanResult> {
-  const args = [
-    'graph',
-    '--client',
-    TOKSCALE_CLIENTS.join(','),
-    '--since',
-    '2020-01-01',
-  ]
+  await ensurePricingCache()
+  const baseArgs = ['graph', '--client', TOKSCALE_CLIENTS.join(','), '--since', '2020-01-01']
   // Trae usage lives behind an account sync (tokscale trae sync), not local
   // session files. Best-effort: silently skipped when unauthenticated, and a
   // no-op for variants whose API returns nothing.
   await runTokscale(['trae', 'sync', '--since', '30']).catch(() => {})
   let daily: unknown
   try {
-    daily = await runTokscale(args)
+    daily = await runTokscale(baseArgs)
   } catch {
-    daily = await runTokscale(args)
+    try {
+      daily = await runTokscale(baseArgs)
+    } catch {
+      daily = null
+    }
   }
-  return { daily: await overrideCosts(daily) }
+  if (daily != null) {
+    const costs = await overrideCosts(daily)
+    return { daily: reconcileProviderAttribution(costs) }
+  }
+
+  const merged = await scanPerClientWithFallback(baseArgs)
+  // Throw (not return `{error}`): the IPC handler surfaces failures without
+  // caching them, so a manual refresh always re-attempts the scan instead of
+  // replaying a stale error for the cache window.
+  if (merged == null) throw new Error('tokscale scan failed for every client')
+  const costs = await overrideCosts(merged.daily)
+  return { daily: reconcileProviderAttribution(costs), skippedClients: merged.skippedClients }
+}
+
+/**
+ * Run `graph --client <one>` per configured client, collecting the payloads
+ * that export cleanly. Clients whose scan panics (exit 101) are skipped and
+ * reported by id — the merged payload covers every healthy client. Returns
+ * null only when no client exported anything.
+ */
+async function scanPerClientWithFallback(
+  baseArgs: string[],
+): Promise<{ daily: unknown; skippedClients: string[] } | null> {
+  const payloads: unknown[] = []
+  const skippedClients: string[] = []
+  for (const client of TOKSCALE_CLIENTS) {
+    // Per-client runs are much lighter than the combined one: each exports
+    // only its own session dirs, so a bad file panics alone and never touches
+    // the other clients' data.
+    // baseArgs = ['graph', '--client', <combined list>, '--since', <date>];
+    // drop the first three entries (incl. the combined client list) so the
+    // single-client form stays a valid invocation.
+    const args = ['graph', '--client', client, ...baseArgs.slice(3)]
+    try {
+      payloads.push(await runTokscale(args))
+    } catch {
+      skippedClients.push(client)
+    }
+  }
+  if (payloads.length === 0) return null
+  return { daily: mergeGraphPayloads(payloads), skippedClients }
 }
 
 /**

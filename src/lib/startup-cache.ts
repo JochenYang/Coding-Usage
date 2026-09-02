@@ -77,7 +77,10 @@ export function loadCachedAgentUsage(): AgentUsageVM | null {
     const raw = localStorage.getItem(USAGE_KEY)
     if (!raw) return null
     const parsed: unknown = JSON.parse(raw)
-    return isValidUsageVM(parsed) ? parsed : null
+    if (!isValidUsageVM(parsed)) return null
+    // Normalize the newer field: caches written before the field existed
+    // deserialize without it (undefined), which is not the declared type.
+    return { ...parsed, skippedClients: Array.isArray(parsed.skippedClients) ? parsed.skippedClients : null }
   } catch {
     return null
   }

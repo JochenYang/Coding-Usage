@@ -12,6 +12,7 @@
  * Privacy: everything stays local. Only aggregated numbers cross this module —
  * never prompts, responses, or any message content.
  */
+import { displayProviderName } from './provider-labels'
 
 /**
  * Local agent clients tracked through the tokscale scan. Ids must be valid
@@ -86,6 +87,8 @@ export interface AgentUsageVM {
   monthCostByModel: CostSliceVM[]
   /** per-day total tokens (oldest first) — powers the trend chart */
   dailySeries: { label: string; value: number; input: number; output: number }[]
+  /** Client ids whose scan failed in the degraded per-client fallback; null when clean */
+  skippedClients: string[] | null
   scannedAt: number | null
   error: string | null
   loading?: boolean
@@ -181,6 +184,18 @@ function toSlice(list: [string, SliceAgg][]): CostSliceVM[] {
   return list.map(([label, v]) => ({ label, tokens: v.tokens, input: v.input, output: v.output, cacheRead: v.cacheRead, costUsd: v.costUsd }))
 }
 
+/** Provider slices render the friendly router name (raw id when unmapped) */
+function toProviderSlice(list: [string, SliceAgg][]): CostSliceVM[] {
+  return list.map(([id, v]) => ({
+    label: displayProviderName(id),
+    tokens: v.tokens,
+    input: v.input,
+    output: v.output,
+    cacheRead: v.cacheRead,
+    costUsd: v.costUsd,
+  }))
+}
+
 function sortedByTokens(list: [string, SliceAgg][]): CostSliceVM[] {
   return toSlice(list).sort((a, b) => b.tokens - a.tokens)
 }
@@ -189,7 +204,11 @@ function sortedByCost(list: [string, SliceAgg][]): CostSliceVM[] {
   return toSlice(list).sort((a, b) => b.costUsd - a.costUsd)
 }
 
-function emptyVM(error: string | null): AgentUsageVM {
+function sortedByProviderCost(list: [string, SliceAgg][]): CostSliceVM[] {
+  return toProviderSlice(list).sort((a, b) => b.costUsd - a.costUsd)
+}
+
+function emptyVM(error: string | null, skippedClients: string[] | null = null): AgentUsageVM {
   return {
     clients: AGENT_CLIENTS.map((c) => ({
       client: c,
@@ -206,6 +225,7 @@ function emptyVM(error: string | null): AgentUsageVM {
     monthCostByProvider: [],
     monthCostByModel: [],
     dailySeries: [],
+    skippedClients,
     scannedAt: null,
     error,
   }
@@ -230,8 +250,11 @@ function addPeriod(a: AgentPeriodVM, b: AgentPeriodVM): AgentPeriodVM {
  */
 export function summarizeScan(raw: unknown): AgentUsageVM {
   if (!raw || typeof raw !== 'object') return emptyVM(null)
-  const root = raw as { daily?: unknown; error?: string }
-  if (typeof root.error === 'string' && root.error) return emptyVM(root.error)
+  const root = raw as { daily?: unknown; error?: string; skippedClients?: unknown }
+  const skippedClients = Array.isArray(root.skippedClients)
+    ? root.skippedClients.filter((c): c is string => typeof c === 'string')
+    : null
+  if (typeof root.error === 'string' && root.error) return emptyVM(root.error, skippedClients)
 
   const daily = (root.daily ?? {}) as { contributions?: unknown }
   const contribs: GraphContribution[] = (Array.isArray(daily.contributions) ? daily.contributions : [])
@@ -240,7 +263,7 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
     )
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
 
-  if (contribs.length === 0) return emptyVM('no data')
+  if (contribs.length === 0) return emptyVM('no data', skippedClients)
 
   // Buckets anchor to the REAL local date, not "the last row": a dataset that
   // ends yesterday (no usage today yet) must show 0 for today, not relabel
@@ -360,9 +383,10 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
     monthTotal,
     allTimeTotal,
     todayByModel: sortedByTokens([...todayByModel.entries()]),
-    monthCostByProvider: sortedByCost([...monthByProvider.entries()]),
+    monthCostByProvider: sortedByProviderCost([...monthByProvider.entries()]),
     monthCostByModel: sortedByCost([...monthByModel.entries()]),
     dailySeries,
+    skippedClients,
     scannedAt: Date.now(),
     error: null,
   }
