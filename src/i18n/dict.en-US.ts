@@ -210,6 +210,7 @@ export const enUS: Dict = {
     shownAgents: (n: number) => `Showing ${n} accounts`,
     distTitle: 'Provider distribution',
     distTotal: 'Total quota',
+    distMonthUsage: 'This month usage',
     distOther: 'Others',
     distUnavailable: 'No token totals available (some providers only report percentages)',
     alertsTitle: 'Recent alerts',
@@ -234,6 +235,8 @@ export const enUS: Dict = {
     localUsageTitle: 'Local agent usage',
     localUsageEmpty:
       'Desktop mode scans local AI coding-tool sessions for usage automatically (currently Codex, Kimi Code, OpenCode and DSH — more tools coming), no data yet.',
+    localUsagePartial: (names: string) =>
+      `Some clients failed to scan and were skipped: ${names} (likely non-ASCII characters in a local provider name)`,
     asOfPrefix: 'As of',
     todayCol: 'Today',
     monthCol: 'Month',

@@ -22,9 +22,11 @@ import { PlanCardsRow } from '@/components/overview/PlanCardsRow'
  * Distribution legend shows the top slices plus one folded "other" bucket:
  * enough to read the spend structure at a glance, few enough that every arc
  * clears the donut's rounded-cap inset (~6% share minimum draws visibly).
+ * The threshold is lower than the inset so the donut still shows a couple of
+ * small-but-real providers, mirroring the cost analysis page's provider list.
  */
 const MAX_DIST_SLICES = 6
-const MIN_SLICE_SHARE = 0.06
+const MIN_SLICE_SHARE = 0.03
 
 /**
  * Overview page: KPI row + trend (top), agents table + distribution (middle),
@@ -72,11 +74,11 @@ export function OverviewPage({
   const dist = useMemo(() => {
     // Provider distribution prefers real measured spend (local agents, by
     // provider); the API-quota share is the fallback when no local data
-    // exists. Long tails fold into "other" so the card renders fully
-    // without scrolling (per the agreed design: chart on top, high-share
-    // providers + other below).
+    // exists. Providers are ordered by cost so the donut legend reads like the
+    // cost analysis page (which sorts the same list by cost). Long tails fold
+    // into "other" so the card renders fully without scrolling.
     if (agentUsage.monthCostByProvider.length > 0) {
-      const sorted = [...agentUsage.monthCostByProvider].sort((a, b) => b.tokens - a.tokens)
+      const sorted = [...agentUsage.monthCostByProvider].sort((a, b) => b.costUsd - a.costUsd)
       const monthTotal = agentUsage.monthTotal.tokens || 1
       const slices: { label: string; value: number; color: string }[] = []
       let rest = 0
@@ -98,9 +100,9 @@ export function OverviewPage({
       }
       // Same muted tone lib/overview's threshold fold uses
       if (rest > 0) slices.push({ label: t.overview.distOther, value: rest, color: '#4B4B63' })
-      return { slices, total: agentUsage.monthTotal.tokens }
+      return { slices, total: agentUsage.monthTotal.tokens, asOf: agentUsage.scannedAt }
     }
-    return buildDistribution(sections, results, t.overview.distOther)
+    return { ...buildDistribution(sections, results, t.overview.distOther), asOf: null }
   }, [agentUsage, sections, results, t])
   // Trend prefers the graph-derived daily series; daily archive is the fallback
   const trend = useMemo(() => {
@@ -154,7 +156,13 @@ export function OverviewPage({
         </div>
         {/* Stretch to the table's height so the two columns read as one band */}
         <div className="w-full shrink-0 xl:w-[360px]">
-          <DistributionCard slices={dist.slices} total={dist.total} className="h-full" />
+          <DistributionCard
+            slices={dist.slices}
+            total={dist.total}
+            centerLabel={dist.asOf != null ? t.overview.distMonthUsage : t.overview.distTotal}
+            asOf={dist.asOf}
+            className="h-full"
+          />
         </div>
       </div>
 

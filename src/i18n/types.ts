@@ -209,6 +209,7 @@ export interface Dict {
     shownAgents: (n: number) => string
     distTitle: string
     distTotal: string
+    distMonthUsage: string
     distOther: string
     distUnavailable: string
     alertsTitle: string
@@ -232,6 +233,7 @@ export interface Dict {
     emptyDesc: string
     localUsageTitle: string
     localUsageEmpty: string
+    localUsagePartial: (names: string) => string
     asOfPrefix: string
     todayCol: string
     monthCol: string

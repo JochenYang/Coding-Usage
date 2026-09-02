@@ -207,6 +207,7 @@ export const zhCN: Dict = {
     shownAgents: (n: number) => `显示 ${n} 个账号`,
     distTitle: '服务商分布',
     distTotal: '总额度',
+    distMonthUsage: '本月用量',
     distOther: '其他',
     distUnavailable: '暂无 token 总量数据（部分服务商仅提供百分比，无法计入份额）',
     alertsTitle: '近期告警',
@@ -231,6 +232,8 @@ export const zhCN: Dict = {
     localUsageTitle: '本地 Agent 用量',
     localUsageEmpty:
       '桌面模式下会自动扫描本机 AI 编程工具的会话用量（当前支持 Codex、Kimi Code、OpenCode、DSH，后续支持更多工具），暂未检测到数据。',
+    localUsagePartial: (names: string) =>
+      `部分客户端扫描失败，已跳过：${names}（可能因本地服务商名称含非 ASCII 字符）`,
     asOfPrefix: '数据截至',
     todayCol: '今日',
     monthCol: '本月',
