@@ -47,6 +47,7 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   droid: 'Droid',
   amp: 'Amp',
   dsh: 'DSH',
+  zcode: 'ZCode',
 }
 
 /** Display label for a tokscale provider id (raw id when unmapped) */

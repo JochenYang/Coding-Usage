@@ -206,6 +206,7 @@ const TOKSCALE_CLIENTS = [
   'amp',
   'grok',
   'dsh',
+  'zcode',
 ]
 const TOKSCALE_CACHE_MS = 5 * 60_000
 
@@ -272,6 +273,25 @@ function resolveTokscaleBin(): string | null {
   }
 }
 
+/**
+ * Distill tokscale stderr for the UI error line. Spinner frames pollute the
+ * capture with ANSI escapes and CR overwrites (text after \r replaces the
+ * line prefix), and when the process panics the "panicked at …" line is the
+ * only part that identifies the failure — surface it first, then a bounded
+ * slice of the cleaned log for context.
+ */
+function summarizeTokscaleStderr(err: string): string {
+  const clean = err
+    // eslint-disable-next-line no-control-regex
+    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+    .split('\n')
+    .map((l) => l.slice(l.lastIndexOf('\r') + 1))
+    .join('\n')
+  const panic = clean.split('\n').find((l) => l.includes('panicked at'))
+  const body = panic ? `${panic.trim()} | ${clean.trim()}` : clean.trim()
+  return body.slice(0, 1200)
+}
+
 /** Run one tokscale invocation (args after the binary); resolves with parsed JSON */
 function runTokscale(args: string[]): Promise<unknown> {
   return new Promise((resolve, reject) => {
@@ -299,7 +319,7 @@ function runTokscale(args: string[]): Promise<unknown> {
         } catch {
           // fall through to the rejection
         }
-        return reject(new Error(`tokscale exited ${code}: ${err.slice(0, 1200)}`))
+        return reject(new Error(`tokscale exited ${code}: ${summarizeTokscaleStderr(err)}`))
       }
       try {
         resolve(JSON.parse(out))
@@ -431,7 +451,11 @@ async function ensurePricingCache(): Promise<void> {
  */
 async function scanTokscaleUsage(): Promise<TokScanResult> {
   await ensurePricingCache()
-  const baseArgs = ['graph', '--client', TOKSCALE_CLIENTS.join(','), '--since', '2020-01-01']
+  // --no-spinner: the interactive progress renderer is both the source of
+  // ANSI/CR garbage in captured stderr and the prime suspect for the
+  // intermittent exit-101 panics on CJK provider ids (unicode-width string
+  // slicing). JSON output is unaffected.
+  const baseArgs = ['graph', '--client', TOKSCALE_CLIENTS.join(','), '--since', '2020-01-01', '--no-spinner']
   // Trae usage lives behind an account sync (tokscale trae sync), not local
   // session files. Best-effort: silently skipped when unauthenticated, and a
   // no-op for variants whose API returns nothing.

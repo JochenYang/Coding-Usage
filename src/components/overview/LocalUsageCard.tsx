@@ -16,6 +16,7 @@ import {
 import type { AgentClientId, AgentPeriodVM, AgentUsageVM } from '@/lib/agent-usage'
 import { formatCompactValue } from '@/lib/format'
 import workbuddyLogo from '@/components/logos/workbuddy.png'
+import zcodeLogo from '@/components/logos/zcode.png'
 import { useT } from '@/i18n/useT'
 import { useTheme } from '@/components/ThemeProvider'
 import { useData } from '@/lib/data-context'
@@ -50,6 +51,8 @@ const AGENT_ICONS: Partial<Record<AgentClientId, ReactNode>> = {
   // WorkBuddy has no bundled brand mark; use the app's own icon (from its
   // install dir, committed at 1024px)
   workbuddy: <img src={workbuddyLogo} className="h-5 w-5 rounded" alt="" />,
+  // Same story for ZCode: lobehub carries no mark, bundle the install-dir icon
+  zcode: <img src={zcodeLogo} className="h-5 w-5 rounded" alt="" />,
 }
 
 /** Proper nouns — brand names, not translated. Ids = tokscale client ids. */
@@ -75,6 +78,7 @@ const AGENT_LABELS: Record<AgentClientId, string> = {
   amp: 'Amp',
   grok: 'Grok Build',
   dsh: 'DSH',
+  zcode: 'ZCode',
 }
 
 interface PeriodColumnProps {

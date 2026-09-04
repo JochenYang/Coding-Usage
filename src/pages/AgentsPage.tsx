@@ -5,7 +5,7 @@ import { LocalUsageCard } from '@/components/overview/LocalUsageCard'
 
 /**
  * Agent management page (desktop-only capability): local AI coding agents
- * discovered on this machine (Codex / Kimi Code / OpenCode / DSH), with their
+ * discovered on this machine (Codex / Kimi Code / OpenCode / ZCode / DSH), with their
  * real token consumption read from session logs via tokscale. API-key accounts
  * live on the Accounts and Plans pages — not here.
  */
