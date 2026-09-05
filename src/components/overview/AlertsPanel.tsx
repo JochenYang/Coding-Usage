@@ -1,7 +1,7 @@
 import { CircleAlert, Info, Lock } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { AlertItem, AlertKind, AlertLevel } from '@/lib/alerts'
-import { currencySymbol, formatAmount, formatCompactValue } from '@/lib/format'
+import { alertDetail, alertTitle } from '@/lib/alert-text'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
 import { useT } from '@/i18n/useT'
 
@@ -31,28 +31,8 @@ const KIND_ICON: Record<AlertKind, typeof Info> = {
 function AlertRow({ alert, now }: { alert: AlertItem; now: number }) {
   const t = useT()
 
-  // Title always renders; kind-specific params are optional so guard each
-  const title =
-    alert.kind === 'window-reset'
-      ? t.overview.alertWindowReset(alert.agentName)
-      : alert.kind === 'high-usage'
-        ? t.overview.alertHighUsage(alert.agentName, alert.pct ?? 0)
-        : t.overview.alertLowBalance(alert.agentName)
-
-  // Detail is omitted when its numeric payload is missing
-  let detail: string | null = null
-  if (alert.kind === 'window-reset' && alert.resetInMin != null) {
-    detail = t.overview.alertResetSoon(alert.resetInMin)
-  } else if (alert.kind === 'high-usage' && alert.used != null && alert.total != null) {
-    detail = t.overview.alertUsedDetail(
-      formatCompactValue(alert.used),
-      formatCompactValue(alert.total),
-    )
-  } else if (alert.kind === 'low-balance' && alert.balance != null && alert.currency != null) {
-    detail = t.overview.alertBalanceDetail(
-      `${currencySymbol(alert.currency)}${formatAmount(alert.balance)}`,
-    )
-  }
+  const title = alertTitle(alert, t)
+  const detail = alertDetail(alert, t)
 
   return (
     <li className="flex items-center gap-3 py-3">

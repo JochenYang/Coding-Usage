@@ -90,6 +90,27 @@ export interface ProviderConfig {
   displayCurrencies?: string[]
 }
 
+/** Outbound alert-push channels. Every channel's credential (URL / token /
+ *  key) is safeStorage-encrypted into v3 exactly like provider API keys. */
+export type PushChannelId = 'wecom' | 'feishu' | 'telegram' | 'weixin'
+
+export interface IntegrationsSettings {
+  /** Master switch for pushing newly-raised alerts to every configured channel */
+  alertPush: boolean
+  /** WeCom group-robot webhook URL; empty = not configured */
+  wecomWebhook: string
+  /** Feishu / Lark group-robot webhook URL (open.feishu.cn or open.larksuite.com) */
+  feishuWebhook: string
+  /** Telegram bot token from @BotFather */
+  telegramBotToken: string
+  /** Telegram chat id the bot is allowed to post to (not a secret — no encryption) */
+  telegramChatId: string
+  /** WeChat iLink bot token (from the in-app QR login flow) */
+  weixinBotToken: string
+  /** WeChat iLink user id to push to (not a secret — no encryption) */
+  weixinBotUserId: string
+}
+
 /** Settings: each provider supports multiple accounts (array) */
 export interface Settings {
   providers: Record<string, ProviderConfig[]>
@@ -98,6 +119,9 @@ export interface Settings {
   displayCurrency: string
   /** Token accounting口径: 'all' counts cache reads, 'no-cache' only input+output */
   usageDisplayMode: 'all' | 'no-cache'
+  /** Pop alert islands as a system-level overlay above every app (desktop only) */
+  desktopIsland: boolean
+  integrations: IntegrationsSettings
 }
 
 export interface ProviderResult {

@@ -15,7 +15,7 @@ import { useT } from '@/i18n/useT'
 import { useData } from '@/lib/data-context'
 import { KNOWN_CURRENCIES } from '@/lib/rates'
 import { clearSnapshots, getSnapshots, type AccountSnapshot } from '@/lib/snapshots'
-import type { ProviderConfig } from '@/types'
+import type { IntegrationsSettings, ProviderConfig } from '@/types'
 
 export interface SettingsPageProps {
   className?: string
@@ -101,6 +101,7 @@ function migrateSettings(
   providers: Record<string, ProviderConfig[]>
   autoRefreshMin: number | null
   displayCurrency: string | null
+  integrations: IntegrationsSettings | null
 } | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const obj = raw as Record<string, unknown>
@@ -116,10 +117,24 @@ function migrateSettings(
       providers[id] = []
     }
   }
+  const rawIntg = obj.integrations as Partial<IntegrationsSettings> | undefined
+  const integrations: IntegrationsSettings | null =
+    rawIntg && typeof rawIntg === 'object' && typeof rawIntg.wecomWebhook === 'string'
+      ? {
+          alertPush: rawIntg.alertPush === true,
+          wecomWebhook: rawIntg.wecomWebhook,
+          feishuWebhook: typeof rawIntg.feishuWebhook === 'string' ? rawIntg.feishuWebhook : '',
+          telegramBotToken: typeof rawIntg.telegramBotToken === 'string' ? rawIntg.telegramBotToken : '',
+          telegramChatId: typeof rawIntg.telegramChatId === 'string' ? rawIntg.telegramChatId : '',
+          weixinBotToken: typeof rawIntg.weixinBotToken === 'string' ? rawIntg.weixinBotToken : '',
+          weixinBotUserId: typeof rawIntg.weixinBotUserId === 'string' ? rawIntg.weixinBotUserId : '',
+        }
+      : null
   return {
     providers,
     autoRefreshMin: typeof obj.autoRefreshMin === 'number' ? obj.autoRefreshMin : null,
     displayCurrency: typeof obj.displayCurrency === 'string' ? obj.displayCurrency : null,
+    integrations,
   }
 }
 
@@ -238,6 +253,8 @@ export function SettingsPage({ className }: SettingsPageProps) {
       autoRefreshMin: migrated.autoRefreshMin ?? settings.autoRefreshMin,
       displayCurrency: migrated.displayCurrency ?? settings.displayCurrency,
       usageDisplayMode: settings.usageDisplayMode,
+      desktopIsland: settings.desktopIsland,
+      integrations: migrated.integrations ?? settings.integrations,
     })
     mergeSnapshots(wrapper.snapshots)
   }

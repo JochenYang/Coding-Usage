@@ -156,7 +156,6 @@ export interface Dict {
     trends: string
     alerts: string
     integrations: string
-    team: string
     settings: string
     groupManage: string
     groupAnalytics: string
@@ -175,8 +174,59 @@ export interface Dict {
     settingsTitle: string
     settingsHint: string
     quickPrefs: string
-    comingSoonTitle: string
-    comingSoonDesc: string
+  }
+  island: {
+    dismiss: string
+    more: (n: number) => string
+    desktopToggle: string
+    desktopHint: string
+  }
+  integrations: {
+    pageDesc: string
+    pushCardTitle: string
+    pushCardDesc: string
+    enablePush: string
+    save: string
+    testPush: string
+    testing: string
+    testOk: string
+    testFailed: (detail: string) => string
+    needCredential: string
+    pushTitle: string
+    testMessage: string
+    desktopOnlyTitle: string
+    desktopOnlyDesc: string
+    chanWecom: string
+    chanWecomHint: string
+    chanFeishu: string
+    chanFeishuHint: string
+    chanTelegram: string
+    chanTelegramHint: string
+    chanWeixin: string
+    chanWeixinHint: string
+    wxLoginBtn: string
+    wxLoginAgain: string
+    wxLoginTitle: string
+    wxLoginScan: string
+    wxLoginScanned: string
+    wxLoginExpired: string
+    wxLoginFailed: (d: string) => string
+    wxActivateTitle: string
+    wxActivateWait: string
+    wxActivateDone: string
+    wxActivateError: string
+    wxConnected: (t: string) => string
+    wxDisconnect: string
+    wxDisconnectConfirm: string
+    fWebhookUrl: string
+    fBotToken: string
+    fChatId: string
+    fSendKey: string
+    phWecom: string
+    phFeishu: string
+    phBotToken: string
+    phChatId: string
+    phSendKey: string
   }
   overview: {
     kpiTotalQuota: string

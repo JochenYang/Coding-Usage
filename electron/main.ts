@@ -20,6 +20,14 @@ import { fetchGrokUsage } from './grok-usage'
 import { getPricingTable, priceTokens } from './model-pricing'
 import { mergeGraphPayloads } from './tokscale-merge'
 import { reconcileProviderAttribution } from './provider-reconcile'
+import {
+  buildChannelRequest,
+  channelErrorDetail,
+  isChannelSuccess,
+  type PushChannel,
+} from './webhook-channels'
+import { ilinkBeginLogin, ilinkPollActivation, ilinkPollLogin } from './weixin-ilink'
+import { initIslandWindow, islandHide, islandSetClickThrough, islandShow } from './island-window'
 
 // Tray icon: 16x16 solid indigo (#6366F1) RGBA PNG. Generated offline with a
 // small Node script (hand-built PNG chunks + zlib deflate) and inlined as base64
@@ -581,6 +589,114 @@ function registerIpc(): void {
     },
   )
 
+  // Alert-push webhook send. The renderer supplies only the channel id, its
+  // credential pieces and the message text; the payload shape and the
+  // per-platform success semantics live in webhook-channels.ts, so the
+  // renderer stays a narrow client of known integrations rather than an open
+  // POST proxy.
+  ipcMain.handle(
+    'webhook:send',
+    async (
+      _event,
+      channel: unknown,
+      cred: unknown,
+      title: unknown,
+      text: unknown,
+    ): Promise<WebhookSendResult> => {
+      if (
+        !['wecom', 'feishu', 'telegram', 'weixin'].includes(channel as string) ||
+        !cred ||
+        typeof cred !== 'object' ||
+        typeof title !== 'string' ||
+        !title ||
+        typeof text !== 'string' ||
+        !text
+      ) {
+        return { ok: false, status: 0, error: 'invalid-request' }
+      }
+      const c = cred as Record<string, unknown>
+      const request = buildChannelRequest(
+        channel as PushChannel,
+        {
+          url: typeof c.url === 'string' ? c.url : undefined,
+          token: typeof c.token === 'string' ? c.token : undefined,
+          chatId: typeof c.chatId === 'string' ? c.chatId : undefined,
+          userId: typeof c.userId === 'string' ? c.userId : undefined,
+        },
+        title,
+        text,
+      )
+      if (!request) return { ok: false, status: 0, error: 'invalid-credential' }
+      try {
+        const res = await net.fetch(request.url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(request.headers ?? {}) },
+          body: request.body,
+          signal: AbortSignal.timeout(10_000),
+        })
+        let json: unknown = null
+        try {
+          json = JSON.parse(await res.text())
+        } catch {
+          // Non-JSON error page (gateway etc.) — the HTTP status carries it
+        }
+        return {
+          ok: isChannelSuccess(channel as PushChannel, res.ok, json),
+          status: res.status,
+          ...(res.ok ? {} : { error: channelErrorDetail(channel as PushChannel, res.status, json) }),
+        }
+      } catch (e) {
+        return { ok: false, status: 0, error: String(e instanceof Error ? e.message : e) }
+      }
+    },
+  )
+
+  // WeChat iLink bot login/activation flow (desktop-only interactive setup).
+  // Only the QR image, status and the resulting token/user id cross the
+  // boundary; the QR image is re-encoded as a data: URL so the renderer CSP
+  // never opens a third-party img-src origin.
+  ipcMain.handle('ilink:begin', async (): Promise<IlinkBeginResult> => {
+    try {
+      const session = await ilinkBeginLogin(net.fetch)
+      return { dataUrl: session.dataUrl, qrCode: session.qrCode, expiresAt: session.expiresAt }
+    } catch (e) {
+      return { error: String(e instanceof Error ? e.message : e) }
+    }
+  })
+
+  ipcMain.handle('ilink:poll', async (_event, qrCode: unknown): Promise<IlinkPollResult> => {
+    if (typeof qrCode !== 'string' || !qrCode) return { status: 'error', message: 'invalid-request' }
+    try {
+      return await ilinkPollLogin(net.fetch, qrCode)
+    } catch (e) {
+      return { status: 'error', message: String(e instanceof Error ? e.message : e) }
+    }
+  })
+
+  ipcMain.handle('ilink:activate', async (_event, token: unknown): Promise<IlinkActivateResult> => {
+    if (typeof token !== 'string' || !token) return { error: 'invalid-request' }
+    try {
+      return await ilinkPollActivation(net.fetch, token)
+    } catch (e) {
+      return { error: String(e instanceof Error ? e.message : e) }
+    }
+  })
+
+  // System-level dynamic island: the main renderer relays fresh alert
+  // batches; the overlay surface (its own tiny window) hides itself and
+  // asks us to focus the main window when its body is clicked.
+  ipcMain.handle('island:show', (_event, alerts: unknown): void => {
+    if (Array.isArray(alerts)) islandShow(alerts)
+  })
+  ipcMain.handle('island:hide', (): void => islandHide())
+  ipcMain.handle('island:clickthrough', (_event, clickThrough: unknown): void => {
+    islandSetClickThrough(clickThrough === true)
+  })
+  ipcMain.handle('island:open-main', (): void => {
+    showMainWindow()
+    mainWindow?.webContents.send('island:open-alerts')
+  })
+
   // safeStorage wrappers. Returning null (instead of throwing) lets the
   // renderer fall back to plaintext storage on systems without a keyring.
   ipcMain.handle('safe:encrypt', (_event, plain: unknown): string | null => {
@@ -835,6 +951,7 @@ if (!gotSingleInstanceLock) {
     createWindow()
     createTray()
     setupAutoUpdater()
+    initIslandWindow(!app.isPackaged && process.env.ELECTRON_RENDERER_URL ? process.env.ELECTRON_RENDERER_URL : null)
   })
 
   // Keep running in the tray when every window is hidden/closed; real quits go

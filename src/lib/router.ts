@@ -16,7 +16,6 @@ export const VIEWS = [
   'trends',
   'alerts',
   'integrations',
-  'team',
   'settings',
 ] as const
 

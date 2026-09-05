@@ -90,6 +90,11 @@ export function deriveAlerts(sections: Section[], results: Record<string, Provid
       const agentName = card.cfg.label || `${sec.def.name} ${card.index + 1}`
       for (const m of result.metrics) {
         if (m.kind === 'percent' && m.percent != null) {
+          // Stale-value guard: a reset point in the past means the window
+          // semantics are dead (e.g. a dead subscription still reporting an
+          // old 100%) — the percentage is no longer actionable, so the
+          // window-reset family of alerts must not survive on it.
+          const staleWindow = m.resetsAt != null && m.resetsAt <= Date.now()
           if (m.resetsAt != null) {
             const mins = Math.round((m.resetsAt - Date.now()) / 60_000)
             if (mins > 0 && m.resetsAt - Date.now() <= RESET_SOON_MS && m.percent < 100) {
@@ -106,7 +111,7 @@ export function deriveAlerts(sections: Section[], results: Record<string, Provid
               })
             }
           }
-          if (m.percent >= HIGH_USAGE_PCT) {
+          if (m.percent >= HIGH_USAGE_PCT && !staleWindow) {
             const id = `${card.key}:high-usage:${m.id}`
             live.set(id, {
               id,

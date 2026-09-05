@@ -67,7 +67,6 @@ export function Sidebar({ view, onNavigate }: { view: View; onNavigate: (v: View
       label: t.nav.groupSettings,
       items: [
         { view: 'integrations', icon: Share2, label: t.nav.integrations },
-        { view: 'team', icon: Users, label: t.nav.team },
         { view: 'settings', icon: Settings, label: t.nav.settings },
       ],
     },
@@ -80,12 +79,12 @@ export function Sidebar({ view, onNavigate }: { view: View; onNavigate: (v: View
   })()
 
   return (
-    <aside className="flex h-full w-[232px] shrink-0 flex-col border-r border-border bg-background">
-      <div className="flex items-center gap-2.5 px-5 pb-4 pt-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent-soft">
+    <aside className="flex h-full w-[64px] shrink-0 flex-col border-r border-border bg-background md:w-[232px]">
+      <div className="flex items-center gap-2.5 px-[14px] pb-4 pt-5 md:px-5">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft">
           <BarChart3 className="h-5 w-5 text-accent" />
         </div>
-        <div className="min-w-0 leading-tight">
+        <div className="hidden min-w-0 leading-tight md:block">
           <div className="truncate text-[15px] font-bold tracking-tight text-foreground">
             Coding Usage
           </div>
@@ -93,11 +92,13 @@ export function Sidebar({ view, onNavigate }: { view: View; onNavigate: (v: View
         </div>
       </div>
 
-      <nav className="flex-1 space-y-4 overflow-y-auto px-3 pb-4">
+      <nav className="flex-1 space-y-4 overflow-y-auto px-2 pb-4 md:px-3">
         {groups.map((group, gi) => (
           <div key={gi}>
             {group.label && (
-              <div className="px-2.5 pb-1.5 text-[11px] font-medium text-subtle">{group.label}</div>
+              <div className="hidden px-2.5 pb-1.5 text-[11px] font-medium text-subtle md:block">
+                {group.label}
+              </div>
             )}
             <div className="space-y-0.5">
               {group.items.map((item) => {
@@ -109,15 +110,16 @@ export function Sidebar({ view, onNavigate }: { view: View; onNavigate: (v: View
                     type="button"
                     onClick={() => onNavigate(item.view)}
                     aria-current={active ? 'page' : undefined}
+                    title={item.label}
                     className={cn(
-                      'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors',
+                      'flex w-full items-center justify-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors md:justify-start',
                       active
                         ? 'bg-accent font-medium text-white'
                         : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                     )}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{item.label}</span>
+                    <span className="hidden truncate md:block">{item.label}</span>
                   </button>
                 )
               })}
@@ -126,7 +128,7 @@ export function Sidebar({ view, onNavigate }: { view: View; onNavigate: (v: View
         ))}
       </nav>
 
-      <div className="p-3">
+      <div className="hidden p-3 md:block">
         <div className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-2.5">
           <span className="relative flex h-2 w-2 shrink-0">
             <span className="absolute inline-flex h-full w-full rounded-full bg-online opacity-60" />

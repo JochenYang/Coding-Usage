@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Bell, CircleAlert, Info, Lock } from 'lucide-react'
+import { Switch } from '@/components/beui/switch'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import {
@@ -11,10 +12,9 @@ import {
 } from '@/components/beui/select'
 import { cn } from '@/lib/cn'
 import { useT } from '@/i18n/useT'
-import type { Dict } from '@/i18n/types'
 import { useData } from '@/lib/data-context'
 import type { AlertItem, AlertLevel } from '@/lib/alerts'
-import { currencySymbol, formatAmount, formatCompactValue } from '@/lib/format'
+import { alertDetail, alertTitle } from '@/lib/alert-text'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
 
 export interface AlertsPageProps {
@@ -28,30 +28,6 @@ const LEVEL_CHIP: Record<AlertLevel, string> = {
   danger: 'bg-danger/10 text-danger',
   warning: 'bg-warning/10 text-warning',
   info: 'bg-accent-soft text-accent',
-}
-
-/** Title text per alert kind; same mapping as AlertsPanel */
-function alertTitle(alert: AlertItem, t: Dict): string {
-  if (alert.kind === 'window-reset') return t.overview.alertWindowReset(alert.agentName)
-  if (alert.kind === 'high-usage') return t.overview.alertHighUsage(alert.agentName, alert.pct ?? 0)
-  return t.overview.alertLowBalance(alert.agentName)
-}
-
-/** Kind-specific detail line; omitted when the numeric payload is missing */
-function alertDetail(alert: AlertItem, t: Dict): string | null {
-  if (alert.kind === 'window-reset' && alert.resetInMin != null) {
-    return t.overview.alertResetSoon(alert.resetInMin)
-  }
-  if (alert.kind === 'high-usage' && alert.used != null && alert.total != null) {
-    return t.overview.alertUsedDetail(
-      formatCompactValue(alert.used),
-      formatCompactValue(alert.total),
-    )
-  }
-  if (alert.kind === 'low-balance' && alert.balance != null && alert.currency != null) {
-    return t.overview.alertBalanceDetail(`${currencySymbol(alert.currency)}${formatAmount(alert.balance)}`)
-  }
-  return null
 }
 
 interface AlertRowProps {
@@ -115,7 +91,7 @@ function AlertRow({ alert, now, onRead }: AlertRowProps) {
 /** Alerts center: filterable full list of alerts plus a static rules reference */
 export function AlertsPage({ className }: AlertsPageProps) {
   const t = useT()
-  const { alerts, markAllAlertsRead, markAlertRead } = useData()
+  const { alerts, markAllAlertsRead, markAlertRead, settings, updateSettings } = useData()
   const [filter, setFilter] = useState<AlertFilter>('all')
   const now = useNowTick()
 
@@ -164,7 +140,22 @@ export function AlertsPage({ className }: AlertsPageProps) {
       )}
 
       <section className="rounded-2xl border border-border bg-card p-5">
-        <h2 className="text-sm font-semibold">{t.manage.rulesTitle}</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold">{t.manage.rulesTitle}</h2>
+          <div className="flex shrink-0 items-center gap-3">
+            {/* Desktop island overlay toggle: only meaningful inside Electron */}
+            {window.desktopBridge && (
+              <label className="flex items-center gap-2" title={t.island.desktopHint}>
+                <span className="text-[11px] text-muted-foreground">{t.island.desktopToggle}</span>
+                <Switch
+                  checked={settings.desktopIsland}
+                  ariaLabel={t.island.desktopToggle}
+                  onCheckedChange={(on) => updateSettings({ ...settings, desktopIsland: on })}
+                />
+              </label>
+            )}
+          </div>
+        </div>
         <ul className="mt-3 space-y-2">
           <li className="flex items-center gap-2">
             <Bell className="h-3.5 w-3.5 shrink-0 text-subtle" />

@@ -18,6 +18,7 @@ import {
   isSameEntry,
   loadSettings,
   persistSettings,
+  SECRET_INTEGRATION_FIELDS,
   KEY_V3,
 } from './storage'
 import { fetchUsage } from './query'
@@ -39,6 +40,8 @@ import {
   unreadCount,
 } from './alerts'
 import { normalizeOpenErRates, type FxRates } from './rates'
+import { filterNewAlerts, pushAlerts } from './alert-push'
+import { useT } from '../i18n/useT'
 
 const FX_CACHE_KEY = 'coding-usage.fx.v1'
 const FX_TTL_MS = 24 * 60 * 60_000
@@ -275,8 +278,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
         // Only flip to plaintext when every key decrypted; on partial failure the
         // ciphertext entries stay and keep failing visibly instead of vanishing.
+        let integrations = settings.integrations
+        for (const field of SECRET_INTEGRATION_FIELDS) {
+          const encVal = settings.integrations[field]
+          if (!encVal.startsWith(ENC_PREFIX)) continue
+          let plainVal: string | null = null
+          try {
+            plainVal = await bridge.decrypt(encVal)
+          } catch {
+            plainVal = null
+          }
+          if (!plainVal) {
+            allOk = false
+            console.warn(`[data] failed to decrypt integration field "${field}"; keeping ciphertext`)
+          } else {
+            integrations = { ...integrations, [field]: plainVal }
+          }
+        }
         if (allOk) {
-          updateSettings({ ...settings, providers })
+          updateSettings({ ...settings, providers, integrations })
         }
         // Exactly one startup fetch cycle, driven from here with the best keys
         // available: the mount refresh would have raced the decryption above
@@ -543,6 +563,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setAlerts(derivedAlerts)
     saveAlerts(derivedAlerts)
   }, [derivedAlerts])
+
+  // Webhook push: alerts whose ids were not in the previous render's set are
+  // genuinely new (the startup baseline is the persisted store, so replayed
+  // history never re-pushes). alert-push adds a per-channel cooldown on top,
+  // so a flapping metric cannot spam the groups. Skipped while credentials
+  // are still ciphertext (hydration pending) — the push fires on the next
+  // refresh cycle once the plaintext lands.
+  const t = useT()
+  const prevAlertIdsRef = useRef<ReadonlySet<string>>(new Set(alerts.map((a) => a.id)))
+  useEffect(() => {
+    const prev = prevAlertIdsRef.current
+    prevAlertIdsRef.current = new Set(alerts.map((a) => a.id))
+    if (!settings.integrations.alertPush) return
+    const fresh = filterNewAlerts(alerts, prev)
+    if (fresh.length === 0) return
+    void pushAlerts(settings.integrations, fresh, t)
+  }, [alerts, settings, t])
 
   const configuredCount = sections.reduce((s, sec) => s + sec.cards.length, 0)
   const okCount = sections.reduce(

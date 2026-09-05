@@ -3,6 +3,8 @@
  * The bridge is injected by the preload script only when running inside
  * Electron; the plain browser dev path must work without it (hence optional).
  */
+import type { AlertItem } from './lib/alerts'
+
 export {}
 
 declare global {
@@ -24,10 +26,76 @@ declare global {
     body: string
   }
 
+  /** Result of one webhook push attempt (`webhook:send` IPC) */
+  interface WebhookSendResult {
+    ok: boolean
+    /** HTTP status; 0 means the request never completed */
+    status: number
+    /** Logical failure detail (e.g. a platform errcode) */
+    error?: string
+  }
+
+  /** Alert-push channel ids accepted by `webhook:send` */
+  type WebhookChannel = 'wecom' | 'feishu' | 'telegram' | 'weixin'
+
+  /** Credential pieces for a webhook send; only the channel-relevant fields are used */
+  interface WebhookCredential {
+    /** wecom / feishu full webhook URL */
+    url?: string
+    /** telegram bot token / weixin iLink bot token */
+    token?: string
+    /** telegram chat id */
+    chatId?: string
+    /** weixin ilink_user_id push target */
+    userId?: string
+  }
+
+  /** `ilink:begin` — fresh WeChat login QR (data: URL image) */
+  interface IlinkBeginResult {
+    dataUrl?: string
+    qrCode?: string
+    expiresAt?: number
+    error?: string
+  }
+
+  /** `ilink:poll` — WeChat login QR scan status */
+  interface IlinkPollResult {
+    status: 'pending' | 'scanned' | 'success' | 'expired' | 'error'
+    botToken?: string
+    botId?: string
+    message?: string
+  }
+
+  /** `ilink:activate` — one WeChat bot activation check */
+  interface IlinkActivateResult {
+    userId?: string
+    error?: string
+  }
+
   /** Shape exposed as `window.desktopBridge` by `electron/preload.ts` */
   interface DesktopBridge {
     /** Main-process fetch (not subject to CORS); status 0 means the request failed entirely */
     fetch(url: string, headers: Record<string, string>): Promise<DesktopFetchResult>
+    /** POST a markdown message to a WeCom group-robot webhook; the payload shape is owned by main */
+    webhookSend(channel: WebhookChannel, cred: WebhookCredential, title: string, text: string): Promise<WebhookSendResult>
+    /** WeChat iLink bot: fetch a fresh login QR (image as data: URL) */
+    ilinkBegin(): Promise<IlinkBeginResult>
+    /** WeChat iLink bot: poll the login QR status; success returns the bot token */
+    ilinkPoll(qrCode: string): Promise<IlinkPollResult>
+    /** WeChat iLink bot: one activation check; userId appears after the user messages the bot */
+    ilinkActivate(token: string): Promise<IlinkActivateResult>
+    /** Relay a fresh alert batch to the system-level island overlay (desktop only) */
+    islandShow(alerts: unknown[]): Promise<void>
+    /** Hide the system-level island overlay */
+    islandHide(): Promise<void>
+    /** Toggle click-through on the overlay (off while the pointer hovers it) */
+    islandClickThrough(clickThrough: boolean): Promise<void>
+    /** Focus the main window and open the alerts page (overlay body click) */
+    islandOpenMain(): Promise<void>
+    /** Overlay surface: subscribe to relayed alert batches */
+    onIslandAlert(callback: (alerts: AlertItem[]) => void): () => void
+    /** Main window: fired when the overlay body is clicked */
+    onOpenAlerts(callback: () => void): () => void
     /** Encrypt via safeStorage; returns an `enc:v3:<base64>` blob, or null when encryption is unavailable */
     encrypt(plain: string): Promise<string | null>
     /** Decrypt an `enc:v3:` blob produced by {@link DesktopBridge.encrypt}; null on failure */

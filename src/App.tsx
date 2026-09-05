@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { DataProvider, useData } from './lib/data-context'
 import { useView } from './lib/router'
 import { AppShell } from './components/layout/AppShell'
@@ -13,13 +13,18 @@ import { UsageStatsPage } from './pages/UsageStatsPage'
 import { CostAnalysisPage } from './pages/CostAnalysisPage'
 import { TrendsPage } from './pages/TrendsPage'
 import { IntegrationsPage } from './pages/IntegrationsPage'
-import { TeamPage } from './pages/TeamPage'
 import { AccountDrawer } from './components/account/AccountDrawer'
 import { getProvider } from './providers/registry'
 import { getProviderEntries } from './lib/storage'
+import { IslandSurface, useIslandMode } from './components/layout/IslandSurface'
 import type { ProviderConfig } from './types'
 
 export default function App() {
+  // The dedicated island overlay window loads this same bundle with a bare
+  // #/island hash: render ONLY the surface there — no DataProvider, so the
+  // overlay never runs a second instance of the refresh/scan side effects.
+  const islandMode = useIslandMode()
+  if (islandMode) return <IslandSurface />
   return (
     <DataProvider>
       <Shell />
@@ -45,6 +50,13 @@ function Shell() {
     deleteEntry,
   } = useData()
   const [editor, setEditor] = useState<EditorTarget | null>(null)
+
+  // The overlay body click relays here: focus main + open the alerts page
+  useEffect(() => {
+    const bridge = window.desktopBridge
+    if (!bridge) return
+    return bridge.onOpenAlerts(() => navigate('alerts'))
+  }, [navigate])
 
   const openEditor = (pid: string, idx: number) => {
     beginSettingsEdit()
@@ -100,7 +112,6 @@ function Shell() {
       {view === 'cost-analysis' && <CostAnalysisPage />}
       {view === 'trends' && <TrendsPage />}
       {view === 'integrations' && <IntegrationsPage />}
-      {view === 'team' && <TeamPage />}
 
       {editor && editorDef && (
         <AccountDrawer

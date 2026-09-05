@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcRendererEvent } from 'electron'
+import type { AlertItem } from '../src/lib/alerts'
 
 /**
  * Secure bridge between the renderer and the main process. Channel names and
@@ -8,6 +9,25 @@ import type { IpcRendererEvent } from 'electron'
  */
 const desktopBridge: DesktopBridge = {
   fetch: (url, headers) => ipcRenderer.invoke('net:fetch', url, headers),
+  webhookSend: (channel, cred, title, text) =>
+    ipcRenderer.invoke('webhook:send', channel, cred, title, text),
+  ilinkBegin: () => ipcRenderer.invoke('ilink:begin'),
+  ilinkPoll: (qrCode) => ipcRenderer.invoke('ilink:poll', qrCode),
+  ilinkActivate: (token) => ipcRenderer.invoke('ilink:activate', token),
+  islandShow: (alerts) => ipcRenderer.invoke('island:show', alerts),
+  islandHide: () => ipcRenderer.invoke('island:hide'),
+  islandClickThrough: (clickThrough) => ipcRenderer.invoke('island:clickthrough', clickThrough),
+  islandOpenMain: () => ipcRenderer.invoke('island:open-main'),
+  onIslandAlert: (callback) => {
+    const listener = (_event: IpcRendererEvent, alerts: AlertItem[]) => callback(alerts)
+    ipcRenderer.on('island:alert', listener)
+    return () => ipcRenderer.removeListener('island:alert', listener)
+  },
+  onOpenAlerts: (callback) => {
+    const listener = () => callback()
+    ipcRenderer.on('island:open-alerts', listener)
+    return () => ipcRenderer.removeListener('island:open-alerts', listener)
+  },
   encrypt: (plain) => ipcRenderer.invoke('safe:encrypt', plain),
   decrypt: (blob) => ipcRenderer.invoke('safe:decrypt', blob),
   setLoginItem: (open) => ipcRenderer.invoke('app:set-login-item', open),

@@ -82,24 +82,23 @@ const AGENT_LABELS: Record<AgentClientId, string> = {
 }
 
 interface PeriodColumnProps {
-  label: string
   period: AgentPeriodVM
   exists: boolean
   /** Accounting mode: 'all' counts cache reads, 'no-cache' input+output only */
   mode: 'all' | 'no-cache'
 }
 
-/** One right-aligned stat column: label + token count */
-function PeriodColumn({ label, period, exists, mode }: PeriodColumnProps) {
+/** One right-aligned stat value; the column headers live on the list header row */
+function PeriodColumn({ period, exists, mode }: PeriodColumnProps) {
   return (
-    <div className="text-right">
-      <div className="text-[11px] text-subtle">{label}</div>
-      <div className="text-sm font-medium tabular-nums text-foreground">
-        {exists ? formatCompactValue(displayTokens(period, mode)) : '—'}
-      </div>
+    <div className="text-right text-sm font-medium tabular-nums text-foreground">
+      {exists ? formatCompactValue(displayTokens(period, mode)) : '—'}
     </div>
   )
 }
+
+/** Fixed period-column widths keep the header row aligned with every data row */
+const PERIOD_GRID = 'grid w-[220px] shrink-0 grid-cols-3 gap-2'
 
 /**
  * Local agent usage (tokscale) card: per-client today / month / all-time token
@@ -160,12 +159,24 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
               {t.overview.localUsagePartial(usage.skippedClients.join(', '))}
             </div>
           )}
+          {/* Single column header: replaces the per-row label repetition and
+              keeps the three period columns readable as a table. The first
+              data row's border-t separates it from the header. */}
+          <div className="flex items-center gap-3 pb-1">
+            <span className="w-8 shrink-0" aria-hidden />
+            <span className="min-w-0 flex-1" aria-hidden />
+            <div className={PERIOD_GRID}>
+              <span className="text-right text-[11px] text-subtle">{t.overview.todayCol}</span>
+              <span className="text-right text-[11px] text-subtle">{t.overview.monthCol}</span>
+              <span className="text-right text-[11px] text-subtle">{t.overview.allTimeCol}</span>
+            </div>
+          </div>
           {usage.clients
             .filter((client) => client.exists)
             .map((client) => (
             <div
               key={client.client}
-              className="flex items-center gap-3 border-t border-border/60 py-2.5 first:border-t-0"
+              className="flex items-center gap-3 border-t border-border/60 py-2.5"
             >
               <span
                 className={cn(
@@ -187,15 +198,14 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
                     : ''}
                 </span>
               </span>
-              <div className="grid min-w-[220px] grid-cols-3 gap-2">
+              <div className={PERIOD_GRID}>
                 {[
-                  { label: t.overview.todayCol, period: client.today },
-                  { label: t.overview.monthCol, period: client.month },
-                  { label: t.overview.allTimeCol, period: client.allTime },
-                ].map((col) => (
+                  { period: client.today },
+                  { period: client.month },
+                  { period: client.allTime },
+                ].map((col, ci) => (
                   <PeriodColumn
-                    key={col.label}
-                    label={col.label}
+                    key={ci}
                     period={col.period}
                     exists={client.exists}
                     mode={mode}
@@ -218,10 +228,10 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
                   {t.overview.colInput} {formatCompactValue(usage.other.all.input)} · {t.overview.colOutput} {formatCompactValue(usage.other.all.output)} · {t.overview.colCache} {formatCompactValue(usage.other.all.cacheRead)}
                 </span>
               </span>
-              <div className="grid min-w-[220px] grid-cols-3 gap-2">
-                <PeriodColumn label={t.overview.todayCol} period={usage.other.today} exists mode={mode} />
-                <PeriodColumn label={t.overview.monthCol} period={usage.other.month} exists mode={mode} />
-                <PeriodColumn label={t.overview.allTimeCol} period={usage.other.all} exists mode={mode} />
+              <div className={PERIOD_GRID}>
+                <PeriodColumn period={usage.other.today} exists mode={mode} />
+                <PeriodColumn period={usage.other.month} exists mode={mode} />
+                <PeriodColumn period={usage.other.all} exists mode={mode} />
               </div>
             </div>
           )}
