@@ -10,6 +10,24 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.3.0] - 2026-09-05
+
+### 中文
+- 告警推送集成管理上线：支持企业微信群机器人、微信 iLink 机器人（应用内扫码登录，走微信官方接口）、飞书 / Lark 与 Telegram 四个通道；Webhook 地址与令牌像 API Key 一样加密存储，同一告警每通道 4 小时内只推一次，通道间独立失败互不影响
+- 灵动岛告警提醒：应用内顶部弹出 iOS 风格灵动岛（快弹慢收、从胶囊绽放、多告警合并显示「还有 N 条」）；桌面端新增「桌面灵动岛」开关，开启后新告警直接弹出在屏幕顶部正中（所有应用之上），点击直达告警中心
+- 本地 Agent 用量新增 ZCode：直读 `~/.zcode/cli/db/db.sqlite`（与 ZCode 内置用量统计同源），随扫描管线、命名与图标完整接入
+- 告警引擎修复：额度窗口重置时间已过的高用量告警自动失效，不再连续多日悬挂（如失效订阅持续上报的 100% 旧值）
+- tokscale 扫描加固：所有扫描统一禁用 spinner（消除 stderr 乱码与中文渠道名下的间歇性崩溃），错误信息优先显示 panic 行便于定位
+- 移除团队管理占位页；修复纯浏览器构建（dev:web / build:web）缺少版本常量导致的白屏
+
+### English
+- Alert-push integrations: four channels — WeCom group robot, WeChat iLink bot (in-app QR login over WeChat's official API), Feishu / Lark and Telegram; webhook URLs and tokens are encrypted at rest like API keys, the same alert is pushed at most once every 4 hours per channel, and channels fail independently
+- Dynamic-island alert surface: an iOS-style island pops inside the app (fast bouncy expand, damped collapse, bloom-from-pill entrance, merged "+N" counts); a "Desktop island" toggle makes new alerts pop centered at the top of the screen above every app, clicking through to the alerts page
+- Local agent usage adds ZCode: reads `~/.zcode/cli/db/db.sqlite` directly (the same source as ZCode's built-in stats), wired through the scan pipeline, labels and icon
+- Alert engine fix: high-usage alerts whose window reset time already passed go stale instead of lingering for days (e.g. a dead subscription still reporting an old 100%)
+- tokscale hardening: every scan disables the spinner (removes stderr garbling and intermittent panics around CJK channel names) and error messages surface the panic line first
+- Removed the team management placeholder page; fixed the blank-screen crash in browser builds (dev:web / build:web) caused by a missing version constant
+
 ## [v0.2.0] - 2026-09-02
 
 ### 中文
