@@ -10,13 +10,17 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
-## [Unreleased]
+## [v0.4.2] - 2026-09-08
 
 ### 中文
 - 告警行与概览「需要注意」行移除悬停高亮（点击仅标记已读，不该有可点的视觉暗示）；微信区块新增「验证连接」按钮，区分令牌失效与载荷被拒
+- 修复告警规则卡吸底：有告警列表时规则卡不再贴上去，空/非空两种状态均保持 48px 底边距
+- 已解决（条件消失）的告警保留 48 小时历史后自动清除，不再瞬间消失
 
 ### English
-- Drop hover highlight on alert rows and overview attention rows (clicking only marks read — no fake affordance); WeChat block gains a "Verify connection" button separating token death from payload rejection
+- Drop hover highlight on alert rows and overview attention rows (clicking only marks read); WeChat block gains a "Verify connection" button separating token death from payload rejection
+- Fix the rules-card pinning: with a populated alert list the card no longer floats up; 48px bottom gap holds in both empty and non-empty states
+- Resolved alerts stay visible for 48 hours before auto-clearing instead of vanishing instantly
 
 ## [v0.4.1] - 2026-09-08
 
