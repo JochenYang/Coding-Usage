@@ -19,6 +19,56 @@ const PUSH_COOLDOWN_MS = 4 * 60 * 60_000
 /** Bound the persisted map: channels × alert ids resolve out constantly */
 const MAX_PUSHED_ENTRIES = 500
 
+/** Ring buffer of recent push attempts so silent auto-push failures stay inspectable */
+const PUSH_LOG_KEY = 'coding-usage.alertPush.log.v1'
+const MAX_PUSH_LOG_ENTRIES = 30
+
+export interface PushLogEntry {
+  at: number
+  channel: WebhookChannel
+  ok: boolean
+  error?: string
+}
+
+/** Newest-first push attempt history (empty when nothing was ever attempted) */
+export function loadPushLog(): PushLogEntry[] {
+  try {
+    const raw = localStorage.getItem(PUSH_LOG_KEY)
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (e): e is PushLogEntry =>
+        e != null &&
+        typeof e === 'object' &&
+        typeof (e as PushLogEntry).at === 'number' &&
+        typeof (e as PushLogEntry).channel === 'string' &&
+        typeof (e as PushLogEntry).ok === 'boolean',
+    )
+  } catch {
+    return []
+  }
+}
+
+/** Drop the whole push-attempt history (diagnostics only — new attempts reappear) */
+export function clearPushLog(): void {
+  try {
+    localStorage.removeItem(PUSH_LOG_KEY)
+  } catch {
+    // ignore
+  }
+}
+/** Record one push attempt (manual test or auto push); failures stay visible on the integrations page */
+export function logPushAttempt(channel: WebhookChannel, ok: boolean, error?: string): void {
+  try {
+    const log = loadPushLog()
+    log.push({ at: Date.now(), channel, ok, ...(ok ? {} : { error: error ?? '' }) })
+    localStorage.setItem(PUSH_LOG_KEY, JSON.stringify(log.slice(-MAX_PUSH_LOG_ENTRIES)))
+  } catch {
+    // best-effort
+  }
+}
+
 /** Channels usable right now (credential present and not still ciphertext) */
 export interface UsableChannel {
   channel: WebhookChannel
@@ -90,17 +140,25 @@ function buildBodyLines(items: AlertItem[], t: Dict): string[] {
   })
 }
 
+/** Per-channel outcome of one push batch (error present exactly when ok is false) */
+export interface PushOutcome {
+  ok: boolean
+  error?: string
+}
+
 /**
  * Push a batch of new alerts through every configured channel. Each channel
  * fails independently (one broken webhook must not block the others); its
  * pushed ids are recorded only on success, so a failed send is retried on
  * the next refresh cycle (subject to the cooldown once it eventually lands).
+ * Every attempt is appended to the push log so background failures are
+ * inspectable on the integrations page instead of silent.
  */
 export async function pushAlerts(
   intg: IntegrationsSettings,
   items: AlertItem[],
   t: Dict,
-): Promise<Record<string, boolean>> {
+): Promise<Record<string, PushOutcome>> {
   const bridge = window.desktopBridge
   const channels = configuredChannels(intg)
   if (!bridge || items.length === 0 || channels.length === 0) return {}
@@ -109,7 +167,7 @@ export async function pushAlerts(
   const body = buildBodyLines(items, t).join('\n')
   const pushed = loadPushed()
   const now = Date.now()
-  const results: Record<string, boolean> = {}
+  const results: Record<string, PushOutcome> = {}
 
   await Promise.all(
     channels.map(async ({ channel, cred }) => {
@@ -117,7 +175,8 @@ export async function pushAlerts(
       const fresh = items.filter((a) => now - (pushed[`${channel}:${a.id}`] ?? 0) > PUSH_COOLDOWN_MS)
       if (fresh.length === 0) return
       const res = await bridge.webhookSend(channel, cred, title, body)
-      results[channel] = res.ok
+      results[channel] = res.ok ? { ok: true } : { ok: false, error: res.error ?? `HTTP ${res.status}` }
+      logPushAttempt(channel, res.ok, res.ok ? undefined : (res.error ?? `HTTP ${res.status}`))
       if (res.ok) {
         for (const a of fresh) pushed[`${channel}:${a.id}`] = now
       }

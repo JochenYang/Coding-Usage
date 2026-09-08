@@ -565,18 +565,31 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [derivedAlerts])
 
   // Webhook push: alerts whose ids were not in the previous render's set are
-  // genuinely new (the startup baseline is the persisted store, so replayed
-  // history never re-pushes). alert-push adds a per-channel cooldown on top,
-  // so a flapping metric cannot spam the groups. Skipped while credentials
-  // are still ciphertext (hydration pending) — the push fires on the next
-  // refresh cycle once the plaintext lands.
+  // genuinely new. Additionally, once per mount, unread alerts that already
+  // existed at startup get one delivery opportunity — otherwise a condition
+  // that stays true across restarts (e.g. a lingering high-usage alert)
+  // would never push while the app is open. The per-channel cooldown inside
+  // pushAlerts still applies, so this cannot spam on every launch. Skipped
+  // while credentials are still ciphertext (hydration pending) — the push
+  // fires on the next refresh cycle once the plaintext lands.
   const t = useT()
   const prevAlertIdsRef = useRef<ReadonlySet<string>>(new Set(alerts.map((a) => a.id)))
+  const backfillDoneRef = useRef(false)
   useEffect(() => {
     const prev = prevAlertIdsRef.current
     prevAlertIdsRef.current = new Set(alerts.map((a) => a.id))
     if (!settings.integrations.alertPush) return
     const fresh = filterNewAlerts(alerts, prev)
+    if (!backfillDoneRef.current) {
+      backfillDoneRef.current = true
+      const seen = new Set(fresh.map((a) => a.id))
+      for (const a of alerts) {
+        if (!a.read && !seen.has(a.id)) {
+          fresh.push(a)
+          seen.add(a.id)
+        }
+      }
+    }
     if (fresh.length === 0) return
     void pushAlerts(settings.integrations, fresh, t)
   }, [alerts, settings, t])

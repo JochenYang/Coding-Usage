@@ -151,12 +151,16 @@ export function isChannelSuccess(channel: PushChannel, httpOk: boolean, json: un
       // Mirror ZCode's requestWeixinJson semantics: the platform does not
       // reliably echo ret/errcode 0 on sendmessage (verified live — HTTP 200
       // with a delivered message carries neither field), so absence means
-      // success; only an EXPLICIT nonzero code fails. Check the root and a
-      // possible data envelope.
-      const explicitFail = (o: Record<string, unknown>): boolean =>
-        (typeof o.ret === 'number' && o.ret !== 0) || (typeof o.errcode === 'number' && o.errcode !== 0)
-      const inner = typeof obj.data === 'object' && obj.data !== null ? (obj.data as Record<string, unknown>) : null
-      return !explicitFail(obj) && (inner === null || !explicitFail(inner))
+      // success; only an EXPLICIT nonzero code fails. Check the root and the
+      // known envelope layers. Codes may arrive as numbers or numeric strings
+      // (a string "0" still means success).
+      const explicitFail = (o: Record<string, unknown>): boolean => {
+        for (const inner of [o, envelope(o.data), envelope(o.result)]) {
+          if (inner !== null && nonzeroCode(inner)) return true
+        }
+        return false
+      }
+      return !explicitFail(obj)
     }
   }
 }
@@ -165,13 +169,23 @@ export function isChannelSuccess(channel: PushChannel, httpOk: boolean, json: un
 export function channelErrorDetail(channel: PushChannel, status: number, json: unknown): string {
   if (json != null && typeof json === 'object') {
     const obj = json as Record<string, unknown>
-    for (const k of ['errmsg', 'msg', 'description', 'message']) {
-      const v = obj[k]
-      if (typeof v === 'string' && v) return `${channel}-${obj.errcode ?? obj.code ?? obj.ret ?? status}: ${v}`
+    // Scan the root plus the known envelope layers so a platform message
+    // nested under data/result is still surfaced instead of a bare status.
+    for (const layer of [obj, envelope(obj.data), envelope(obj.result)]) {
+      if (layer === null) continue
+      const text = messageText(layer)
+      if (text) {
+        const code = layer.errcode ?? layer.errCode ?? layer.code ?? layer.ret ?? status
+        return `${channel}-${code}: ${text}`
+      }
     }
-    if (obj.errcode != null) return `${channel}-${obj.errcode}`
-    if (obj.code != null) return `${channel}-${obj.code}`
-    if (obj.ret != null) return `${channel}-${retLabel(obj.ret)}`
+    for (const layer of [obj, envelope(obj.data), envelope(obj.result)]) {
+      if (layer === null) continue
+      if (layer.errcode != null) return `${channel}-${layer.errcode}`
+      if (layer.errCode != null) return `${channel}-${layer.errCode}`
+      if (layer.code != null) return `${channel}-${layer.code}`
+      if (layer.ret != null) return `${channel}-${retLabel(layer.ret)}`
+    }
   }
   return `HTTP ${status}`
 }
@@ -179,4 +193,29 @@ export function channelErrorDetail(channel: PushChannel, status: number, json: u
 /** weixin ret codes carry no message; make the detail less cryptic than a bare number */
 function retLabel(ret: unknown): string {
   return typeof ret === 'number' ? `ret${ret}` : String(ret)
+}
+
+/** Plain-object view of a possible response envelope layer (data / result) */
+function envelope(v: unknown): Record<string, unknown> | null {
+  return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null
+}
+
+/** True when the layer carries an explicit nonzero platform code (number or numeric string) */
+function nonzeroCode(o: Record<string, unknown>): boolean {
+  for (const k of ['ret', 'errcode', 'errCode', 'code']) {
+    const v = o[k]
+    if (typeof v === 'number' && Number.isFinite(v) && v !== 0) return true
+    if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) && Number(v) !== 0) return true
+  }
+  return false
+}
+
+/** First human-readable message under any common key spelling (case-insensitive) */
+function messageText(o: Record<string, unknown>): string | null {
+  for (const [k, v] of Object.entries(o)) {
+    if (typeof v === 'string' && v && /^(err_?msg|msg|message|description|desc|detail|reason|error)$/i.test(k)) {
+      return v
+    }
+  }
+  return null
 }

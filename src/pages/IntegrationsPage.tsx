@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { MessageCircle, MessageSquare, MessagesSquare, Send, Share2 } from 'lucide-react'
+import { ChevronDown, MessageCircle, MessageSquare, MessagesSquare, Send, Share2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
@@ -8,6 +8,7 @@ import { cn } from '@/lib/cn'
 import { useT } from '@/i18n/useT'
 import { useData } from '@/lib/data-context'
 import { ENC_PREFIX } from '@/lib/storage'
+import { loadPushLog, logPushAttempt, clearPushLog, type PushLogEntry } from '@/lib/alert-push'
 import type { Dict } from '@/i18n/types'
 import type { IntegrationsSettings } from '@/types'
 
@@ -125,6 +126,10 @@ function WeixinChannelBlock({ onTest }: { onTest: (cred: WebhookCredential) => P
   const [qrCode, setQrCode] = useState('')
   const [note, setNote] = useState('')
   const [test, setTest] = useState<TestState>('idle')
+  // Raw failure detail of the last test send (for the copy button); the
+  // visible note is the localized sentence wrapping this detail.
+  const [testDetail, setTestDetail] = useState('')
+  const [copied, setCopied] = useState(false)
 
   // Resume an interrupted activation: the token persisted (QR step done) but
   // the bot was never messaged — or the page reloaded mid-wizard. Skipping
@@ -227,9 +232,22 @@ function WeixinChannelBlock({ onTest }: { onTest: (cred: WebhookCredential) => P
   const runTest = async () => {
     const cred = { token: intg.weixinBotToken, userId: intg.weixinBotUserId }
     setTest('sending')
+    setCopied(false)
     const res = await onTest(cred)
+    const detail = res.ok ? '' : (res.error ?? `HTTP ${res.status}`)
     setTest(res.ok ? 'ok' : 'fail')
-    setNote(res.ok ? '' : t.integrations.testFailed(res.error ?? `HTTP ${res.status}`))
+    setTestDetail(detail)
+    setNote(res.ok ? '' : t.integrations.testFailed(detail))
+    logPushAttempt('weixin', res.ok, res.ok ? undefined : detail)
+  }
+
+  const copyDetail = () => {
+    if (!testDetail) return
+    try {
+      void navigator.clipboard?.writeText(testDetail)?.then(() => setCopied(true))
+    } catch {
+      // clipboard unavailable — the detail stays visible for manual copying
+    }
   }
 
   return (
@@ -296,11 +314,105 @@ function WeixinChannelBlock({ onTest }: { onTest: (cred: WebhookCredential) => P
           <p className="mt-1 leading-relaxed">{t.integrations.wxActivateWait}</p>
         </div>
       )}
-      {note && <p className="mt-1.5 text-[11px] text-danger">{note}</p>}
+      {note && (
+        <p className="mt-1.5 text-[11px] text-danger">
+          {note}
+          {test === 'fail' && testDetail && (
+            <button
+              type="button"
+              onClick={copyDetail}
+              className="ml-2 rounded border border-border px-1.5 py-px text-[10px] text-muted-foreground hover:bg-muted"
+            >
+              {copied ? t.integrations.copied : t.integrations.copyError}
+            </button>
+          )}
+        </p>
+      )}
+      {test === 'fail' && <p className="mt-1 text-[11px] text-subtle">{t.integrations.wxReloginHint}</p>}
     </div>
   )
 }
 
+/**
+ * Recent push attempts (manual tests + background auto pushes), newest first.
+ * Read straight from the persisted log on every render so entries written by
+ * a just-finished test send appear immediately; auto pushes surface on the
+ * next render. Without this list a background failure is completely silent.
+ */
+function PushHistoryBlock() {
+  const t = useT()
+  const [collapsed, setCollapsed] = useState(false)
+  // Bump to re-render after clearing (the log itself lives in localStorage;
+  // fresh test sends re-render the page through their own state anyway)
+  const [, setTick] = useState(0)
+  const log = loadPushLog().slice(-5).reverse()
+  if (log.length === 0) return null
+  const channelName = (c: PushLogEntry['channel']): string => {
+    switch (c) {
+      case 'wecom':
+        return t.integrations.chanWecom
+      case 'feishu':
+        return t.integrations.chanFeishu
+      case 'telegram':
+        return t.integrations.chanTelegram
+      case 'weixin':
+        return t.integrations.chanWeixin
+    }
+  }
+  const stamp = (at: number): string => {
+    const d = new Date(at)
+    const p = (n: number): string => `${n}`.padStart(2, '0')
+    return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+  }
+  return (
+    <div className="mt-4 border-t border-border/60 pt-3">
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => setCollapsed((v) => !v)}
+          aria-label={t.integrations.pushHistoryTitle}
+          aria-expanded={!collapsed}
+          className="rounded p-0.5 text-subtle transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', collapsed && '-rotate-90')} />
+        </button>
+        <div className="min-w-0 flex-1 text-xs font-medium text-foreground">
+          {t.integrations.pushHistoryTitle} · {log.length}
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            clearPushLog()
+            setTick((x) => x + 1)
+          }}
+          className="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-subtle transition-colors hover:bg-muted hover:text-foreground"
+        >
+          {t.integrations.pushHistoryClear}
+        </button>
+      </div>
+      {!collapsed && (
+        <ul className="mt-1.5 space-y-1">
+          {log.map((e, i) => (
+            <li
+              key={`${e.at}-${i}`}
+              className="flex items-baseline gap-2 text-[11px] text-muted-foreground"
+            >
+              <span className="shrink-0 tabular-nums text-subtle">{stamp(e.at)}</span>
+              <span className="shrink-0">{channelName(e.channel)}</span>
+              {e.ok ? (
+                <span className="shrink-0 text-success">{t.integrations.pushHistoryOk}</span>
+              ) : (
+                <span className="min-w-0 flex-1 truncate text-danger">
+                  {e.error ? t.integrations.testFailed(e.error) : t.integrations.pushHistoryFail}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
 /**
  * Integrations: outbound channels for the alert engine — WeCom, WeChat (iLink),
  * Feishu/Lark and Telegram. Pushes run in the
@@ -373,10 +485,21 @@ export function IntegrationsPage({ className }: IntegrationsPageProps) {
     }
     setTests((s) => ({ ...s, [channel]: { state: 'sending', detail: '' } }))
     const res = await bridge.webhookSend(channel, credFor(channel, drafts), t.integrations.pushTitle, t.integrations.testMessage)
+    const detail = res.ok ? '' : (res.error ?? `HTTP ${res.status}`)
     setTests((s) => ({
       ...s,
-      [channel]: { state: res.ok ? 'ok' : 'fail', detail: res.ok ? '' : (res.error ?? `HTTP ${res.status}`) },
+      [channel]: { state: res.ok ? 'ok' : 'fail', detail },
     }))
+    logPushAttempt(channel, res.ok, res.ok ? undefined : detail)
+  }
+
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
+  const copyText = (text: string, key: string) => {
+    try {
+      void navigator.clipboard?.writeText(text)?.then(() => setCopiedKey(key))
+    } catch {
+      // clipboard unavailable — the detail stays visible for manual copying
+    }
   }
 
   const renderChannel = (ch: (typeof CHANNELS)[number]) => {
@@ -423,7 +546,18 @@ export function IntegrationsPage({ className }: IntegrationsPageProps) {
         </div>
         {test.state === 'ok' && <p className="mt-1.5 text-[11px] text-success">{t.integrations.testOk}</p>}
         {test.state === 'fail' && (
-          <p className="mt-1.5 text-[11px] text-danger">{t.integrations.testFailed(test.detail)}</p>
+          <p className="mt-1.5 text-[11px] text-danger">
+            {t.integrations.testFailed(test.detail)}
+            {test.detail && (
+              <button
+                type="button"
+                onClick={() => copyText(test.detail, ch.id)}
+                className="ml-2 rounded border border-border px-1.5 py-px text-[10px] text-muted-foreground hover:bg-muted"
+              >
+                {copiedKey === ch.id ? t.integrations.copied : t.integrations.copyError}
+              </button>
+            )}
+          </p>
         )}
       </div>
     )
@@ -457,6 +591,8 @@ export function IntegrationsPage({ className }: IntegrationsPageProps) {
           }
         />
         {CHANNELS.filter((ch) => ch.id !== 'wecom').map(renderChannel)}
+
+        <PushHistoryBlock />
 
         <div className="mt-5 flex justify-end border-t border-border/60 pt-4">
           <button

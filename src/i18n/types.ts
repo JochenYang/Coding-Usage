@@ -218,6 +218,13 @@ export interface Dict {
     wxConnected: (t: string) => string
     wxDisconnect: string
     wxDisconnectConfirm: string
+    wxReloginHint: string
+    copyError: string
+    copied: string
+    pushHistoryTitle: string
+    pushHistoryOk: string
+    pushHistoryFail: string
+    pushHistoryClear: string
     fWebhookUrl: string
     fBotToken: string
     fChatId: string

@@ -640,10 +640,19 @@ function registerIpc(): void {
         } catch {
           // Non-JSON error page (gateway etc.) — the HTTP status carries it
         }
+        // Logical failures (HTTP 200 + platform errcode, e.g. weixin ret!=0)
+        // must carry the platform detail too — otherwise the renderer can only
+        // fall back to a bare "HTTP 200" and the real cause is invisible.
+        const ok = isChannelSuccess(channel as PushChannel, res.ok, json)
+        if (!ok) {
+          console.error(
+            `[webhook:send] channel=${channel as string} status=${res.status} detail=${channelErrorDetail(channel as PushChannel, res.status, json)}`,
+          )
+        }
         return {
-          ok: isChannelSuccess(channel as PushChannel, res.ok, json),
+          ok,
           status: res.status,
-          ...(res.ok ? {} : { error: channelErrorDetail(channel as PushChannel, res.status, json) }),
+          ...(ok ? {} : { error: channelErrorDetail(channel as PushChannel, res.status, json) }),
         }
       } catch (e) {
         return { ok: false, status: 0, error: String(e instanceof Error ? e.message : e) }
