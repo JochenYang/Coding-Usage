@@ -61,7 +61,7 @@ export function AttentionList({ items, onEdit, onViewAll, className }: Attention
               <button
                 type="button"
                 onClick={() => (item.editKey ? onEdit(item.editKey) : onViewAll())}
-                className="flex w-full items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-muted/40"
+                className="flex w-full items-center gap-3 px-5 py-3 text-left"
               >
                 <span className={cn('h-2 w-2 shrink-0 rounded-full', DOT[item.level])} aria-hidden />
                 <span className="min-w-0 flex-1">

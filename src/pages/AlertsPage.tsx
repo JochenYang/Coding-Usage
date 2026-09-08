@@ -52,11 +52,14 @@ function AlertRow({ alert, now, onRead }: AlertRowProps) {
 
   return (
     <li className={cn(alert.read && 'opacity-70')}>
-      {/* Whole row is the click target; one click marks this single alert read */}
+      {/* One click marks this single alert read. Deliberately no hover
+          affordance: the click is a quiet "dismiss" interaction, not a
+          navigation — a hover highlight would promise an action that
+          never comes. */}
       <button
         type="button"
         onClick={() => onRead(alert.id)}
-        className="relative flex w-full items-center gap-3 py-3 pr-1 pl-4 text-left transition-colors hover:bg-muted/40"
+        className="relative flex w-full items-center gap-3 py-3 pr-1 pl-4 text-left"
       >
         {!alert.read && (
           <span aria-hidden="true" className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-accent" />

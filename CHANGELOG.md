@@ -10,6 +10,14 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- 告警行与概览「需要注意」行移除悬停高亮（点击仅标记已读，不该有可点的视觉暗示）；微信区块新增「验证连接」按钮，区分令牌失效与载荷被拒
+
+### English
+- Drop hover highlight on alert rows and overview attention rows (clicking only marks read — no fake affordance); WeChat block gains a "Verify connection" button separating token death from payload rejection
+
 ## [v0.4.1] - 2026-09-08
 
 ### 中文
