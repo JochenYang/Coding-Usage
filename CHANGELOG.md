@@ -10,6 +10,16 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.4.3] - 2026-09-08
+
+### 中文
+- 概览「待处理」卡片（原「需要注意」）重排：未读告警在前、异常账号在后，按账号去重，上限 6 条；健康账号不再在概览重复
+- 余额 KPI 品牌 chips 按「服务商 × 币种」聚合、余额多者在前（≤2 个 logo 直显，更多悬停看完整明细）——本轮梳理确认无需改动
+
+### English
+- Overview "Action center" card (formerly "Needs attention") reordered: unread alerts first, error accounts after, deduped per account, capped at 6; healthy accounts no longer repeat on the dashboard
+- Balance KPI brand chips aggregate by provider × currency, richest first (≤2 logos shown inline, more via the hover breakdown) — reviewed this round, no change needed
+
 ## [v0.4.2] - 2026-09-08
 
 ### 中文
