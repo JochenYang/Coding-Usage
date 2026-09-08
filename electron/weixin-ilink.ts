@@ -187,13 +187,23 @@ export async function ilinkPollLogin(fetcher: NetFetch, qrCode: string): Promise
  * renderer drives the polling loop; each call is a single getupdates round
  * with a fresh cursor (activation runs before any cursor exists).
  *
+ * Doubles as a lightweight connection check (short timeout): getupdates is
+ * authenticated, so a transport/API error here means the stored bot token is
+ * dead while an empty-but-ok round means the token is alive. Callers must
+ * not mistake "no userId" for failure — after activation there are simply
+ * no new messages most of the time.
+ *
  * Response shape mirrors ZCode's parser: after unwrapping `data`, the
  * message list hides under one of msgs/messages/updates/items/list, each
  * item carrying the sender in from_user_id/from/from_user/fromUser/user/
  * user_id/userId (or nested from/sender objects with id/wxid). Items with
  * message_type 2 are the bot's OWN sends — never the activation message.
  */
-export async function ilinkPollActivation(fetcher: NetFetch, botToken: string): Promise<IlinkActivatePoll> {
+export async function ilinkPollActivation(
+  fetcher: NetFetch,
+  botToken: string,
+  timeoutMs: number = POLL_TIMEOUT_MS,
+): Promise<IlinkActivatePoll> {
   const data = await postJson(
     fetcher,
     `${ILINK_BASE}${ILINK_PREFIX}/getupdates`,
@@ -201,7 +211,7 @@ export async function ilinkPollActivation(fetcher: NetFetch, botToken: string): 
     // base_info rides on EVERY /ilink/bot request in ZCode's client — omitting
     // it made getupdates come back with an empty message list
     { base_info: { channel_version: '2.0.0' }, get_updates_buf: '' },
-    POLL_TIMEOUT_MS,
+    timeoutMs,
   )
   const containers: unknown[] = [
     data.msgs,

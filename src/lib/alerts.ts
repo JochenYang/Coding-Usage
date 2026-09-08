@@ -122,9 +122,17 @@ export function saveAlerts(items: AlertItem[]): void {
 }
 
 /**
+ * Retention for resolved alerts: an alert whose condition cleared stays in
+ * the list for 48h so history remains readable, then disappears on the next
+ * derive. Active (still-true) alerts never age out regardless of age.
+ */
+const RESOLVED_RETENTION_MS = 48 * 60 * 60_000
+
+/**
  * Derive the live alert set from current sections/results, merged with the
- * stored set (surviving alerts keep firstSeenAt/read; resolved ids are
- * dropped). Pure — the caller persists the result.
+ * stored set (surviving alerts keep firstSeenAt/read; resolved ids are kept
+ * for {@link RESOLVED_RETENTION_MS} then dropped). Pure — the caller
+ * persists the result.
  */
 export function deriveAlerts(
   sections: Section[],
@@ -205,6 +213,14 @@ export function deriveAlerts(
   for (const item of live.values()) {
     const prev = stored.find((s) => s.id === item.id)
     merged.push(prev ? { ...item, firstSeenAt: prev.firstSeenAt, read: prev.read } : item)
+  }
+  // Resolved history: keep recently-seen alerts that are no longer live
+  // (condition cleared) for a bounded window, then let them disappear
+  for (const old of stored) {
+    if (live.has(old.id)) continue
+    if (Date.now() - old.firstSeenAt > RESOLVED_RETENTION_MS) continue
+    // Still active under a different id would already be in live — safe to keep
+    merged.push(old)
   }
   // Newest first for panel rendering
   merged.sort((a, b) => b.firstSeenAt - a.firstSeenAt)

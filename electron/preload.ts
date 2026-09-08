@@ -14,6 +14,7 @@ const desktopBridge: DesktopBridge = {
   ilinkBegin: () => ipcRenderer.invoke('ilink:begin'),
   ilinkPoll: (qrCode) => ipcRenderer.invoke('ilink:poll', qrCode),
   ilinkActivate: (token) => ipcRenderer.invoke('ilink:activate', token),
+  ilinkCheck: (token) => ipcRenderer.invoke('ilink:check', token),
   islandShow: (alerts) => ipcRenderer.invoke('island:show', alerts),
   islandHide: () => ipcRenderer.invoke('island:hide'),
   islandClickThrough: (clickThrough) => ipcRenderer.invoke('island:clickthrough', clickThrough),

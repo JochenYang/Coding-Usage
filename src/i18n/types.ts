@@ -219,6 +219,9 @@ export interface Dict {
     wxDisconnect: string
     wxDisconnectConfirm: string
     wxReloginHint: string
+    wxVerify: string
+    wxVerifying: string
+    wxVerifyOk: string
     copyError: string
     copied: string
     pushHistoryTitle: string

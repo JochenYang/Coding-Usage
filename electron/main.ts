@@ -722,6 +722,23 @@ function registerIpc(): void {
     }
   })
 
+  // Connection check for a stored bot token: one short getupdates round. An
+  // empty-but-ok round means the token is alive (there are simply no new
+  // messages); only a transport/API error reports failure. Lets the UI tell
+  // "token dead, re-login" apart from "token alive, send payload rejected".
+  ipcMain.handle(
+    'ilink:check',
+    async (_event, token: unknown): Promise<{ ok: boolean; error?: string }> => {
+      if (typeof token !== 'string' || !token) return { ok: false, error: 'invalid-request' }
+      try {
+        await ilinkPollActivation(net.fetch, token, 15_000)
+        return { ok: true }
+      } catch (e) {
+        return { ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 300) }
+      }
+    },
+  )
+
   // System-level dynamic island: the main renderer relays fresh alert
   // batches; the overlay surface (its own tiny window) hides itself and
   // asks us to focus the main window when its body is clicked.

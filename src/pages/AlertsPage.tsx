@@ -122,7 +122,7 @@ export function AlertsPage({ className }: AlertsPageProps) {
     // stretch). 100vh minus the h-14 top bar and the shell's vertical py-6.
     // The rules card pins to the bottom with ~48px off the window edge even
     // when the alert list is empty; the empty state centers in the freed space.
-    <div className={cn('flex min-h-[calc(100vh-6.5rem)] flex-col space-y-4 pb-6', className)}>
+    <div className={cn('flex min-h-[calc(100vh-6.5rem)] flex-col gap-4 pb-6', className)}>
       <PageHeader
         title={t.manage.alertsCenterTitle}
         description={t.manage.alertsDesc}
@@ -153,13 +153,18 @@ export function AlertsPage({ className }: AlertsPageProps) {
           <EmptyState icon={<Bell className="h-6 w-6" />} title={t.manage.noAlerts} />
         </div>
       ) : (
-        <section className="rounded-2xl border border-border bg-card px-5 py-1">
-          <ul className="divide-y divide-border/60">
-            {visible.map((item) => (
-              <AlertRow key={item.id} alert={item} now={now} onRead={markAlertRead} />
-            ))}
-          </ul>
-        </section>
+        <>
+          <section className="rounded-2xl border border-border bg-card px-5 py-1">
+            <ul className="divide-y divide-border/60">
+              {visible.map((item) => (
+                <AlertRow key={item.id} alert={item} now={now} onRead={markAlertRead} />
+              ))}
+            </ul>
+          </section>
+          {/* Spacer (not margin): keeps the rules card pinned when the list
+              is short. The empty branch grows its own wrapper instead. */}
+          <div aria-hidden className="flex-1" />
+        </>
       )}
 
       <section className="rounded-2xl border border-border bg-card p-5">
