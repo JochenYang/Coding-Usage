@@ -118,21 +118,25 @@ export function OverviewPage({
     const archived = agentDailySeries(7)
     return archived.length >= 2 ? archived : buildTrendPoints(sections)
   }, [agentUsage, agentDailySeries, sections, settings.usageDisplayMode])
-  // Attention items: error accounts first (open the editor on click), then
-  // unread alerts (jump to the alerts page). Capped — the overview is a
-  // dashboard, not the log.
+  // Attention items: unread alerts first (they carry the actionable state),
+  // then error accounts (a failed fetch is often stale rather than fatal —
+  // the next refresh fixes it). Dedup by account: an alert for an errored
+  // account is dropped, the account row (with its live error text) wins.
+  // Capped — the overview is a dashboard, not the log.
   const attention = useMemo<AttentionItem[]>(() => {
     const items: AttentionItem[] = []
-    for (const r of rows) {
-      if (r.status === 'error') {
-        items.push({ key: r.key, title: r.name, detail: r.errorText, level: 'danger', editKey: r.key })
-      }
-    }
+    const erroredKeys = new Set(rows.filter((r) => r.status === 'error').map((r) => r.key))
     for (const a of alerts) {
       if (a.read) continue
+      // Alerts embed the account key in their id ("key:kind:metric")
+      if (erroredKeys.has(a.accountKey)) continue
       items.push({ key: a.id, title: alertTitle(a, t), detail: alertDetail(a, t), level: a.level })
     }
-    return items.slice(0, 5)
+    for (const r of rows) {
+      if (r.status !== 'error') continue
+      items.push({ key: r.key, title: r.name, detail: r.errorText, level: 'danger', editKey: r.key })
+    }
+    return items.slice(0, 6)
   }, [rows, alerts, t])
   // Richest-first providers behind the balance KPI (brand chips on the card)
   const balanceProviders = useMemo(
