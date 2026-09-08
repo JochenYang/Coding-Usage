@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { RefreshCw } from 'lucide-react'
 import { useT } from '@/i18n/useT'
-import { EASE_OUT } from '@/lib/motion-presets'
+import { EASE_OUT } from '@/lib/ease'
 
 /**
  * Update-ready toast: consumes the main process's `desktop:update-downloaded`

@@ -16,9 +16,10 @@ export interface SwitchProps {
 
 /**
  * Spring-driven switch adapted from beui.dev/components/motion/switch.
- * Class names have been retokenized for this project's dark + emerald palette
- * (e.g. `bg-background` → `bg-white`, `bg-primary` from `@theme`), so it works
- * out of the box without extra theme configuration.
+ * Retokenized for this project's indigo accent: the track consumes
+ * `bg-accent` (on) / `bg-muted` (off). The thumb stays pure white as an
+ * intentional cross-theme constant (same rationale as destructive-foreground),
+ * so it reads on the accent track in both light and dark modes.
  */
 export function Switch({
   checked,
@@ -66,7 +67,7 @@ export function Switch({
             "group peer inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full px-1 outline-none transition-colors duration-200",
             "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
             "disabled:cursor-not-allowed disabled:opacity-60",
-            checked ? "justify-end bg-stone-900" : "justify-start bg-stone-300",
+            checked ? "justify-end bg-accent" : "justify-start bg-muted",
           )}
         >
           <motion.div
@@ -79,7 +80,7 @@ export function Switch({
           </motion.div>
         </motion.button>
         {label ? (
-          <label htmlFor={id} className="cursor-pointer text-sm text-slate-100">
+          <label htmlFor={id} className="cursor-pointer text-sm text-foreground">
             {label}
           </label>
         ) : null}

@@ -1,6 +1,6 @@
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useId, useState } from "react";
-import { EASE_IN_OUT } from "@/lib/motion-presets";
+import { EASE_IN_OUT } from "@/lib/ease";
 import { cn } from "@/lib/cn";
 
 export type LoaderVariant =

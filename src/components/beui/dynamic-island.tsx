@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { EASE_OUT } from '@/lib/motion-presets'
+import { EASE_OUT } from '@/lib/ease'
 import { cn } from '@/lib/cn'
 
 /**
@@ -152,7 +152,8 @@ export function DynamicIsland({ view, compact, children, className }: DynamicIsl
             {!expanded && compact ? (
               <Slot
                 keyId="compact"
-                // iPhone pill proportions: ~126 x 37.
+                // iPhone pill proportions (~126x37): intentionally outside the
+                // spacing scale to mirror the device, not the layout grid.
                 className="min-h-[37px] min-w-[126px] gap-2 px-4 py-1.5 text-xs font-medium"
               >
                 {compact}

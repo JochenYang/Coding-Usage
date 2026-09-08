@@ -1,6 +1,6 @@
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, type ReactNode } from 'react'
-import { EASE_OUT } from '@/lib/motion-presets'
+import { EASE_OUT } from '@/lib/ease'
 import { cn } from '@/lib/cn'
 
 /**

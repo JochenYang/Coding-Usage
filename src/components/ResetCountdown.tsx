@@ -12,6 +12,6 @@ export function ResetCountdown({ resetsAt }: { resetsAt?: number }) {
   }, [])
   if (!resetsAt) return null
   return (
-    <span className="text-xs text-slate-400 tabular-nums">{formatCountdown(resetsAt, now, t)}</span>
+    <span className="text-xs text-subtle tabular-nums">{formatCountdown(resetsAt, now, t)}</span>
   )
 }

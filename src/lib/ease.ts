@@ -1,5 +1,11 @@
+/**
+ * Single motion authority for the app (see docs/DESIGN_SYSTEM.md §7).
+ * Easing curves and springs live here and only here; components import from
+ * `@/lib/ease` and never define local motion duplicates.
+ */
 export const EASE_OUT = [0.16, 1, 0.3, 1] as const;
-export const EASE_IN_OUT = [0.77, 0, 0.175, 1] as const;
+/** Symmetric in-out curve: Loader cadence shifts. Single motion authority (see docs/DESIGN_SYSTEM.md §7). */
+export const EASE_IN_OUT = [0.45, 0, 0.55, 1] as const;
 export const EASE_DRAWER = [0.32, 0.72, 0, 1] as const;
 
 /** CSS string form of EASE_OUT for inline style transitions. */
