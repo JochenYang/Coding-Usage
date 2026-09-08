@@ -1,6 +1,7 @@
 import type { Section } from './data-context'
 import type { ProviderDef, ProviderResult, ProviderStatus } from '../types'
 import { convertAmount, type FxRates } from './rates'
+import { DEFAULT_ALERT_THRESHOLDS } from './alerts'
 import { getConsumedSeries, getTodayConsume } from './snapshots'
 import { UNLIMITED_KEY } from './metric-helpers'
 
@@ -190,6 +191,14 @@ export function buildBalanceProviders(
 
 export const DIST_COLORS = ['#6366F1', '#F59E0B', '#EF4444', '#8B5CF6', '#0EA5E9', '#14B8A6', '#64748B']
 
+/**
+ * Muted tone for folded "other" slices. Kept as a hex constant (single source)
+ * because SVG `stroke` presentation attributes cannot consume CSS vars; the
+ * first three DIST_COLORS entries intentionally mirror the accent / warning /
+ * danger light values for the same reason (see docs/DESIGN_SYSTEM.md §10).
+ */
+export const DIST_OTHER_COLOR = '#4B4B63'
+
 /** Provider-share slices of token quota totals; small shares fold into `otherLabel` */
 export function buildDistribution(
   sections: Section[],
@@ -215,7 +224,7 @@ export function buildDistribution(
     if (total > 0 && p.value / total < DIST_OTHER_THRESHOLD) otherValue += p.value
     else main.push({ label: p.label, value: p.value, color: '' })
   }
-  if (otherValue > 0) main.push({ label: otherLabel, value: otherValue, color: '#4B4B63' })
+  if (otherValue > 0) main.push({ label: otherLabel, value: otherValue, color: DIST_OTHER_COLOR })
   // The muted "other" tone must survive the palette assignment
   main.forEach((s, i) => {
     if (s.color) return
@@ -264,11 +273,11 @@ export interface PlanCardVM {
   attention: boolean
 }
 
-const PLAN_ATTENTION_PCT = 90
-
 export function buildPlanCards(
   sections: Section[],
   results: Record<string, ProviderResult>,
+  /** Follows the user-configured high-usage alert threshold (badge parity) */
+  attentionPct = DEFAULT_ALERT_THRESHOLDS.highUsagePct,
 ): PlanCardVM[] {
   const cards: PlanCardVM[] = []
   for (const sec of sections) {
@@ -309,7 +318,7 @@ export function buildPlanCards(
           bal?.remaining != null && bal.unit
             ? { amount: bal.remaining, currency: bal.unit, details: bal.detail ?? [] }
             : null,
-        attention: windows.some((w) => w.pct >= PLAN_ATTENTION_PCT),
+        attention: windows.some((w) => w.pct >= attentionPct),
       })
     }
   }

@@ -1,5 +1,5 @@
 import type { Section } from './data-context'
-import type { ProviderResult } from '../types'
+import type { AlertThresholds, ProviderResult } from '../types'
 
 /**
  * Alert engine. Alerts are derived purely from current fetch results (no
@@ -36,12 +36,47 @@ export interface AlertItem {
 }
 
 const KEY = 'coding-usage.alerts.v1'
-/** A window reset within this horizon raises an alert */
-const RESET_SOON_MS = 60 * 60_000
-/** Usage at/above this percent raises an alert */
-const HIGH_USAGE_PCT = 90
-/** Balance below this (per currency, in native units) raises an alert */
-const LOW_BALANCE: Record<string, number> = { CNY: 5, USD: 1, HKD: 5, TWD: 30 }
+
+/** Factory defaults matching the original hardcoded behavior */
+export const DEFAULT_ALERT_THRESHOLDS: AlertThresholds = {
+  resetSoonMin: 60,
+  highUsagePct: 90,
+  lowBalance: { CNY: 5, USD: 1, HKD: 5, TWD: 30 },
+}
+
+/** Bounds guarding the threshold editor (absurd values would spam or silence alerts) */
+const RESET_SOON_MIN = { min: 5, max: 720 }
+const HIGH_USAGE_PCT = { min: 50, max: 100 }
+const LOW_BALANCE_MAX = 1_000_000
+
+function clampInt(v: unknown, fallback: number, min: number, max: number): number {
+  const n = typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : fallback
+  return Math.min(max, Math.max(min, n))
+}
+
+function clampAmount(v: unknown, fallback: number): number {
+  const n = typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : fallback
+  return Math.min(LOW_BALANCE_MAX, n)
+}
+
+/**
+ * Validate raw (stored) thresholds into a safe shape. Unknown input falls
+ * back per-field so one corrupt value cannot wipe the other settings.
+ */
+export function resolveThresholds(raw: unknown): AlertThresholds {
+  const o = (raw ?? {}) as Partial<AlertThresholds>
+  const low = { ...DEFAULT_ALERT_THRESHOLDS.lowBalance }
+  if (o.lowBalance != null && typeof o.lowBalance === 'object') {
+    for (const [k, v] of Object.entries(o.lowBalance)) {
+      low[k.toUpperCase()] = clampAmount(v, low[k.toUpperCase()] ?? 0)
+    }
+  }
+  return {
+    resetSoonMin: clampInt(o.resetSoonMin, DEFAULT_ALERT_THRESHOLDS.resetSoonMin, RESET_SOON_MIN.min, RESET_SOON_MIN.max),
+    highUsagePct: clampInt(o.highUsagePct, DEFAULT_ALERT_THRESHOLDS.highUsagePct, HIGH_USAGE_PCT.min, HIGH_USAGE_PCT.max),
+    lowBalance: low,
+  }
+}
 
 function loadStored(): AlertItem[] {
   try {
@@ -81,7 +116,14 @@ export function saveAlerts(items: AlertItem[]): void {
  * stored set (surviving alerts keep firstSeenAt/read; resolved ids are
  * dropped). Pure — the caller persists the result.
  */
-export function deriveAlerts(sections: Section[], results: Record<string, ProviderResult>): AlertItem[] {
+export function deriveAlerts(
+  sections: Section[],
+  results: Record<string, ProviderResult>,
+  thresholds: AlertThresholds = DEFAULT_ALERT_THRESHOLDS,
+): AlertItem[] {
+  const resetSoonMs = thresholds.resetSoonMin * 60_000
+  const highUsagePct = thresholds.highUsagePct
+  const lowBalance = thresholds.lowBalance
   const live = new Map<string, AlertItem>()
   for (const sec of sections) {
     for (const card of sec.cards) {
@@ -97,7 +139,7 @@ export function deriveAlerts(sections: Section[], results: Record<string, Provid
           const staleWindow = m.resetsAt != null && m.resetsAt <= Date.now()
           if (m.resetsAt != null) {
             const mins = Math.round((m.resetsAt - Date.now()) / 60_000)
-            if (mins > 0 && m.resetsAt - Date.now() <= RESET_SOON_MS && m.percent < 100) {
+            if (mins > 0 && m.resetsAt - Date.now() <= resetSoonMs && m.percent < 100) {
               const id = `${card.key}:window-reset:${m.id}`
               live.set(id, {
                 id,
@@ -111,7 +153,7 @@ export function deriveAlerts(sections: Section[], results: Record<string, Provid
               })
             }
           }
-          if (m.percent >= HIGH_USAGE_PCT && !staleWindow) {
+          if (m.percent >= highUsagePct && !staleWindow) {
             const id = `${card.key}:high-usage:${m.id}`
             live.set(id, {
               id,
@@ -128,7 +170,7 @@ export function deriveAlerts(sections: Section[], results: Record<string, Provid
           }
         }
         if (m.kind === 'balance' && m.remaining != null && m.unit) {
-          const floor = LOW_BALANCE[m.unit.toUpperCase()]
+          const floor = lowBalance[m.unit.toUpperCase()]
           if (floor != null && m.remaining <= floor) {
             const id = `${card.key}:low-balance:${m.id}`
             live.set(id, {

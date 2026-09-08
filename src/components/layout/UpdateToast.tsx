@@ -19,6 +19,17 @@ export function UpdateToast() {
   useEffect(() => {
     const bridge = window.desktopBridge
     if (!bridge) return
+    // Late-mount safety: a download that finished before this subscription
+    // (past the main-process replay window) still surfaces from the snapshot
+    void bridge
+      .updateState()
+      .then((s) => {
+        if (s.status === 'downloaded' && s.version) {
+          setVersion(s.version)
+          setDismissed(false)
+        }
+      })
+      .catch(() => {})
     return bridge.onUpdateDownloaded((v) => {
       setVersion(v)
       setDismissed(false)

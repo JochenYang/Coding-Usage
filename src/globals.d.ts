@@ -124,6 +124,8 @@ declare global {
     hideWindow(): Promise<void>
     /** Real quit through the tray/confirm flow (sets the pass-through gate first) */
     quitApp(): Promise<void>
+    /** Open an https URL in the system browser (main process validates the scheme) */
+    openExternal(url: string): Promise<boolean>
     /** Current maximize state for the caption-button glyph */
     getWindowMaximized(): Promise<boolean>
     /** Subscribe to maximize/unmaximize transitions; returns an unsubscribe function */
@@ -134,6 +136,8 @@ declare global {
     installUpdate(): Promise<void>
     /** Kick a manual update check; resolves with the current state snapshot */
     checkForUpdates(): Promise<DesktopUpdateState>
+    /** Read-only update snapshot (no check triggered) for late subscribers */
+    updateState(): Promise<DesktopUpdateState>
     /** Subscribe to update-state transitions; returns an unsubscribe function */
     onUpdateStatus(callback: (status: DesktopUpdateState) => void): () => void
     /** Subscribe to autoUpdater's update-downloaded event; returns an unsubscribe function */

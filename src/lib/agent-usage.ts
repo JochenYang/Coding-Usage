@@ -73,6 +73,8 @@ export interface CostSliceVM {
   output: number
   cacheRead: number
   costUsd: number
+  /** True when at least one contributing entry was priced from the model catalog */
+  priced: boolean
 }
 
 export interface AgentUsageVM {
@@ -87,9 +89,11 @@ export interface AgentUsageVM {
   monthCostByProvider: CostSliceVM[]
   monthCostByModel: CostSliceVM[]
   /** per-day total tokens (oldest first) — powers the trend chart */
-  dailySeries: { label: string; value: number; input: number; output: number }[]
+  dailySeries: { label: string; value: number; input: number; output: number; models?: DayModelSlice[] }[]
   /** Client ids whose scan failed in the degraded per-client fallback; null when clean */
   skippedClients: string[] | null
+  /** Per-client failure reason keyed by client id (mirrors skippedClients); absent on old payloads */
+  skippedDetails?: Record<string, string>
   scannedAt: number | null
   error: string | null
   loading?: boolean
@@ -115,6 +119,8 @@ interface GraphContribution {
     tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; reasoning?: number }
     cost?: number
     messages?: number
+    /** Set by the main process when repriced from the OpenRouter catalog */
+    priced?: boolean
   }[]
 }
 
@@ -181,12 +187,22 @@ function entryPeriod(e: {
   })
 }
 
-function toSlice(list: [string, SliceAgg][]): CostSliceVM[] {
-  return list.map(([label, v]) => ({ label, tokens: v.tokens, input: v.input, output: v.output, cacheRead: v.cacheRead, costUsd: v.costUsd }))
+function toSlice(list: [string, SliceAgg][], priced?: Map<string, boolean>): CostSliceVM[] {
+  return list.map(([label, v]) => ({
+    label,
+    tokens: v.tokens,
+    input: v.input,
+    output: v.output,
+    cacheRead: v.cacheRead,
+    costUsd: v.costUsd,
+    priced: priced?.get(label) ?? false,
+  }))
 }
 
 /** Provider slices render the friendly router name (raw id when unmapped) */
 function toProviderSlice(list: [string, SliceAgg][]): CostSliceVM[] {
+  // Provider aggregates mix catalog-priced and tokscale-native costs, so the
+  // unpriced label does not apply here — a zero simply renders as "—".
   return list.map(([id, v]) => ({
     label: displayProviderName(id),
     tokens: v.tokens,
@@ -194,22 +210,36 @@ function toProviderSlice(list: [string, SliceAgg][]): CostSliceVM[] {
     output: v.output,
     cacheRead: v.cacheRead,
     costUsd: v.costUsd,
+    priced: true,
   }))
 }
 
-function sortedByTokens(list: [string, SliceAgg][]): CostSliceVM[] {
-  return toSlice(list).sort((a, b) => b.tokens - a.tokens)
+function sortedByTokens(list: [string, SliceAgg][], priced?: Map<string, boolean>): CostSliceVM[] {
+  return toSlice(list, priced).sort((a, b) => b.tokens - a.tokens)
 }
 
-function sortedByCost(list: [string, SliceAgg][]): CostSliceVM[] {
-  return toSlice(list).sort((a, b) => b.costUsd - a.costUsd)
+function sortedByCost(list: [string, SliceAgg][], priced?: Map<string, boolean>): CostSliceVM[] {
+  return toSlice(list, priced).sort((a, b) => b.costUsd - a.costUsd)
 }
 
 function sortedByProviderCost(list: [string, SliceAgg][]): CostSliceVM[] {
   return toProviderSlice(list).sort((a, b) => b.costUsd - a.costUsd)
 }
 
-function emptyVM(error: string | null, skippedClients: string[] | null = null): AgentUsageVM {
+/** One model's token share within a single day (trend tooltip detail) */
+export interface DayModelSlice {
+  label: string
+  tokens: number
+}
+
+/** Max model rows kept per day for the trend tooltip */
+const DAY_MODELS_KEPT = 5
+
+function emptyVM(
+  error: string | null,
+  skippedClients: string[] | null = null,
+  skippedDetails?: Record<string, string>,
+): AgentUsageVM {
   return {
     clients: AGENT_CLIENTS.map((c) => ({
       client: c,
@@ -227,6 +257,7 @@ function emptyVM(error: string | null, skippedClients: string[] | null = null): 
     monthCostByModel: [],
     dailySeries: [],
     skippedClients,
+    skippedDetails,
     scannedAt: null,
     error,
   }
@@ -251,11 +282,19 @@ function addPeriod(a: AgentPeriodVM, b: AgentPeriodVM): AgentPeriodVM {
  */
 export function summarizeScan(raw: unknown): AgentUsageVM {
   if (!raw || typeof raw !== 'object') return emptyVM(null)
-  const root = raw as { daily?: unknown; error?: string; skippedClients?: unknown }
+  const root = raw as { daily?: unknown; error?: string; skippedClients?: unknown; skippedDetails?: unknown }
   const skippedClients = Array.isArray(root.skippedClients)
     ? root.skippedClients.filter((c): c is string => typeof c === 'string')
     : null
-  if (typeof root.error === 'string' && root.error) return emptyVM(root.error, skippedClients)
+  const skippedDetails =
+    root.skippedDetails != null && typeof root.skippedDetails === 'object' && !Array.isArray(root.skippedDetails)
+      ? Object.fromEntries(
+          Object.entries(root.skippedDetails).filter(
+            (e): e is [string, string] => typeof e[0] === 'string' && typeof e[1] === 'string',
+          ),
+        )
+      : undefined
+  if (typeof root.error === 'string' && root.error) return emptyVM(root.error, skippedClients, skippedDetails)
 
   const daily = (root.daily ?? {}) as { contributions?: unknown }
   const contribs: GraphContribution[] = (Array.isArray(daily.contributions) ? daily.contributions : [])
@@ -264,7 +303,7 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
     )
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
 
-  if (contribs.length === 0) return emptyVM('no data', skippedClients)
+  if (contribs.length === 0) return emptyVM('no data', skippedClients, skippedDetails)
 
   // Buckets anchor to the REAL local date, not "the last row": a dataset that
   // ends yesterday (no usage today yet) must show 0 for today, not relabel
@@ -286,6 +325,10 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
   const todayByModel = new Map<string, SliceAgg>()
   const monthByProvider = new Map<string, SliceAgg>()
   const monthByModel = new Map<string, SliceAgg>()
+  // Catalog-priced flags per model label (an entry counts as priced when the
+  // main process repriced it; tokscale-native costs stay unpriced)
+  const todayModelPriced = new Map<string, boolean>()
+  const monthModelPriced = new Map<string, boolean>()
 
   for (let i = 0; i < contribs.length; i++) {
     const c = contribs[i]
@@ -318,7 +361,10 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
         // today is part of the cumulative totals too
         addSlice(allByClient, owner, period)
         const model = typeof e.modelId === 'string' && e.modelId ? e.modelId : undefined
-        if (model) addSlice(todayByModel, model, period)
+        if (model) {
+          addSlice(todayByModel, model, period)
+          if (e.priced === true) todayModelPriced.set(model, true)
+        }
         // Today always sits inside the current month: feed the month/provider
         // buckets too, otherwise every "本月" figure and the distribution
         // donut silently exclude today's spend until tomorrow.
@@ -326,7 +372,10 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
           addSlice(monthByClient, owner, period)
           const provider = typeof e.providerId === 'string' && e.providerId ? e.providerId : undefined
           if (provider) addSlice(monthByProvider, provider, period)
-          if (model) addSlice(monthByModel, model, period)
+          if (model) {
+            addSlice(monthByModel, model, period)
+            if (e.priced === true) monthModelPriced.set(model, true)
+          }
         }
       }
       // Unclassified balance for today (synthetic rows are in totals.tokens
@@ -349,7 +398,10 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
         const provider = typeof e.providerId === 'string' && e.providerId ? e.providerId : undefined
         const model = typeof e.modelId === 'string' && e.modelId ? e.modelId : undefined
         if (isMonthDay && provider) addSlice(monthByProvider, provider, period)
-        if (isMonthDay && model) addSlice(monthByModel, model, period)
+        if (isMonthDay && model) {
+          addSlice(monthByModel, model, period)
+          if (e.priced === true) monthModelPriced.set(model, true)
+        }
       }
     }
   }
@@ -367,12 +419,30 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
     }
   })
 
-  const dailySeries = contribs.map((c) => ({
-    label: c.date.slice(5),
-    value: numberOr(c.totals.tokens),
-    input: numberOr(c.tokenBreakdown?.input),
-    output: numberOr(c.tokenBreakdown?.output),
-  }))
+  const dailySeries = contribs.map((c) => {
+    const byModel = new Map<string, number>()
+    for (const e of c.clients ?? []) {
+      const model = typeof e.modelId === 'string' && e.modelId ? e.modelId : null
+      if (!model) continue
+      const t =
+        numberOr(e.tokens?.input) +
+        numberOr(e.tokens?.output) +
+        numberOr(e.tokens?.cacheRead) +
+        numberOr(e.tokens?.cacheWrite)
+      if (t > 0) byModel.set(model, (byModel.get(model) ?? 0) + t)
+    }
+    const models: DayModelSlice[] = [...byModel.entries()]
+      .map(([label, tokens]) => ({ label, tokens }))
+      .sort((a, b) => b.tokens - a.tokens)
+      .slice(0, DAY_MODELS_KEPT)
+    return {
+      label: c.date.slice(5),
+      value: numberOr(c.totals.tokens),
+      input: numberOr(c.tokenBreakdown?.input),
+      output: numberOr(c.tokenBreakdown?.output),
+      models,
+    }
+  })
 
   return {
     clients,
@@ -383,11 +453,15 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
     todayTotal,
     monthTotal,
     allTimeTotal,
-    todayByModel: sortedByTokens([...todayByModel.entries()]),
+    todayByModel: sortedByTokens([...todayByModel.entries()], todayModelPriced),
     monthCostByProvider: sortedByProviderCost([...monthByProvider.entries()]),
-    monthCostByModel: sortedByCost([...monthByModel.entries()]),
+    // Models sort by cost so the ranking answers "where did the money go";
+    // catalog-unpriced models (cost 0) sink to the bottom but stay listed in
+    // full with the unpriced label instead of being cut off.
+    monthCostByModel: sortedByCost([...monthByModel.entries()], monthModelPriced),
     dailySeries,
     skippedClients,
+    skippedDetails,
     scannedAt: Date.now(),
     error: null,
   }

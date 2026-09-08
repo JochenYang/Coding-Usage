@@ -1,4 +1,5 @@
 import type { ProviderConfig, Settings } from '../types'
+import { DEFAULT_ALERT_THRESHOLDS, resolveThresholds } from './alerts'
 
 export const KEY_V3 = 'coding-usage.settings.v3'
 const KEY_V2 = 'coding-usage.settings.v2'
@@ -16,6 +17,7 @@ const DEFAULT_SETTINGS: Settings = {
   displayCurrency: 'CNY',
   usageDisplayMode: 'all',
   desktopIsland: true,
+  alertThresholds: { ...DEFAULT_ALERT_THRESHOLDS, lowBalance: { ...DEFAULT_ALERT_THRESHOLDS.lowBalance } },
   integrations: {
     alertPush: false,
     wecomWebhook: '',
@@ -59,6 +61,7 @@ function migrate(raw: unknown): Settings {
     displayCurrency: typeof obj.displayCurrency === 'string' ? obj.displayCurrency : 'CNY',
     usageDisplayMode: obj.usageDisplayMode === 'no-cache' ? 'no-cache' : 'all',
     desktopIsland: obj.desktopIsland !== false,
+    alertThresholds: resolveThresholds(obj.alertThresholds),
     integrations: {
       alertPush: intg?.alertPush === true,
       wecomWebhook: typeof intg?.wecomWebhook === 'string' ? intg.wecomWebhook : '',

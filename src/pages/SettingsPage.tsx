@@ -10,12 +10,16 @@ import {
   SelectValue,
 } from '@/components/beui/select'
 import { useTheme, type ThemeMode } from '@/components/ThemeProvider'
+import { ConfirmDialog } from '@/components/beui/confirm-dialog'
+import { GitHubIcon } from '@/components/logos/GitHubIcon'
+import { Tooltip } from '@/components/common/Tooltip'
 import { cn } from '@/lib/cn'
 import { useT } from '@/i18n/useT'
 import { useData } from '@/lib/data-context'
 import { KNOWN_CURRENCIES } from '@/lib/rates'
 import { clearSnapshots, getSnapshots, type AccountSnapshot } from '@/lib/snapshots'
-import type { IntegrationsSettings, ProviderConfig } from '@/types'
+import { resolveThresholds } from '@/lib/alerts'
+import type { AlertThresholds, IntegrationsSettings, ProviderConfig } from '@/types'
 
 export interface SettingsPageProps {
   className?: string
@@ -24,6 +28,9 @@ export interface SettingsPageProps {
 // Injected by electron-vite's renderer `define` from package.json — always in
 // sync with the release version, no manual bumping.
 const APP_VERSION = __APP_VERSION__
+
+/** Public project repository linked from Settings → About */
+const REPO_URL = 'https://github.com/JochenYang/Coding-Usage'
 
 /** Live auto-update state, driven by the main process's status events */
 function useUpdateState(): {
@@ -102,6 +109,7 @@ function migrateSettings(
   autoRefreshMin: number | null
   displayCurrency: string | null
   integrations: IntegrationsSettings | null
+  alertThresholds: AlertThresholds | null
 } | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const obj = raw as Record<string, unknown>
@@ -135,6 +143,7 @@ function migrateSettings(
     autoRefreshMin: typeof obj.autoRefreshMin === 'number' ? obj.autoRefreshMin : null,
     displayCurrency: typeof obj.displayCurrency === 'string' ? obj.displayCurrency : null,
     integrations,
+    alertThresholds: obj.alertThresholds != null ? resolveThresholds(obj.alertThresholds) : null,
   }
 }
 
@@ -232,18 +241,19 @@ export function SettingsPage({ className }: SettingsPageProps) {
     const file = e.target.files?.[0]
     e.target.value = '' // allow re-selecting the same file after a fix
     if (!file) return
+    setImportError(null)
     let parsed: unknown
     try {
       parsed = JSON.parse(await file.text())
     } catch {
-      window.alert(t.prefs.importBad)
+      setImportError(t.prefs.importBad)
       return
     }
 
     const wrapper = (parsed ?? {}) as Record<string, unknown>
     const migrated = migrateSettings(wrapper.settings ?? parsed)
     if (!migrated) {
-      window.alert(t.prefs.importBad)
+      setImportError(t.prefs.importBad)
       return
     }
 
@@ -255,12 +265,17 @@ export function SettingsPage({ className }: SettingsPageProps) {
       usageDisplayMode: settings.usageDisplayMode,
       desktopIsland: settings.desktopIsland,
       integrations: migrated.integrations ?? settings.integrations,
+      alertThresholds: migrated.alertThresholds ?? settings.alertThresholds,
     })
     mergeSnapshots(wrapper.snapshots)
   }
 
+  const [confirmClear, setConfirmClear] = useState(false)
+  /** Inline import failure notice (themed text, not a native alert box) */
+  const [importError, setImportError] = useState<string | null>(null)
   const handleClear = () => {
-    if (window.confirm(t.prefs.clearConfirm)) clearSnapshots()
+    setConfirmClear(false)
+    clearSnapshots()
   }
 
   return (
@@ -363,6 +378,7 @@ export function SettingsPage({ className }: SettingsPageProps) {
           <div className="min-w-0 space-y-1">
             <p className="text-xs text-muted-foreground">{t.prefs.exportHint}</p>
             <p className="text-xs text-muted-foreground">{t.prefs.importHint}</p>
+            {importError && <p className="text-xs text-danger">{importError}</p>}
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <button
@@ -393,7 +409,7 @@ export function SettingsPage({ className }: SettingsPageProps) {
         <div className="flex justify-end">
           <button
             type="button"
-            onClick={handleClear}
+            onClick={() => setConfirmClear(true)}
             className="rounded-lg border border-danger/40 px-3 py-1.5 text-xs text-danger hover:bg-danger/10"
           >
             {t.prefs.clearSnapshots}
@@ -401,12 +417,39 @@ export function SettingsPage({ className }: SettingsPageProps) {
         </div>
       </section>
 
+      <ConfirmDialog
+        open={confirmClear}
+        title={t.prefs.clearSnapshots}
+        description={t.prefs.clearConfirm}
+        confirmText={t.prefs.clearSnapshots}
+        cancelText={t.common.cancel}
+        danger
+        onConfirm={handleClear}
+        onCancel={() => setConfirmClear(false)}
+      />
+
       {/* About — version row followed by the update block */}
       <section className="space-y-5 rounded-2xl border border-border bg-card p-5">
         <h2 className="text-sm font-semibold">{t.prefs.about}</h2>
 
-        {/* App name as the card's identity line */}
-        <div className="text-sm font-medium text-foreground">{t.app.title}</div>
+        {/* App name as the card's identity line, with the repo link pinned to
+            the right edge like the version row below */}
+        <SettingRow label={t.app.title}>
+          <Tooltip text={t.prefs.repoLink} side="left">
+            <button
+              type="button"
+              onClick={() => {
+                const bridge = window.desktopBridge
+                if (bridge) void bridge.openExternal(REPO_URL)
+                else window.open(REPO_URL, '_blank', 'noopener')
+              }}
+              aria-label={t.prefs.repoLink}
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <GitHubIcon className="h-4 w-4" />
+            </button>
+          </Tooltip>
+        </SettingRow>
 
         <SettingRow label={t.prefs.version}>
           <span className="text-xs text-muted-foreground">{APP_VERSION}</span>

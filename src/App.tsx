@@ -93,10 +93,7 @@ function Shell() {
   return (
     <AppShell view={view} navigate={navigate}>
       {view === 'overview' && (
-        <OverviewPage
-          onAddAccount={() => navigate('agents')}
-          onEditAccount={openEditor}
-        />
+        <OverviewPage onEditAccount={openEditor} onViewAllAlerts={() => navigate('alerts')} />
       )}
       {view === 'agents' && <AgentsPage />}
       {view === 'accounts' && (

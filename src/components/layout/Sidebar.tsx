@@ -105,12 +105,13 @@ export function Sidebar({ view, onNavigate }: { view: View; onNavigate: (v: View
                 const active = view === item.view
                 const Icon = item.icon
                 return (
+                  // No tooltip here by design: the label is visible next to
+                  // the icon, so a hover bubble would only repeat it.
                   <button
                     key={item.view}
                     type="button"
                     onClick={() => onNavigate(item.view)}
                     aria-current={active ? 'page' : undefined}
-                    title={item.label}
                     className={cn(
                       'flex w-full items-center justify-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors md:justify-start',
                       active

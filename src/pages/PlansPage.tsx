@@ -172,12 +172,15 @@ function PlanGridCard({ card, now }: { card: PlanCardVM; now: number }) {
  */
 export function PlansPage({ onAddAccount }: PlansPageProps) {
   const t = useT()
-  const { sections, results } = useData()
+  const { sections, results, settings } = useData()
   const [planFilter, setPlanFilter] = useState(ALL_PLANS)
   const [accountFilter, setAccountFilter] = useState(ALL_ACCOUNTS)
   const now = useNowTick()
 
-  const cards = useMemo(() => buildPlanCards(sections, results), [sections, results])
+  const cards = useMemo(
+    () => buildPlanCards(sections, results, settings.alertThresholds.highUsagePct),
+    [sections, results, settings.alertThresholds],
+  )
 
   // Distinct plan labels across the whole registry (not only fetched accounts),
   // so the plan select lists everything a user could add, first-seen order.

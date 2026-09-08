@@ -5,6 +5,8 @@ import { formatCompactValue } from '@/lib/format'
 export interface LineChartPoint {
   label: string
   value: number
+  /** Optional per-point breakdown rows (e.g. per-model tokens of that day) */
+  detail?: { label: string; value: number }[]
 }
 
 export interface LineChartProps {
@@ -24,7 +26,7 @@ export interface LineChartProps {
 const W = 560
 
 /** Inner padding: left hosts y ticks, bottom hosts x labels */
-const PAD = { left: 44, right: 10, top: 10, bottom: 24 } as const
+const PAD = { left: 44, right: 14, top: 10, bottom: 24 } as const
 
 /** Approximate number of horizontal grid lines */
 const TICK_COUNT = 4
@@ -181,7 +183,8 @@ export function LineChart({
           strokeLinejoin="round"
         />
 
-        {/* Data points */}
+        {/* Data points (the HTML tooltip below owns hover readout; no native
+            <title> so two bubbles never stack) */}
         {coords.map((c, i) => (
           <circle
             key={`${c.point.label}-${i}`}
@@ -191,9 +194,7 @@ export function LineChart({
             fill="var(--color-accent)"
             stroke="var(--color-card)"
             strokeWidth={2}
-          >
-            <title>{`${c.point.label}: ${fmt(c.point.value)}`}</title>
-          </circle>
+          />
         ))}
 
         {/* Hover crosshair + highlighted point (bubble lives in HTML below) */}
@@ -212,13 +213,15 @@ export function LineChart({
           </g>
         )}
 
-        {/* X axis labels (thinned) */}
+        {/* X axis labels (thinned). The first/last labels sit at the plot
+            edges, so they anchor inward — a centered edge label would bleed
+            past the viewBox and render clipped (e.g. a trailing "09-08"). */}
         {labelIndexes.map((i) => (
           <text
             key={`x-${i}`}
             x={r2(coords[i].x)}
             y={H - 8}
-            textAnchor="middle"
+            textAnchor={i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'}
             fontSize={10}
             fill="var(--color-subtle)"
           >
@@ -228,16 +231,36 @@ export function LineChart({
       </svg>
 
       {/* HTML tooltip: rendered at fixed font size (independent of the SVG's
-          proportional scaling) so hover data stays crisp at any card width */}
+          proportional scaling) so hover data stays crisp at any card width.
+          Anchored to the hovered point's x (clamped at the edges) — a
+          container-centered bubble reads as "far from the point" whenever the
+          cursor is off-center. */}
       {active && (
         <div
           className={cn(
-            'pointer-events-none absolute z-10 -translate-y-full whitespace-nowrap rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-foreground shadow-md',
-            active.x / W < 0.15 ? 'left-0' : active.x / W > 0.85 ? 'right-0' : 'left-1/2 -translate-x-1/2',
+            'pointer-events-none absolute z-10 whitespace-nowrap rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-foreground shadow-md',
+            active.x / W < 0.15 ? 'left-0' : active.x / W > 0.85 ? 'right-0' : '',
           )}
-          style={{ top: `${(active.y / H) * 100}%`, marginTop: -8 }}
+          style={{
+            top: `${(active.y / H) * 100}%`,
+            ...(active.x / W < 0.15 || active.x / W > 0.85
+              ? { transform: 'translateY(calc(-100% - 8px))' }
+              : { left: `${(active.x / W) * 100}%`, transform: 'translate(-50%, calc(-100% - 8px))' }),
+          }}
         >
-          {active.point.label} · {fmt(active.point.value)}
+          <div className="tabular-nums">
+            {active.point.label} · {fmt(active.point.value)}
+          </div>
+          {active.point.detail && active.point.detail.length > 0 && (
+            <div className="mt-1 space-y-0.5 border-t border-border/60 pt-1 font-normal text-muted-foreground">
+              {active.point.detail.slice(0, 5).map((d) => (
+                <div key={d.label} className="flex items-center justify-between gap-3 tabular-nums">
+                  <span className="max-w-40 truncate">{d.label}</span>
+                  <span>{fmt(d.value)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

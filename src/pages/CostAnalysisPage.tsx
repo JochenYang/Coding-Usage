@@ -20,10 +20,12 @@ function CostList({
   rows,
   maxCost,
   costText,
+  unpricedLabel,
 }: {
-  rows: { label: string; tokens: number; costUsd: number }[]
+  rows: { label: string; tokens: number; costUsd: number; priced: boolean }[]
   maxCost: number
   costText: (costUsd: number) => string
+  unpricedLabel: string
 }) {
   return (
     <div className="mt-3 space-y-2">
@@ -32,7 +34,9 @@ function CostList({
           <div className="flex items-center gap-3 text-xs">
             <span className="min-w-0 flex-1 truncate font-medium text-foreground">{row.label}</span>
             <span className="shrink-0 tabular-nums text-muted-foreground">{formatCompactValue(row.tokens)}</span>
-            <span className="w-20 shrink-0 text-right tabular-nums text-foreground">{costText(row.costUsd)}</span>
+            <span className="w-20 shrink-0 text-right tabular-nums text-foreground">
+              {row.costUsd > 0 ? costText(row.costUsd) : row.priced ? '—' : unpricedLabel}
+            </span>
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
             <div
@@ -87,11 +91,21 @@ export function CostAnalysisPage() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <section className="rounded-2xl border border-border bg-card p-5">
           <h2 className="text-sm font-semibold text-foreground">{t.overview.colProvider}</h2>
-          <CostList rows={agentUsage.monthCostByProvider} maxCost={maxProvider} costText={costText} />
+          <CostList
+            rows={agentUsage.monthCostByProvider}
+            maxCost={maxProvider}
+            costText={costText}
+            unpricedLabel={t.overview.unpriced}
+          />
         </section>
         <section className="rounded-2xl border border-border bg-card p-5">
           <h2 className="text-sm font-semibold text-foreground">{t.overview.colModel}</h2>
-          <CostList rows={agentUsage.monthCostByModel.slice(0, 10)} maxCost={maxModel} costText={costText} />
+          <CostList
+            rows={agentUsage.monthCostByModel}
+            maxCost={maxModel}
+            costText={costText}
+            unpricedLabel={t.overview.unpriced}
+          />
         </section>
       </div>
     </div>

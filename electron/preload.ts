@@ -42,6 +42,7 @@ const desktopBridge: DesktopBridge = {
   toggleMaximizeWindow: () => ipcRenderer.invoke('window:maximize-toggle'),
   hideWindow: () => ipcRenderer.invoke('window:hide'),
   quitApp: () => ipcRenderer.invoke('app:quit'),
+  openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   getWindowMaximized: () => ipcRenderer.invoke('window:get-maximized'),
   onWindowMaximized: (callback) => {
     const listener = (_event: IpcRendererEvent, maximized: boolean) => callback(maximized)
@@ -55,6 +56,7 @@ const desktopBridge: DesktopBridge = {
   },
   installUpdate: () => ipcRenderer.invoke('app:install-update'),
   checkForUpdates: () => ipcRenderer.invoke('app:check-updates'),
+  updateState: () => ipcRenderer.invoke('app:update-state'),
   onUpdateStatus: (callback) => {
     const listener = (_event: IpcRendererEvent, status: DesktopUpdateState) => callback(status)
     ipcRenderer.on('desktop:update-status', listener)

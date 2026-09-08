@@ -6,6 +6,8 @@ import { fetchUsage } from '../../lib/query'
 import { useLocale } from '../../i18n/LocaleProvider'
 import { useT } from '../../i18n/useT'
 import { Drawer } from '../beui/drawer'
+import { Tooltip } from '../common/Tooltip'
+import { ConfirmDialog } from '../beui/confirm-dialog'
 import { Loader } from '../beui/loader'
 import { Switch } from '../beui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../beui/select'
@@ -24,7 +26,7 @@ export interface AccountDrawerProps {
   /** Undefined = create mode (empty form, save creates the account) */
   cfg: ProviderConfig | undefined
   onSave: (next: ProviderConfig) => void
-  /** When provided, a delete button is shown (guarded by window.confirm) */
+  /** When provided, a delete button is shown (guarded by a themed confirm dialog) */
   onDelete?: () => void
   onClose: () => void
   className?: string
@@ -64,6 +66,9 @@ export function AccountDrawer({
   const [enabled, setEnabled] = useState(true)
   const [showKey, setShowKey] = useState(false)
   const [test, setTest] = useState<TestState>({ phase: 'idle' })
+  /** Themed guards replacing the native window.confirm (unsaved close / delete) */
+  const [confirmClose, setConfirmClose] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   /** True when the form differs from the persisted config (used for the
    *  unsaved-changes guard on close). Create mode counts any typed content. */
@@ -75,7 +80,10 @@ export function AccountDrawer({
 
   /** Close with a confirmation guard when typed input would be lost */
   const handleClose = () => {
-    if (isDirty && !window.confirm(t.settings.unsavedChanges)) return
+    if (isDirty) {
+      setConfirmClose(true)
+      return
+    }
     onClose()
   }
 
@@ -136,7 +144,7 @@ export function AccountDrawer({
   }
 
   const handleDelete = () => {
-    if (onDelete && window.confirm(t.card.deleteHint)) onDelete()
+    if (onDelete) setConfirmDelete(true)
   }
 
   // Header subtitle: create mode shows the "add" copy; edit mode prefers the
@@ -144,6 +152,7 @@ export function AccountDrawer({
   const subtitle = isNew ? t.settings.addAccount : label.trim() || `#${index + 1}`
 
   return (
+    <>
     <Drawer
       open={open}
       onOpenChange={(o) => !o && handleClose()}
@@ -159,13 +168,15 @@ export function AccountDrawer({
             <p className="truncate text-xs text-subtle">{subtitle}</p>
           </div>
         </div>
-        <button
-          onClick={handleClose}
-          title={t.settings.close}
-          className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-        >
-          <X className="h-5 w-5" />
-        </button>
+        <Tooltip text={t.settings.close} side="left">
+          <button
+            onClick={handleClose}
+            aria-label={t.settings.close}
+            className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </Tooltip>
       </div>
 
       {/* Form body */}
@@ -189,7 +200,7 @@ export function AccountDrawer({
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder={t.settings.aliasPlaceholder(index + 1)}
-              className="w-full rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-foreground outline-none placeholder:text-subtle focus:border-stone-900"
+              className="w-full rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-foreground outline-none placeholder:text-subtle focus:border-accent"
             />
           </div>
 
@@ -202,7 +213,7 @@ export function AccountDrawer({
                 href={def.keyUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="text-[11px] text-stone-600 underline-offset-2 hover:underline"
+                className="text-[11px] text-muted-foreground underline-offset-2 hover:underline"
               >
                 {t.settings.getKey}
               </a>
@@ -215,15 +226,17 @@ export function AccountDrawer({
                 placeholder={t.settings.apiKeyPlaceholder}
                 autoComplete="off"
                 spellCheck={false}
-                className="min-w-0 flex-1 rounded-lg border border-border bg-card px-3 py-1.5 font-mono text-xs text-foreground outline-none placeholder:text-subtle focus:border-stone-900"
+                className="min-w-0 flex-1 rounded-lg border border-border bg-card px-3 py-1.5 font-mono text-xs text-foreground outline-none placeholder:text-subtle focus:border-accent"
               />
-              <button
-                onClick={() => setShowKey(!showKey)}
-                title={showKey ? t.settings.hide : t.settings.show}
-                className="rounded-lg border border-border bg-card px-2 text-muted-foreground hover:bg-muted"
-              >
-                {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-              </button>
+              <Tooltip text={showKey ? t.settings.hide : t.settings.show}>
+                <button
+                  onClick={() => setShowKey(!showKey)}
+                  aria-label={showKey ? t.settings.hide : t.settings.show}
+                  className="rounded-lg border border-border bg-card px-2 text-muted-foreground hover:bg-muted"
+                >
+                  {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </button>
+              </Tooltip>
             </div>
           </div>
 
@@ -273,7 +286,7 @@ export function AccountDrawer({
         <button
           onClick={handleTest}
           disabled={test.phase === 'testing' || !apiKey.trim()}
-          className="flex min-w-[64px] items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
+          className="flex items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-4 py-2 text-xs font-medium text-foreground outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
         >
           {test.phase === 'testing' ? (
             <Loader variant="dots" size={14} label={t.settings.testing} />
@@ -287,15 +300,14 @@ export function AccountDrawer({
             <p className="truncate text-xs text-emerald-700">✓ {t.card.normal}</p>
           )}
           {test.phase === 'error' && (
-            <p className="truncate text-xs text-red-700" title={test.message}>
-              ✕ {test.message}
-            </p>
+            <Tooltip text={test.message} bubbleClassName="max-w-72 whitespace-normal">
+              <p className="truncate text-xs text-red-700">✕ {test.message}</p>
+            </Tooltip>
           )}
         </div>
         {onDelete && (
           <button
             onClick={handleDelete}
-            title={t.settings.deleteTooltip}
             className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-danger transition-colors hover:bg-red-50"
           >
             {t.card.delete}
@@ -303,5 +315,33 @@ export function AccountDrawer({
         )}
       </div>
     </Drawer>
+      {/* Fixed overlays live outside the drawer panel: the panel's spring
+          transform would otherwise re-anchor them to itself */}
+      <ConfirmDialog
+        open={confirmClose}
+        title={t.common.confirmTitle}
+        description={t.settings.unsavedChanges}
+        confirmText={t.common.confirm}
+        cancelText={t.common.cancel}
+        onConfirm={() => {
+          setConfirmClose(false)
+          onClose()
+        }}
+        onCancel={() => setConfirmClose(false)}
+      />
+      <ConfirmDialog
+        open={confirmDelete}
+        title={t.card.delete}
+        description={t.card.deleteHint}
+        confirmText={t.card.delete}
+        cancelText={t.common.cancel}
+        danger
+        onConfirm={() => {
+          setConfirmDelete(false)
+          onDelete?.()
+        }}
+        onCancel={() => setConfirmDelete(false)}
+      />
+    </>
   )
 }

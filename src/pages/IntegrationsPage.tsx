@@ -4,6 +4,7 @@ import type { LucideIcon } from 'lucide-react'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { Switch } from '@/components/beui/switch'
+import { ConfirmDialog } from '@/components/beui/confirm-dialog'
 import { cn } from '@/lib/cn'
 import { useT } from '@/i18n/useT'
 import { useData } from '@/lib/data-context'
@@ -222,11 +223,14 @@ function WeixinChannelBlock({ onTest }: { onTest: (cred: WebhookCredential) => P
     // eslint-disable-next-line react-hooks/exhaustive-deps -- wizard phase machine
   }, [phase, settings.integrations.weixinBotToken])
 
+  // Disconnect guard state lives with its dialog logic (not the test-send
+  // states above) so the two features stay separately readable
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false)
   const disconnect = () => {
-    if (!window.confirm(t.integrations.wxDisconnectConfirm)) return
     updateSettings({ ...settings, integrations: { ...intg, weixinBotToken: '', weixinBotUserId: '' } })
     setPhase('idle')
     setNote('')
+    setConfirmDisconnect(false)
   }
 
   const runTest = async () => {
@@ -273,11 +277,21 @@ function WeixinChannelBlock({ onTest }: { onTest: (cred: WebhookCredential) => P
               </button>
               <button
                 type="button"
-                onClick={disconnect}
+                onClick={() => setConfirmDisconnect(true)}
                 className="rounded-lg border border-danger/40 px-2.5 py-1 text-[11px] text-danger hover:bg-danger/10"
               >
                 {t.integrations.wxDisconnect}
               </button>
+              <ConfirmDialog
+                open={confirmDisconnect}
+                title={t.integrations.wxDisconnect}
+                description={t.integrations.wxDisconnectConfirm}
+                confirmText={t.integrations.wxDisconnect}
+                cancelText={t.common.cancel}
+                danger
+                onConfirm={disconnect}
+                onCancel={() => setConfirmDisconnect(false)}
+              />
             </>
           )}
           {!connected && phase === 'idle' && (
@@ -533,13 +547,13 @@ export function IntegrationsPage({ className }: IntegrationsPageProps) {
                 onChange={(e) => {
                   setDrafts((d) => ({ ...d, [f.key]: e.target.value }))
                   setDirty(true)
+                  setCopiedKey(null)
                   setTests((s) => ({ ...s, [ch.id]: { state: 'idle', detail: '' } }))
                 }}
                 placeholder={f.placeholder}
-                title={f.label}
                 autoComplete="off"
                 spellCheck={false}
-                className="w-full rounded-lg border border-border bg-card px-3 py-1.5 font-mono text-xs text-foreground outline-none placeholder:text-subtle focus:border-stone-900"
+                className="w-full rounded-lg border border-border bg-card px-3 py-1.5 font-mono text-xs text-foreground outline-none placeholder:text-subtle focus:border-accent"
               />
             </label>
           ))}

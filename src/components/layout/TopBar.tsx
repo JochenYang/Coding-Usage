@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { EASE_OUT } from '@/lib/motion-presets'
+import { EASE_OUT } from '@/lib/ease'
 import { Bell, Copy, Minus, Monitor, Moon, RefreshCw, Settings, Square, Sun, X } from 'lucide-react'
 import { useTheme, type ThemeMode } from '../ThemeProvider'
 import { LocaleSwitcher } from '../LocaleSwitcher'
@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Switch } from '../beui/switch'
 import { Popover, PopoverContent, PopoverTrigger } from '../beui/popover'
 import { AlertsPanel } from '../overview/AlertsPanel'
+import { Tooltip } from '../common/Tooltip'
 import { cn } from '@/lib/cn'
 import { useT } from '@/i18n/useT'
 import { useData } from '@/lib/data-context'
@@ -51,6 +52,20 @@ export function TopBar({ onNavigate }: { onNavigate: (v: View) => void }) {
   // Styled close confirmation ("tray or quit"), driven by caption X and Alt+F4
   const [closeOpen, setCloseOpen] = useState(false)
   const [dontAskAgain, setDontAskAgain] = useState(false)
+  // Update badge on the settings gear: an available/downloading/downloaded
+  // release stays visible on every page (the toast alone is dismissible and
+  // only fires after a full download)
+  const [updateBadge, setUpdateBadge] = useState(false)
+
+  useEffect(() => {
+    const bridge = window.desktopBridge
+    if (!bridge) return
+    const sync = (s: DesktopUpdateState): void => {
+      setUpdateBadge(s.status === 'available' || s.status === 'downloading' || s.status === 'downloaded')
+    }
+    void bridge.updateState().then(sync).catch(() => {})
+    return bridge.onUpdateStatus(sync)
+  }, [])
 
   const runCloseChoice = (choice: 'tray' | 'quit') => {
     setCloseOpen(false)
@@ -213,47 +228,58 @@ export function TopBar({ onNavigate }: { onNavigate: (v: View) => void }) {
           </PopoverContent>
         </Popover>
 
-        <button
-          type="button"
-          onClick={() => onNavigate('settings')}
-          aria-label={t.nav.settings}
-          className={GHOST_BTN}
-        >
-          <Settings className="h-4 w-4" />
-        </button>
+        <Tooltip text={t.nav.settings} side="bottom">
+          <button
+            type="button"
+            onClick={() => onNavigate('settings')}
+            aria-label={t.nav.settings}
+            className={cn(GHOST_BTN, 'relative')}
+          >
+            <Settings className="h-4 w-4" />
+            {updateBadge && (
+              <span
+                aria-hidden
+                className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-accent"
+              />
+            )}
+          </button>
+        </Tooltip>
       </div>
 
       {/* Custom caption buttons (browser path: no desktop bridge, so they hide;
           in Electron they draw their own hover states and intercept close) */}
       {window.desktopBridge && (
         <div className="-mr-px flex h-full items-stretch [app-region:no-drag]">
-          <button
-            type="button"
-            onClick={() => void window.desktopBridge?.minimizeWindow()}
-            aria-label={t.header.windowMinimize}
-            title={t.header.windowMinimize}
-            className={cn(CAPTION_BTN, 'hover:bg-muted hover:text-foreground')}
-          >
-            <Minus className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => void window.desktopBridge?.toggleMaximizeWindow()}
-            aria-label={t.header.windowMaximize}
-            title={t.header.windowMaximize}
-            className={cn(CAPTION_BTN, 'hover:bg-muted hover:text-foreground')}
-          >
-            {maximized ? <Copy className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
-          </button>
-          <button
-            type="button"
-            onClick={requestClose}
-            aria-label={t.header.windowClose}
-            title={t.header.windowClose}
-            className={cn(CAPTION_BTN, 'hover:bg-danger hover:text-white')}
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <Tooltip text={t.header.windowMinimize} side="bottom" className="flex h-full">
+            <button
+              type="button"
+              onClick={() => void window.desktopBridge?.minimizeWindow()}
+              aria-label={t.header.windowMinimize}
+              className={cn(CAPTION_BTN, 'hover:bg-muted hover:text-foreground')}
+            >
+              <Minus className="h-4 w-4" />
+            </button>
+          </Tooltip>
+          <Tooltip text={t.header.windowMaximize} side="bottom" className="flex h-full">
+            <button
+              type="button"
+              onClick={() => void window.desktopBridge?.toggleMaximizeWindow()}
+              aria-label={t.header.windowMaximize}
+              className={cn(CAPTION_BTN, 'hover:bg-muted hover:text-foreground')}
+            >
+              {maximized ? <Copy className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+            </button>
+          </Tooltip>
+          <Tooltip text={t.header.windowClose} side="bottom" className="flex h-full">
+            <button
+              type="button"
+              onClick={requestClose}
+              aria-label={t.header.windowClose}
+              className={cn(CAPTION_BTN, 'hover:bg-danger hover:text-white')}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </Tooltip>
         </div>
       )}
       </header>

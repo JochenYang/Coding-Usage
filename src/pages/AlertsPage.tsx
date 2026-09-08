@@ -3,6 +3,7 @@ import { Bell, CircleAlert, Info, Lock } from 'lucide-react'
 import { Switch } from '@/components/beui/switch'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
+import { Tooltip } from '@/components/common/Tooltip'
 import {
   Select,
   SelectContent,
@@ -15,6 +16,8 @@ import { useT } from '@/i18n/useT'
 import { useData } from '@/lib/data-context'
 import type { AlertItem, AlertLevel } from '@/lib/alerts'
 import { alertDetail, alertTitle } from '@/lib/alert-text'
+import { resolveThresholds } from '@/lib/alerts'
+import type { AlertThresholds } from '@/types'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
 
 export interface AlertsPageProps {
@@ -22,6 +25,9 @@ export interface AlertsPageProps {
 }
 
 type AlertFilter = 'all' | 'unread'
+
+/** Balance floors are edited per currency; the engine matches metric units case-insensitively */
+const LOW_BALANCE_CURRENCIES = ['CNY', 'USD', 'HKD', 'TWD']
 
 /** Icon chip pairing per alert level; mirrors AlertsPanel so both views match */
 const LEVEL_CHIP: Record<AlertLevel, string> = {
@@ -88,20 +94,35 @@ function AlertRow({ alert, now, onRead }: AlertRowProps) {
   )
 }
 
-/** Alerts center: filterable full list of alerts plus a static rules reference */
+/** Alerts center: filterable full list of alerts plus editable rule thresholds */
 export function AlertsPage({ className }: AlertsPageProps) {
   const t = useT()
   const { alerts, markAllAlertsRead, markAlertRead, settings, updateSettings } = useData()
   const [filter, setFilter] = useState<AlertFilter>('all')
   const now = useNowTick()
+  const thresholds = settings.alertThresholds
 
   const visible = useMemo(
     () => (filter === 'unread' ? alerts.filter((a) => !a.read) : alerts),
     [alerts, filter],
   )
 
+  // Threshold edits commit on every valid keystroke (invalid/empty input is
+  // ignored, so the field never writes garbage); resolveThresholds clamps.
+  const setThresholds = (patch: Partial<AlertThresholds>) => {
+    updateSettings({
+      ...settings,
+      alertThresholds: resolveThresholds({ ...thresholds, ...patch }),
+    })
+  }
+
   return (
-    <div className={cn('space-y-4', className)}>
+    // Full-height column: min-height is viewport-based (the shell's inner
+    // wrapper is height:auto, so min-h-full would resolve to auto and never
+    // stretch). 100vh minus the h-14 top bar and the shell's vertical py-6.
+    // The rules card pins to the bottom with ~48px off the window edge even
+    // when the alert list is empty; the empty state centers in the freed space.
+    <div className={cn('flex min-h-[calc(100vh-6.5rem)] flex-col space-y-4 pb-6', className)}>
       <PageHeader
         title={t.manage.alertsCenterTitle}
         description={t.manage.alertsDesc}
@@ -128,7 +149,9 @@ export function AlertsPage({ className }: AlertsPageProps) {
       />
 
       {visible.length === 0 ? (
-        <EmptyState icon={<Bell className="h-6 w-6" />} title={t.manage.noAlerts} />
+        <div className="flex flex-1 items-center justify-center py-10">
+          <EmptyState icon={<Bell className="h-6 w-6" />} title={t.manage.noAlerts} />
+        </div>
       ) : (
         <section className="rounded-2xl border border-border bg-card px-5 py-1">
           <ul className="divide-y divide-border/60">
@@ -145,8 +168,10 @@ export function AlertsPage({ className }: AlertsPageProps) {
           <div className="flex shrink-0 items-center gap-3">
             {/* Desktop island overlay toggle: only meaningful inside Electron */}
             {window.desktopBridge && (
-              <label className="flex items-center gap-2" title={t.island.desktopHint}>
-                <span className="text-[11px] text-muted-foreground">{t.island.desktopToggle}</span>
+              <label className="flex items-center gap-2">
+                <Tooltip text={t.island.desktopHint}>
+                  <span className="text-[11px] text-muted-foreground">{t.island.desktopToggle}</span>
+                </Tooltip>
                 <Switch
                   checked={settings.desktopIsland}
                   ariaLabel={t.island.desktopToggle}
@@ -156,20 +181,69 @@ export function AlertsPage({ className }: AlertsPageProps) {
             )}
           </div>
         </div>
-        <ul className="mt-3 space-y-2">
-          <li className="flex items-center gap-2">
+        <div className="mt-3 space-y-2.5">
+          <div className="flex items-center gap-2">
             <Bell className="h-3.5 w-3.5 shrink-0 text-subtle" />
-            <span className="text-xs text-muted-foreground">{t.manage.ruleReset}</span>
-          </li>
-          <li className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">{t.manage.thresholdResetLabel}</span>
+            <input
+              type="number"
+              value={thresholds.resetSoonMin}
+              min={5}
+              max={720}
+              step={1}
+              onChange={(e) => {
+                const n = Number(e.target.value)
+                if (Number.isFinite(n)) setThresholds({ resetSoonMin: n })
+              }}
+              aria-label={t.manage.thresholdResetLabel}
+              className="ml-auto w-20 rounded-lg border border-border bg-card px-2 py-1 text-right font-mono text-xs tabular-nums text-foreground outline-none focus:border-accent"
+            />
+            <span className="w-10 shrink-0 text-xs text-subtle">{t.manage.thresholdResetUnit}</span>
+          </div>
+          <div className="flex items-center gap-2">
             <Bell className="h-3.5 w-3.5 shrink-0 text-subtle" />
-            <span className="text-xs text-muted-foreground">{t.manage.ruleHigh}</span>
-          </li>
-          <li className="flex items-center gap-2">
-            <Bell className="h-3.5 w-3.5 shrink-0 text-subtle" />
-            <span className="text-xs text-muted-foreground">{t.manage.ruleLow}</span>
-          </li>
-        </ul>
+            <span className="text-xs text-muted-foreground">{t.manage.thresholdHighLabel}</span>
+            <input
+              type="number"
+              value={thresholds.highUsagePct}
+              min={50}
+              max={100}
+              step={1}
+              onChange={(e) => {
+                const n = Number(e.target.value)
+                if (Number.isFinite(n)) setThresholds({ highUsagePct: n })
+              }}
+              aria-label={t.manage.thresholdHighLabel}
+              className="ml-auto w-20 rounded-lg border border-border bg-card px-2 py-1 text-right font-mono text-xs tabular-nums text-foreground outline-none focus:border-accent"
+            />
+            <span className="w-10 shrink-0 text-xs text-subtle">%</span>
+          </div>
+          <div className="flex items-start gap-2">
+            <Bell className="mt-1.5 h-3.5 w-3.5 shrink-0 text-subtle" />
+            <span className="mt-1.5 text-xs text-muted-foreground">{t.manage.thresholdLowLabel}</span>
+            <div className="ml-auto grid shrink-0 grid-cols-2 gap-2">
+              {LOW_BALANCE_CURRENCIES.map((code) => (
+                <label key={code} className="flex items-center gap-1.5">
+                  <span className="w-8 shrink-0 font-mono text-[11px] text-subtle">{code}</span>
+                  <input
+                    type="number"
+                    value={thresholds.lowBalance[code] ?? 0}
+                    min={0}
+                    step="any"
+                    onChange={(e) => {
+                      const n = Number(e.target.value)
+                      if (Number.isFinite(n) && n >= 0) {
+                        setThresholds({ lowBalance: { ...thresholds.lowBalance, [code]: n } })
+                      }
+                    }}
+                    aria-label={`${t.manage.thresholdLowLabel} ${code}`}
+                    className="w-20 rounded-lg border border-border bg-card px-2 py-1 text-right font-mono text-xs tabular-nums text-foreground outline-none focus:border-accent"
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
       </section>
     </div>
   )

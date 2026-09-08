@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Settings, Trash2, Users } from 'lucide-react'
 import { useT } from '@/i18n/useT'
 import { useData } from '@/lib/data-context'
@@ -6,6 +7,8 @@ import { PROVIDERS } from '@/providers/registry'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { Badge } from '@/components/common/Badge'
+import { Tooltip } from '@/components/common/Tooltip'
+import { ConfirmDialog } from '@/components/beui/confirm-dialog'
 import { AddAccountMenu } from '@/components/account/AddAccountMenu'
 import { ProviderLogo } from '@/components/ProviderLogo'
 import { formatAgo } from '@/lib/format'
@@ -25,6 +28,8 @@ export interface AccountsPageProps {
 export function AccountsPage({ onEditAccount, onAddAccount }: AccountsPageProps) {
   const t = useT()
   const { settings, results, deleteEntry } = useData()
+  /** Pending row deletion (themed confirm replaces the native message box) */
+  const [pendingDelete, setPendingDelete] = useState<{ providerId: string; index: number } | null>(null)
 
   // Only providers that actually hold accounts form a group; registry order kept
   const groups = PROVIDERS.flatMap((def) => {
@@ -74,7 +79,7 @@ export function AccountsPage({ onEditAccount, onAddAccount }: AccountsPageProps)
                 <div
                   key={`${def.id}-${i}`}
                   onClick={() => onEditAccount(def.id, i)}
-                  className="flex cursor-pointer items-center gap-4 rounded-xl border border-border bg-card px-4 py-3 transition-colors hover:border-stone-300 hover:bg-muted/40"
+                  className="flex cursor-pointer items-center gap-4 rounded-xl border border-border bg-card px-4 py-3 transition-colors hover:border-border-strong hover:bg-muted/40"
                 >
                   {/* Left: alias / positional name + masked key tail */}
                   <div className="min-w-0 flex-1">
@@ -98,35 +103,52 @@ export function AccountsPage({ onEditAccount, onAddAccount }: AccountsPageProps)
                       {fetchedAt ? formatAgo(fetchedAt, Date.now(), t) : t.manage.never}
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      // Row click already opens the editor; avoid double firing
-                      e.stopPropagation()
-                      onEditAccount(def.id, i)
-                    }}
-                    title={t.card.goSettings}
-                    className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  >
-                    <Settings className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if (window.confirm(t.manage.deleteConfirm)) deleteEntry(def.id, i)
-                    }}
-                    title={t.settings.deleteTooltip}
-                    className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  <Tooltip text={t.card.goSettings}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        // Row click already opens the editor; avoid double firing
+                        e.stopPropagation()
+                        onEditAccount(def.id, i)
+                      }}
+                      aria-label={t.card.goSettings}
+                      className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                      <Settings className="h-4 w-4" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip text={t.settings.deleteTooltip}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setPendingDelete({ providerId: def.id, index: i })
+                      }}
+                      aria-label={t.settings.deleteTooltip}
+                      className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </Tooltip>
                 </div>
               )
             })}
           </section>
         ))}
       </div>
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={t.card.delete}
+        description={t.manage.deleteConfirm}
+        confirmText={t.card.delete}
+        cancelText={t.common.cancel}
+        danger
+        onConfirm={() => {
+          if (pendingDelete) deleteEntry(pendingDelete.providerId, pendingDelete.index)
+          setPendingDelete(null)
+        }}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   )
 }

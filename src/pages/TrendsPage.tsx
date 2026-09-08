@@ -23,7 +23,11 @@ export function TrendsPage() {
   const hasLocal = agentUsage.allTimeTotal.tokens > 0 || !!localPoints || archived.length > 0
   const chart =
     localPoints
-      ? localPoints.map((p) => ({ label: p.label, value: mode === 'no-cache' ? p.input + p.output : p.value }))
+      ? localPoints.map((p) => ({
+          label: p.label,
+          value: mode === 'no-cache' ? p.input + p.output : p.value,
+          detail: (p.models ?? []).map((m) => ({ label: m.label, value: m.tokens })),
+        }))
       : archived.length >= 2
         ? archived
         : !hasLocal && apiFallback.length >= 2

@@ -3,20 +3,20 @@ import { useData } from '@/lib/data-context'
 import { useT } from '@/i18n/useT'
 import {
   DIST_COLORS,
+  DIST_OTHER_COLOR,
   buildAgentRows,
   buildBalanceProviders,
   buildDistribution,
   buildKpis,
-  buildPlanCards,
   buildTrendPoints,
 } from '@/lib/overview'
 import { displayTokens } from '@/lib/agent-usage'
+import { alertDetail, alertTitle } from '@/lib/alert-text'
 import { KpiRow } from '@/components/overview/KpiRow'
 import { TrendCard } from '@/components/overview/TrendCard'
 import { DistributionCard } from '@/components/overview/DistributionCard'
-import { AgentsTable } from '@/components/overview/AgentsTable'
+import { AttentionList, type AttentionItem } from '@/components/overview/AttentionList'
 import { LocalUsageCard } from '@/components/overview/LocalUsageCard'
-import { PlanCardsRow } from '@/components/overview/PlanCardsRow'
 
 /**
  * Distribution legend shows the top slices plus one folded "other" bucket:
@@ -29,21 +29,26 @@ const MAX_DIST_SLICES = 6
 const MIN_SLICE_SHARE = 0.03
 
 /**
- * Overview page: KPI row + trend (top), agents table + distribution (middle),
- * plan cards (bottom). All models come from lib/overview builders; this
+ * Overview page: KPI row + trend (top), local usage, then attention list +
+ * distribution (bottom). All models come from lib/overview builders; this
  * component only wires data to presentational pieces. Recent alerts live in
  * the top bar's hover popover and the alerts page, not on this canvas.
+ *
+ * The full agents table and plan cards used to repeat here — both detail
+ * views keep living on their own pages, so the overview only surfaces what
+ * needs attention (error accounts + unread alerts).
  */
 export function OverviewPage({
-  onAddAccount,
   onEditAccount,
+  onViewAllAlerts,
 }: {
-  onAddAccount: () => void
   /** Open the account drawer for a specific row ("providerId-index") */
   onEditAccount: (providerId: string, index: number) => void
+  /** Jump to the alerts page */
+  onViewAllAlerts: () => void
 }) {
   const t = useT()
-  const { sections, results, settings, agentUsage, agentUsageLoading, refreshAgentUsage, agentDailySeries, fxRates } =
+  const { sections, results, settings, agentUsage, agentUsageLoading, refreshAgentUsage, agentDailySeries, fxRates, alerts } =
     useData()
 
   // Low-frequency clock so stale/offline derivation (10 min STALE_MS) stays
@@ -99,7 +104,7 @@ export function OverviewPage({
         }
       }
       // Same muted tone lib/overview's threshold fold uses
-      if (rest > 0) slices.push({ label: t.overview.distOther, value: rest, color: '#4B4B63' })
+      if (rest > 0) slices.push({ label: t.overview.distOther, value: rest, color: DIST_OTHER_COLOR })
       return { slices, total: agentUsage.monthTotal.tokens, asOf: agentUsage.scannedAt }
     }
     return { ...buildDistribution(sections, results, t.overview.distOther), asOf: null }
@@ -113,7 +118,22 @@ export function OverviewPage({
     const archived = agentDailySeries(7)
     return archived.length >= 2 ? archived : buildTrendPoints(sections)
   }, [agentUsage, agentDailySeries, sections, settings.usageDisplayMode])
-  const plans = useMemo(() => buildPlanCards(sections, results), [sections, results])
+  // Attention items: error accounts first (open the editor on click), then
+  // unread alerts (jump to the alerts page). Capped — the overview is a
+  // dashboard, not the log.
+  const attention = useMemo<AttentionItem[]>(() => {
+    const items: AttentionItem[] = []
+    for (const r of rows) {
+      if (r.status === 'error') {
+        items.push({ key: r.key, title: r.name, detail: r.errorText, level: 'danger', editKey: r.key })
+      }
+    }
+    for (const a of alerts) {
+      if (a.read) continue
+      items.push({ key: a.id, title: alertTitle(a, t), detail: alertDetail(a, t), level: a.level })
+    }
+    return items.slice(0, 5)
+  }, [rows, alerts, t])
   // Richest-first providers behind the balance KPI (brand chips on the card)
   const balanceProviders = useMemo(
     () => buildBalanceProviders(sections, results, settings.displayCurrency, fxRates),
@@ -145,16 +165,17 @@ export function OverviewPage({
 
       <div className="flex flex-col gap-4 xl:flex-row">
         <div className="min-w-0 flex-1">
-          <AgentsTable
-            rows={rows}
-            className="h-full"
+          <AttentionList
+            items={attention}
             onEdit={(rowKey) => {
               const split = rowKey.lastIndexOf('-')
               onEditAccount(rowKey.slice(0, split), Number(rowKey.slice(split + 1)))
             }}
+            onViewAll={onViewAllAlerts}
+            className="h-full"
           />
         </div>
-        {/* Stretch to the table's height so the two columns read as one band */}
+        {/* Stretch to the list's height so the two columns read as one band */}
         <div className="w-full shrink-0 xl:w-[360px]">
           <DistributionCard
             slices={dist.slices}
@@ -165,8 +186,6 @@ export function OverviewPage({
           />
         </div>
       </div>
-
-      <PlanCardsRow cards={plans} onAdd={onAddAccount} />
     </div>
   )
 }

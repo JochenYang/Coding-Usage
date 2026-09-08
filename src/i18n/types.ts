@@ -258,6 +258,7 @@ export interface Dict {
     colStatus: string
     colActions: string
     colModel: string
+    unpriced: string
     colInput: string
     colOutput: string
     colCache: string
@@ -269,6 +270,8 @@ export interface Dict {
     distMonthUsage: string
     distOther: string
     distUnavailable: string
+    attentionTitle: string
+    attentionEmpty: string
     alertsTitle: string
     viewAll: string
     alertWindowReset: (name: string) => string
@@ -348,15 +351,18 @@ export interface Dict {
     filterAll: string
     noAlerts: string
     rulesTitle: string
-    ruleReset: string
-    ruleHigh: string
-    ruleLow: string
+    thresholdResetLabel: string
+    thresholdResetUnit: string
+    thresholdHighLabel: string
+    thresholdLowLabel: string
     planFilterEmpty: string
     planFilterReset: string
   }
   common: {
     clearSearch: string
     cancel: string
+    confirm: string
+    confirmTitle: string
   }
   prefs: {
     appearance: string
@@ -373,6 +379,7 @@ export interface Dict {
     importData: string
     clearSnapshots: string
     clearConfirm: string
+    repoLink: string
     exportHint: string
     importHint: string
     importBad: string

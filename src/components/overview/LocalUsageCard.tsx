@@ -21,6 +21,7 @@ import { useT } from '@/i18n/useT'
 import { useTheme } from '@/components/ThemeProvider'
 import { useData } from '@/lib/data-context'
 import { displayTokens } from '@/lib/agent-usage'
+import { Tooltip } from '@/components/common/Tooltip'
 import { cn } from '@/lib/cn'
 
 export interface LocalUsageCardProps {
@@ -130,34 +131,43 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
               })}`}
             </span>
           )}
-          <button
-            type="button"
-            onClick={onRefresh}
-            aria-label={t.card.refresh}
-            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-          </button>
+          <Tooltip text={t.card.refresh}>
+            <button
+              type="button"
+              onClick={onRefresh}
+              aria-label={t.card.refresh}
+              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+            </button>
+          </Tooltip>
         </div>
       </div>
 
       {usage.error ? (
-        <div className="mt-3 truncate text-xs text-danger" title={usage.error}>
-          {usage.error}
-        </div>
+        <Tooltip text={usage.error} className="mt-3 min-w-0" bubbleClassName="max-w-80 whitespace-normal">
+          <div className="truncate text-xs text-danger">{usage.error}</div>
+        </Tooltip>
       ) : !hasAnyData ? (
         <div className="py-4 text-center text-xs text-subtle">{t.overview.localUsageEmpty}</div>
       ) : (
         <div>
           {/* Degraded fallback: the per-client retry skipped some clients; say
-              so instead of silently showing a partial picture */}
+              so instead of silently showing a partial picture. The bubble
+              carries the real per-client reason (the main process keeps it);
+              most transient skips heal on the next refresh. */}
           {usage.skippedClients != null && usage.skippedClients.length > 0 && (
-            <div
-              className="mt-1 truncate text-[11px] text-warning"
-              title={usage.skippedClients.join(', ')}
+            <Tooltip
+              text={usage.skippedClients
+                .map((c) => (usage.skippedDetails?.[c] ? `${c}: ${usage.skippedDetails[c]}` : c))
+                .join(' · ')}
+              className="mt-1 min-w-0"
+              bubbleClassName="max-w-80 whitespace-normal"
             >
-              {t.overview.localUsagePartial(usage.skippedClients.join(', '))}
-            </div>
+              <div className="truncate text-[11px] text-warning">
+                {t.overview.localUsagePartial(usage.skippedClients.join(', '))}
+              </div>
+            </Tooltip>
           )}
           {/* Single column header: replaces the per-row label repetition and
               keeps the three period columns readable as a table. The first

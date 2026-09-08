@@ -558,7 +558,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const sections = useMemo(() => buildSections(settings), [settings])
 
   // Re-derive the alert set whenever fresh results arrive; persist the merge.
-  const derivedAlerts = useMemo(() => deriveAlerts(sections, results), [sections, results])
+  const derivedAlerts = useMemo(
+    () => deriveAlerts(sections, results, settings.alertThresholds),
+    [sections, results, settings.alertThresholds],
+  )
   useEffect(() => {
     setAlerts(derivedAlerts)
     saveAlerts(derivedAlerts)

@@ -111,6 +111,16 @@ export interface IntegrationsSettings {
   weixinBotUserId: string
 }
 
+/** User-configurable alert thresholds (stored in settings, editable on the alerts page) */
+export interface AlertThresholds {
+  /** A window reset within this many minutes raises an alert */
+  resetSoonMin: number
+  /** Usage at/above this percent raises an alert */
+  highUsagePct: number
+  /** Balance at/below this (per currency, in native units) raises an alert */
+  lowBalance: Record<string, number>
+}
+
 /** Settings: each provider supports multiple accounts (array) */
 export interface Settings {
   providers: Record<string, ProviderConfig[]>
@@ -122,6 +132,8 @@ export interface Settings {
   /** Pop alert islands as a system-level overlay above every app (desktop only) */
   desktopIsland: boolean
   integrations: IntegrationsSettings
+  /** Alert engine thresholds (reset horizon / high-usage pct / per-currency low-balance floors) */
+  alertThresholds: AlertThresholds
 }
 
 export interface ProviderResult {

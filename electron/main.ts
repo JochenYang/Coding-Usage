@@ -12,6 +12,7 @@ import {
   net,
   safeStorage,
   session,
+  shell,
   Tray,
 } from 'electron'
 import { autoUpdater } from 'electron-updater'
@@ -224,7 +225,11 @@ interface TokScanResult {
   error?: string
   /** Client ids whose per-client scan failed in the degraded fallback path */
   skippedClients?: string[]
+  /** Per-client failure reason, keyed by client id (mirrors skippedClients) */
+  skippedDetails?: Record<string, string>
 }
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 let tokScanCache: { at: number; result: TokScanResult } | null = null
 
@@ -489,7 +494,11 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
   // replaying a stale error for the cache window.
   if (merged == null) throw new Error('tokscale scan failed for every client')
   const costs = await overrideCosts(merged.daily)
-  return { daily: reconcileProviderAttribution(costs), skippedClients: merged.skippedClients }
+  return {
+    daily: reconcileProviderAttribution(costs),
+    skippedClients: merged.skippedClients,
+    skippedDetails: merged.skippedDetails,
+  }
 }
 
 /**
@@ -497,12 +506,19 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
  * that export cleanly. Clients whose scan panics (exit 101) are skipped and
  * reported by id — the merged payload covers every healthy client. Returns
  * null only when no client exported anything.
+ *
+ * Each client gets one retry after a short pause: the common transient cause
+ * is a torn read of a session file being appended by a running agent (e.g.
+ * Kimi Code writing wire.jsonl while the 30s auto-refresh scans), which heals
+ * on the next attempt. The failure reason is kept alongside the id — the old
+ * bare-id list forced the UI into a static (and often wrong) guess.
  */
 async function scanPerClientWithFallback(
   baseArgs: string[],
-): Promise<{ daily: unknown; skippedClients: string[] } | null> {
+): Promise<{ daily: unknown; skippedClients: string[]; skippedDetails: Record<string, string> } | null> {
   const payloads: unknown[] = []
   const skippedClients: string[] = []
+  const skippedDetails: Record<string, string> = {}
   for (const client of TOKSCALE_CLIENTS) {
     // Per-client runs are much lighter than the combined one: each exports
     // only its own session dirs, so a bad file panics alone and never touches
@@ -513,19 +529,29 @@ async function scanPerClientWithFallback(
     const args = ['graph', '--client', client, ...baseArgs.slice(3)]
     try {
       payloads.push(await runTokscale(args))
-    } catch {
-      skippedClients.push(client)
+    } catch (e) {
+      // Transient write race — wait out the appending writer, then retry once
+      await sleep(2000)
+      try {
+        payloads.push(await runTokscale(args))
+      } catch (retryErr) {
+        skippedClients.push(client)
+        const msg = retryErr instanceof Error ? retryErr.message : String(retryErr)
+        skippedDetails[client] = msg.slice(0, 300)
+      }
     }
   }
   if (payloads.length === 0) return null
-  return { daily: mergeGraphPayloads(payloads), skippedClients }
+  return { daily: mergeGraphPayloads(payloads), skippedClients, skippedDetails }
 }
 
 /**
  * Replace tokscale's per-entry cost with our own OpenRouter-catalog pricing
  * wherever the model is known, then fold the delta back into the day total so
  * the renderer's "other" derivation (totals minus clients) stays balanced.
- * Unknown models keep tokscale's cost untouched.
+ * Unknown models keep tokscale's cost untouched. Repriced entries are marked
+ * `priced: true` so the renderer can tell "catalog-priced at 0" apart from
+ * "no catalog price" when labeling unpriced models.
  */
 async function overrideCosts(daily: unknown): Promise<unknown> {
   try {
@@ -537,6 +563,8 @@ async function overrideCosts(daily: unknown): Promise<unknown> {
           cost?: number
           modelId?: unknown
           tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
+          /** Set when this entry was repriced from the OpenRouter catalog */
+          priced?: boolean
         }>
       }>
     }
@@ -550,6 +578,9 @@ async function overrideCosts(daily: unknown): Promise<unknown> {
         if (computed == null) continue
         dayDelta += computed - (typeof e.cost === 'number' ? e.cost : 0)
         e.cost = Math.round(computed * 1e6) / 1e6
+        // Mark catalog-priced entries so the renderer can tell "priced at 0"
+        // (e.g. free-tier models) apart from "no catalog price" downstream.
+        e.priced = true
       }
       if (dayDelta !== 0 && typeof c.totals?.cost === 'number') {
         c.totals.cost = Math.round((c.totals.cost + dayDelta) * 1e6) / 1e6
@@ -771,6 +802,19 @@ function registerIpc(): void {
     app.quit()
   })
 
+  // Open an external URL in the system browser. The URL must be https —
+  // the only in-app caller passes a constant repo link, but the main-side
+  // check keeps the channel from ever becoming an open-URL gadget.
+  ipcMain.handle('shell:open-external', async (_event, url: unknown): Promise<boolean> => {
+    if (typeof url !== 'string' || !url.startsWith('https://')) return false
+    try {
+      await shell.openExternal(url)
+      return true
+    } catch {
+      return false
+    }
+  })
+
   /** Renderer subscription channel for maximize-state changes */
   ipcMain.handle('window:get-maximized', (): boolean => mainWindow?.isMaximized() ?? false)
 
@@ -791,6 +835,9 @@ function registerIpc(): void {
     void checkForUpdates()
     return updateState
   })
+
+  /** Read-only snapshot for late subscribers (top bar badge, update toast) */
+  ipcMain.handle('app:update-state', (): typeof updateState => updateState)
 
   // Codex subscription quota: reads the local ChatGPT OAuth login and queries
   // the official wham endpoint. The credential stays on this machine; only the
