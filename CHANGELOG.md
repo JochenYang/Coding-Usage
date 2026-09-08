@@ -10,6 +10,32 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.4.0] - 2026-09-08
+
+### 中文
+- 微信推送排障：HTTP 200 业务失败不再吞掉平台错误详情（主进程同时落日志），成功判定兼容字符串型 code 与 data / result 包裹层
+- 告警推送可观测：集成管理新增最近推送记录（支持折叠与清理），启动时存量未读告警补推一次（仍受 4 小时冷却约束）
+- 成本分析记全账：无官方定价的中转模型照常列出用量并标「未定价」，按模型区改回按金额排序且全量展示
+- 趋势图体验：悬停标签锚定数据点、当日 Top5 模型明细、末日期不再被裁剪
+- 扫描韧性：逐客户端失败自动重试一次，跳过原因悬停可见（多为扫描时会话正被写入）
+- 主题确认框替换全部原生 confirm；全仓原生 tooltip 换主题样式；账号抽屉测试按钮与保存对齐
+- 告警阈值可在告警中心调整（重置提前分钟、用量百分比、四币种余额下限），套餐 attention 徽标联动
+- 概览页瘦身：账户全量表格与套餐卡片移出，改为「需要注意」列表（异常账号直达编辑，未读告警直达告警中心）
+- 设置关于页新增 GitHub 仓库入口；有可用更新时顶栏设置图标全局提示，下载完成后右下角 Toast 可选稍后或立即安装
+- 告警中心规则卡吸底，空态居中
+
+### English
+- WeChat push diagnostics: HTTP 200 business failures no longer swallow the platform error detail (also logged in main), success checks accept string codes and data / result envelopes
+- Observable alert pushes: integrations page gains a recent-push log (collapsible, clearable); pre-existing unread alerts get one backfill push at startup (still under the 4-hour cooldown)
+- Complete cost ledger: models without catalog pricing (mostly relays) list usage with an "Unpriced" tag; the per-model section sorts by cost again with no cutoff
+- Trend chart polish: hover tooltip anchors to the data point, per-day top-5 model breakdown, last date label no longer clipped
+- Scan resilience: per-client scans retry once on failure; skip reasons visible on hover (usually a session file being written mid-scan)
+- Themed confirm dialog replaces every native confirm; app-wide native tooltips replaced with themed ones; account-drawer test button aligned with save
+- Alert thresholds editable in the alerts center (reset lead minutes, usage percent, four-currency balance floors); plan attention badges follow
+- Slimmer overview: full account table and plan cards moved out, replaced by a "Needs attention" list (error accounts jump to the editor, unread alerts to the center)
+- Settings About gains a GitHub repository shortcut; available updates badge the top-bar gear globally, with a bottom-right toast for later-or-install once downloaded
+- Alerts-center rules card pins to the bottom with a centered empty state
+
 ## [v0.3.0] - 2026-09-05
 
 ### 中文
