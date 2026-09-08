@@ -27,12 +27,13 @@ src/
   types.ts               # Shared type definitions
   components/
     layout/              # AppShell / Sidebar (nav + status card) / TopBar (agent filter / auto-refresh / bell / settings)
-    common/              # ProgressBar / StatusDot / Badge / SearchInput / PageHeader / StatCard / EmptyState
+    common/              # ProgressBar / StatusDot / Badge / SearchInput / PageHeader / StatCard / EmptyState / Tooltip
     charts/              # Self-built SVG: LineChart (trend) / DonutChart (distribution)
-    overview/            # KpiRow / TrendCard / DistributionCard / AgentsTable / AlertsPanel / PlanCardsRow / LocalUsageCard
+    overview/            # KpiRow / TrendCard / DistributionCard / AttentionList / AlertsPanel / PlanCardsRow / LocalUsageCard
     account/             # AccountDrawer (single-account editor: alias / key / region / enable / test)
-    beui/                # Self-built components: drawer / loader / switch / select / popover
+    beui/                # Self-built components: drawer / loader / switch / select / popover / confirm-dialog
     ProviderLogo.tsx     # Brand logo via bundled @lobehub/icons (offline) + letter fallback
+    GitHubIcon.tsx       # GitHub mark inline SVG (lucide-react dropped brand icons)
     ResetCountdown.tsx   # Relative reset countdown
     LocaleSwitcher.tsx   # Language switcher
   pages/                 # OverviewPage + 11 management/analysis pages (see router.ts VIEWS)
@@ -43,7 +44,7 @@ src/
     cn.ts                # clsx + tailwind-merge
     format.ts            # Countdown / amount / currency symbol / relative time
     metric-helpers.ts    # UNLIMITED_KEY shared constant
-    motion-presets.ts    # EASE_OUT / EASE_IN_OUT / SPRING_*
+    ease.ts                # Single motion authority: EASE_* / SPRING_*
     query.ts             # fetchUsage + transportFetch (main-process bridge under Electron, plain fetch in browser)
     storage.ts           # loadSettings / persistSettings (v3 encrypt+verify) / v1→v2→v3 migration
     router.ts            # View union + hash sync (no router library)
@@ -101,9 +102,10 @@ Packaging config lives in `electron-builder.yml` (appId, win targets, GitHub pub
 ## Animation Conventions
 
 - All animations use `motion/react`. Self-built components are in `src/components/beui/`.
+- Single motion authority is `src/lib/ease.ts` (EASE_* / SPRING_*); components import from `@/lib/ease`, never define local duplicates.
 - Drawer panel spring: `stiffness:220 / damping:26 / mass:0.9` (`src/components/beui/drawer.tsx:28`).
 - Exit spring: `stiffness:260 / damping:30` (`src/components/beui/drawer.tsx:30`).
-- Button press spring: `stiffness:600 / damping:28` (`src/lib/motion-presets.ts:9`).
+- Button press spring: `SPRING_PRESS` in `src/lib/ease.ts` (`stiffness:500 / damping:30 / mass:0.6`).
 - Easing curves: `EASE_OUT = [0.16, 1, 0.3, 1]` (panel transitions); `EASE_IN_OUT = [0.45, 0, 0.55, 1]` (Loader rhythm).
 - Must support `useReducedMotion()`: degrades to opacity pulse when the user enables "reduce motion" in their system.
 
