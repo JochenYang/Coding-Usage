@@ -10,23 +10,13 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
-## [v0.4.3] - 2026-09-08
+## [v0.4.2] - 2026-09-08
 
 ### 中文
 - webhook 发送传输层失败自动重试一次，超时 10s→15s（iLink 端点偶发黑洞请求，下一次立即应答）；平台业务码失败不重试避免重复发送
 - 告警行与概览「需要注意」行移除悬停高亮（点击仅标记已读，不该有可点的视觉暗示）；微信区块新增「验证连接」按钮，区分令牌失效与载荷被拒
 - 修复告警规则卡吸底：有告警列表时规则卡不再贴上去，空/非空两种状态均保持 48px 底边距
 - 已解决（条件消失）的告警保留 48 小时历史后自动清除，不再瞬间消失
-
-### English
-- One automatic retry on transport-level webhook failures; timeout 10s→15s (the iLink endpoint occasionally black-holes a request while the next answers instantly); platform business-code rejections return immediately to avoid duplicate sends
-- Drop hover highlight on alert rows and overview attention rows (clicking only marks read); WeChat block gains a "Verify connection" button separating token death from payload rejection
-- Fix the rules-card pinning: with a populated alert list the card no longer floats up; 48px bottom gap holds in both empty and non-empty states
-- Resolved alerts stay visible for 48 hours before auto-clearing instead of vanishing instantly
-
-## [v0.4.2] - 2026-09-08
-
-### 中文
 - 概览页改版：KPI + 用量趋势 + 本地 Agent 用量 +「需要注意」列表 + 服务商分布；账户全量表格与套餐卡片回归各自专页
 - 告警阈值可配置（窗口重置提前分钟 / 用量百分比 / 四币种余额下限），与套餐 attention 徽标联动
 - 全仓原生 confirm / tooltip 替换为主题组件；账号抽屉测试按钮与保存对齐
@@ -34,6 +24,10 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 - 设置关于页新增 GitHub 仓库入口；更新可用时顶栏齿轮全局提示，Toast 支持稍后/立即安装
 
 ### English
+- One automatic retry on transport-level webhook failures; timeout 10s→15s (the iLink endpoint occasionally black-holes a request while the next answers instantly); platform business-code rejections return immediately to avoid duplicate sends
+- Drop hover highlight on alert rows and overview attention rows (clicking only marks read); WeChat block gains a "Verify connection" button separating token death from payload rejection
+- Fix the rules-card pinning: with a populated alert list the card no longer floats up; 48px bottom gap holds in both empty and non-empty states
+- Resolved alerts stay visible for 48 hours before auto-clearing instead of vanishing instantly
 - Overview revamp: KPIs + trend + local agent usage + a "Needs attention" list + provider distribution; the full account table and plan cards return to their own pages
 - Editable alert thresholds (reset lead minutes / usage percent / four-currency floors), synced with plan attention badges
 - Native confirm/tooltip replaced with themed components app-wide; account-drawer test button aligned with save
