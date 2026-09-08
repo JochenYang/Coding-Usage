@@ -225,6 +225,14 @@ export interface Dict {
     pushHistoryOk: string
     pushHistoryFail: string
     pushHistoryClear: string
+    pushStatusDirty: string
+    pushStatusOff: string
+    pushStatusNoChannel: string
+    pushStatusReady: (n: number) => string
+    pushStatusUnread: (n: number) => string
+    pushStatusLastOk: (t: string) => string
+    pushStatusLastFail: (detail: string) => string
+    pushStatusNever: string
     fWebhookUrl: string
     fBotToken: string
     fChatId: string

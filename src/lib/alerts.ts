@@ -78,6 +78,16 @@ export function resolveThresholds(raw: unknown): AlertThresholds {
   }
 }
 
+/** Currency symbols occasionally appear where a code is expected; normalize */
+function normalizeCurrency(unit: string): string {
+  const u = unit.trim().toUpperCase()
+  if (u === '¥' || u === 'RMB') return 'CNY'
+  if (u === '$') return 'USD'
+  if (u === 'HK$' || u === 'HKD$') return 'HKD'
+  if (u === 'NT$') return 'TWD'
+  return u
+}
+
 function loadStored(): AlertItem[] {
   try {
     const raw = localStorage.getItem(KEY)
@@ -170,7 +180,7 @@ export function deriveAlerts(
           }
         }
         if (m.kind === 'balance' && m.remaining != null && m.unit) {
-          const floor = lowBalance[m.unit.toUpperCase()]
+          const floor = lowBalance[normalizeCurrency(m.unit)]
           if (floor != null && m.remaining <= floor) {
             const id = `${card.key}:low-balance:${m.id}`
             live.set(id, {

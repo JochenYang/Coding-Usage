@@ -10,6 +10,16 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- 修复告警 IM 自动推送链路：集成管理推送卡新增健康状态行（草稿未保存、总开关、可用通道数、未读数、上次结果），测试与自动推送共用同一记录
+- 余额单位兼容：小写与符号写法（¥ / $ 等）同样命中低余额阈值
+
+### English
+- Fix alert IM auto-push chain: push card gains a health status line (unsaved drafts, master switch, usable channels, unread count, last outcome); tests and auto pushes share one log
+- Balance-unit tolerance: lowercase and symbol forms (¥ / $ etc.) hit the low-balance floor too
+
 ## [v0.4.0] - 2026-09-08
 
 ### 中文

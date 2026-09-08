@@ -9,7 +9,7 @@ import { cn } from '@/lib/cn'
 import { useT } from '@/i18n/useT'
 import { useData } from '@/lib/data-context'
 import { ENC_PREFIX } from '@/lib/storage'
-import { loadPushLog, logPushAttempt, clearPushLog, type PushLogEntry } from '@/lib/alert-push'
+import { loadPushLog, logPushAttempt, clearPushLog, configuredChannels, type PushLogEntry } from '@/lib/alert-push'
 import type { Dict } from '@/i18n/types'
 import type { IntegrationsSettings } from '@/types'
 
@@ -347,6 +347,54 @@ function WeixinChannelBlock({ onTest }: { onTest: (cred: WebhookCredential) => P
   )
 }
 
+/** Compact MM-DD HH:mm stamp shared by the status line and the history list */
+function stamp(at: number): string {
+  const d = new Date(at)
+  const p = (n: number): string => `${n}`.padStart(2, '0')
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+/**
+ * Push health summary at the top of the card: it closes the three silent
+ * traps (testing drafts that were never saved, master switch off, zero
+ * usable channels) and shows the unread count plus the last attempt outcome
+ * so "alerts never arrive" is diagnosable in one glance.
+ */
+function PushStatusBlock({ dirty }: { dirty: boolean }) {
+  const t = useT()
+  const { settings, alerts } = useData()
+  const intg = settings.integrations
+  const usable = configuredChannels(intg)
+  const unread = alerts.filter((a) => !a.read).length
+  const last = loadPushLog().at(-1)
+  return (
+    <div className="mt-3 space-y-1 rounded-xl border border-border/60 bg-background px-3 py-2 text-[11px] leading-relaxed">
+      {dirty && <p className="text-warning">{t.integrations.pushStatusDirty}</p>}
+      {!intg.alertPush && usable.length > 0 && (
+        <p className="text-warning">{t.integrations.pushStatusOff}</p>
+      )}
+      {intg.alertPush && usable.length === 0 && (
+        <p className="text-danger">{t.integrations.pushStatusNoChannel}</p>
+      )}
+      <p className="text-muted-foreground">
+        {t.integrations.pushStatusReady(usable.length)} · {t.integrations.pushStatusUnread(unread)}
+        {last != null && (
+          <>
+            {' · '}
+            {last.ok ? (
+              <span className="text-success">{t.integrations.pushStatusLastOk(stamp(last.at))}</span>
+            ) : (
+              <span className="text-danger">
+                {t.integrations.pushStatusLastFail(last.error || '')} · {stamp(last.at)}
+              </span>
+            )}
+          </>
+        )}
+        {last == null && <span className="text-subtle"> · {t.integrations.pushStatusNever}</span>}
+      </p>
+    </div>
+  )
+}
 /**
  * Recent push attempts (manual tests + background auto pushes), newest first.
  * Read straight from the persisted log on every render so entries written by
@@ -372,11 +420,6 @@ function PushHistoryBlock() {
       case 'weixin':
         return t.integrations.chanWeixin
     }
-  }
-  const stamp = (at: number): string => {
-    const d = new Date(at)
-    const p = (n: number): string => `${n}`.padStart(2, '0')
-    return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
   }
   return (
     <div className="mt-4 border-t border-border/60 pt-3">
@@ -597,6 +640,8 @@ export function IntegrationsPage({ className }: IntegrationsPageProps) {
             }
           />
         </div>
+
+        <PushStatusBlock dirty={dirty} />
 
         {CHANNELS.filter((ch) => ch.id === 'wecom').map(renderChannel)}
         <WeixinChannelBlock
