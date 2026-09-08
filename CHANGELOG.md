@@ -10,6 +10,14 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- webhook 发送传输层失败自动重试一次，超时 10s→15s（iLink 端点偶发黑洞请求，下一次立即应答）；平台业务码失败不重试避免重复发送
+
+### English
+- One automatic retry on transport-level webhook failures; timeout 10s→15s (the iLink endpoint occasionally black-holes a request while the next answers instantly); platform business-code rejections return immediately to avoid duplicate sends
+
 ## [v0.4.2] - 2026-09-08
 
 ### 中文

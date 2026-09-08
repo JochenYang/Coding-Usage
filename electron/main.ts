@@ -658,36 +658,41 @@ function registerIpc(): void {
         text,
       )
       if (!request) return { ok: false, status: 0, error: 'invalid-credential' }
-      try {
-        const res = await net.fetch(request.url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...(request.headers ?? {}) },
-          body: request.body,
-          signal: AbortSignal.timeout(10_000),
-        })
-        let json: unknown = null
+      // One retry on transport-level failure: the iLink endpoint occasionally
+      // black-holes a request past the 15s timeout while the next one answers
+      // instantly. A hard-down network fails both attempts quickly anyway.
+      let lastError = ''
+      for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          json = JSON.parse(await res.text())
-        } catch {
-          // Non-JSON error page (gateway etc.) — the HTTP status carries it
+          const res = await net.fetch(request.url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(request.headers ?? {}) },
+            body: request.body,
+            signal: AbortSignal.timeout(15_000),
+          })
+          let json: unknown = null
+          try {
+            json = JSON.parse(await res.text())
+          } catch {
+            // Non-JSON error page (gateway etc.) — the HTTP status carries it
+          }
+          // Logical failures (HTTP 200 + platform errcode, e.g. weixin ret!=0)
+          // must carry the platform detail too — otherwise the renderer can only
+          // fall back to a bare "HTTP 200" and the real cause is invisible.
+          const ok = isChannelSuccess(channel as PushChannel, res.ok, json)
+          if (!ok) {
+            const detail = channelErrorDetail(channel as PushChannel, res.status, json)
+            console.error(`[webhook:send] channel=${channel as string} status=${res.status} detail=${detail}`)
+            // A platform rejection is deterministic — retrying would just
+            // duplicate the failure, so return immediately
+            return { ok: false, status: res.status, error: detail }
+          }
+          return { ok, status: res.status }
+        } catch (e) {
+          lastError = String(e instanceof Error ? e.message : e)
         }
-        // Logical failures (HTTP 200 + platform errcode, e.g. weixin ret!=0)
-        // must carry the platform detail too — otherwise the renderer can only
-        // fall back to a bare "HTTP 200" and the real cause is invisible.
-        const ok = isChannelSuccess(channel as PushChannel, res.ok, json)
-        if (!ok) {
-          console.error(
-            `[webhook:send] channel=${channel as string} status=${res.status} detail=${channelErrorDetail(channel as PushChannel, res.status, json)}`,
-          )
-        }
-        return {
-          ok,
-          status: res.status,
-          ...(ok ? {} : { error: channelErrorDetail(channel as PushChannel, res.status, json) }),
-        }
-      } catch (e) {
-        return { ok: false, status: 0, error: String(e instanceof Error ? e.message : e) }
       }
+      return { ok: false, status: 0, error: lastError }
     },
   )
 
