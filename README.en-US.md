@@ -25,7 +25,7 @@
 - **Real local agent usage**: [tokscale](https://github.com/junhoyeo/tokscale) scans local session logs covering 20 mainstream tools — Codex, Claude Code, Kimi Code, OpenCode, Gemini CLI, Cursor, GitHub Copilot, Qwen Code, Trae, Cline, Roo Code and more. Only tools with data are listed; today / month / all-time columns with an "as of" timestamp. Aggregate numbers only — message content never leaves your machine
 - **Provider plans & balances**: multi-account management for 10 providers (table below), each with its own official-endpoint adapter; balances aggregate into the display currency, with a hover breakdown when several pay-as-you-go providers coexist
 - **Official subscription quotas**: three cards for Codex (ChatGPT login), Claude Code and Gemini CLI read only the local login state, showing 5-hour / weekly / per-model windows with reset countdowns — credentials stay inside the main process, never reaching the renderer or disk
-- **Alerts**: window-reset, high-usage (≥90%) and low-balance rules; hover the top-bar bell for a preview (opening marks them read), with a full alerts center
+- **Alerts**: window-reset, high-usage and low-balance rules with adjustable thresholds in the alerts center; hover the top-bar bell for a preview (opening marks them read), with a full alerts center; pushable to WeCom group robots, WeChat (iLink), Feishu / Lark and Telegram
 - **Desktop experience**: tray-resident, close dialog (minimize to tray or quit), launch on login, light/dark/system themes, zh-CN/en-US locales, auto-update via GitHub Releases
 
 ## Supported Providers
