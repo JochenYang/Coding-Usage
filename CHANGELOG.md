@@ -10,6 +10,14 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- 修复持续性告警（低余额、长期高用量）从不自动推送：调用方透传全部未读告警，每通道 4 小时冷却到期后自动重推（此前仅全新 id 推送，冷却逻辑实际从未生效）
+
+### English
+- Fix persistent alerts (low balance, long high usage) never auto-pushing: callers pass all unread alerts and each channel re-pushes after its 4h cooldown (previously only brand-new ids pushed, leaving the cooldown dead code)
+
 ## [v0.4.3] - 2026-09-08
 
 ### 中文

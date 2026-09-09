@@ -123,23 +123,6 @@ function savePushed(map: Record<string, number>): void {
   }
 }
 
-/**
- * Alerts that appeared since the previous render's id set. (The cooldown is
- * applied per channel at push time, not here.)
- */
-export function filterNewAlerts(alerts: AlertItem[], prevIds: ReadonlySet<string>): AlertItem[] {
-  if (alerts.length === 0) return []
-  return alerts.filter((a) => !prevIds.has(a.id))
-}
-
-/** Plain-text body lines for a batch of new alerts (platform formatting happens in main) */
-function buildBodyLines(items: AlertItem[], t: Dict): string[] {
-  return items.map((a) => {
-    const detail = alertDetail(a, t)
-    return `${alertTitle(a, t)}${detail ? ` · ${detail}` : ''}`
-  })
-}
-
 /** Per-channel outcome of one push batch (error present exactly when ok is false) */
 export interface PushOutcome {
   ok: boolean
@@ -147,10 +130,17 @@ export interface PushOutcome {
 }
 
 /**
- * Push a batch of new alerts through every configured channel. Each channel
- * fails independently (one broken webhook must not block the others); its
- * pushed ids are recorded only on success, so a failed send is retried on
- * the next refresh cycle (subject to the cooldown once it eventually lands).
+ * Push a batch of alerts through every configured channel. Callers pass the
+ * full unread set — not just brand-new ids: each channel applies its own
+ * cooldown, so a still-unread, still-active alert re-pushes once the window
+ * lapses (this is what "at most once per 4 hours per channel" promises).
+ * Filtering upstream on "new since last render" would starve exactly the
+ * persistent conditions (low balance, long high usage) while transient ones
+ * (window resets, whose ids lapse and reappear) kept flowing.
+ *
+ * Each channel fails independently (one broken webhook must not block the
+ * others); its pushed ids are recorded only on success, so a failed send is
+ * retried on the next refresh cycle (subject to the cooldown once it lands).
  * Every attempt is appended to the push log so background failures are
  * inspectable on the integrations page instead of silent.
  */
@@ -164,16 +154,23 @@ export async function pushAlerts(
   if (!bridge || items.length === 0 || channels.length === 0) return {}
 
   const title = t.integrations.pushTitle
-  const body = buildBodyLines(items, t).join('\n')
   const pushed = loadPushed()
   const now = Date.now()
   const results: Record<string, PushOutcome> = {}
+  let attempted = false
 
   await Promise.all(
     channels.map(async ({ channel, cred }) => {
       // Per-channel cooldown: an id pushed recently through this channel waits
       const fresh = items.filter((a) => now - (pushed[`${channel}:${a.id}`] ?? 0) > PUSH_COOLDOWN_MS)
       if (fresh.length === 0) return
+      attempted = true
+      // Body covers exactly what this channel is about to send — other
+      // channels may be on a different cooldown phase for the same batch
+      const body = fresh.map((a) => {
+        const detail = alertDetail(a, t)
+        return `${alertTitle(a, t)}${detail ? ` · ${detail}` : ''}`
+      }).join('\n')
       const res = await bridge.webhookSend(channel, cred, title, body)
       results[channel] = res.ok ? { ok: true } : { ok: false, error: res.error ?? `HTTP ${res.status}` }
       logPushAttempt(channel, res.ok, res.ok ? undefined : (res.error ?? `HTTP ${res.status}`))
@@ -182,6 +179,6 @@ export async function pushAlerts(
       }
     }),
   )
-  savePushed(pushed)
+  if (attempted) savePushed(pushed)
   return results
 }

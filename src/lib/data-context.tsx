@@ -40,7 +40,7 @@ import {
   unreadCount,
 } from './alerts'
 import { normalizeOpenErRates, type FxRates } from './rates'
-import { filterNewAlerts, pushAlerts } from './alert-push'
+import { pushAlerts } from './alert-push'
 import { useT } from '../i18n/useT'
 
 const FX_CACHE_KEY = 'coding-usage.fx.v1'
@@ -567,34 +567,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
     saveAlerts(derivedAlerts)
   }, [derivedAlerts])
 
-  // Webhook push: alerts whose ids were not in the previous render's set are
-  // genuinely new. Additionally, once per mount, unread alerts that already
-  // existed at startup get one delivery opportunity — otherwise a condition
-  // that stays true across restarts (e.g. a lingering high-usage alert)
-  // would never push while the app is open. The per-channel cooldown inside
-  // pushAlerts still applies, so this cannot spam on every launch. Skipped
-  // while credentials are still ciphertext (hydration pending) — the push
-  // fires on the next refresh cycle once the plaintext lands.
+  // Webhook push: every refresh offers the full unread set — pushAlerts
+  // applies the per-channel 4h cooldown itself, so a still-unread,
+  // still-active alert re-pushes once the window lapses (this is what "at
+  // most once per 4 hours per channel" promises). Filtering upstream on
+  // "new since last render" starved exactly the persistent conditions (low
+  // balance, long high usage) while transient window resets kept flowing.
+  // Read alerts never push (acknowledged); resolved ones leave the list.
+  // Skipped while credentials are still ciphertext (hydration pending) — the
+  // push fires on the next refresh cycle once the plaintext lands.
   const t = useT()
-  const prevAlertIdsRef = useRef<ReadonlySet<string>>(new Set(alerts.map((a) => a.id)))
-  const backfillDoneRef = useRef(false)
   useEffect(() => {
-    const prev = prevAlertIdsRef.current
-    prevAlertIdsRef.current = new Set(alerts.map((a) => a.id))
     if (!settings.integrations.alertPush) return
-    const fresh = filterNewAlerts(alerts, prev)
-    if (!backfillDoneRef.current) {
-      backfillDoneRef.current = true
-      const seen = new Set(fresh.map((a) => a.id))
-      for (const a of alerts) {
-        if (!a.read && !seen.has(a.id)) {
-          fresh.push(a)
-          seen.add(a.id)
-        }
-      }
-    }
-    if (fresh.length === 0) return
-    void pushAlerts(settings.integrations, fresh, t)
+    const unread = alerts.filter((a) => !a.read)
+    if (unread.length === 0) return
+    void pushAlerts(settings.integrations, unread, t)
   }, [alerts, settings, t])
 
   const configuredCount = sections.reduce((s, sec) => s + sec.cards.length, 0)
