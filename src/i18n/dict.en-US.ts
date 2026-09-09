@@ -371,6 +371,7 @@ export const enUS: Dict = {
     alertsCenterTitle: 'Alerts',
     alertsDesc: 'Quota, window and balance alerts.',
     markAllRead: 'Mark all read',
+    alertResolved: 'Resolved',
     filterUnread: 'Unread',
     filterAll: 'All',
     noAlerts: 'No alerts right now',

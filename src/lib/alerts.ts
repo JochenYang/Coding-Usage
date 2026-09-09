@@ -31,6 +31,13 @@ export interface AlertItem {
   /** kind=low-balance: remaining amount + currency code */
   balance?: number
   currency?: string
+  /**
+   * True for retained history: the condition cleared, but the row stays
+   * visible for the retention window. Consumers that act on alerts (push,
+   * attention list, island popups) must ignore resolved rows — only the
+   * alerts center renders them, dimmed, as history.
+   */
+  resolved?: boolean
   firstSeenAt: number
   read: boolean
 }
@@ -215,12 +222,13 @@ export function deriveAlerts(
     merged.push(prev ? { ...item, firstSeenAt: prev.firstSeenAt, read: prev.read } : item)
   }
   // Resolved history: keep recently-seen alerts that are no longer live
-  // (condition cleared) for a bounded window, then let them disappear
+  // (condition cleared) for a bounded window, then let them disappear.
+  // They are flagged resolved so acting consumers (push, attention, island)
+  // skip them — only the alerts center renders them as dimmed history.
   for (const old of stored) {
     if (live.has(old.id)) continue
     if (Date.now() - old.firstSeenAt > RESOLVED_RETENTION_MS) continue
-    // Still active under a different id would already be in live — safe to keep
-    merged.push(old)
+    merged.push({ ...old, resolved: true })
   }
   // Newest first for panel rendering
   merged.sort((a, b) => b.firstSeenAt - a.firstSeenAt)

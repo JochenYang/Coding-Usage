@@ -127,7 +127,7 @@ export function OverviewPage({
     const items: AttentionItem[] = []
     const erroredKeys = new Set(rows.filter((r) => r.status === 'error').map((r) => r.key))
     for (const a of alerts) {
-      if (a.read) continue
+      if (a.read || a.resolved) continue
       // Alerts embed the account key in their id ("key:kind:metric")
       if (erroredKeys.has(a.accountKey)) continue
       items.push({ key: a.id, title: alertTitle(a, t), detail: alertDetail(a, t), level: a.level })

@@ -358,6 +358,7 @@ export interface Dict {
     alertsCenterTitle: string
     alertsDesc: string
     markAllRead: string
+    alertResolved: string
     filterUnread: string
     filterAll: string
     noAlerts: string

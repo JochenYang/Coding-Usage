@@ -9,13 +9,13 @@ import { cn } from '@/lib/cn'
 import { DynamicIsland, DynamicIslandView } from '@/components/beui/dynamic-island'
 
 /**
- * Dynamic-island alert surface: when genuinely NEW alerts appear (same
- * prev-ids diff as the webhook push — the persisted store is the baseline, so
- * replayed history never pops), the island blooms at the top of the window
- * with the latest alert and a "+N" count. It auto-dismisses after a few
- * seconds; clicking the body jumps to the alerts page, the X just dismisses.
- * Purely in-app: unlike the webhook channels it has no cooldown — every new
- * alert deserves one popup while the user is at the desk.
+ * Dynamic-island alert surface: when genuinely NEW alerts appear (unknown id,
+ * or a resolved-history row flipping back to live on re-fire), the island
+ * blooms at the top of the window with the latest alert and a "+N" count. It
+ * auto-dismisses after a few seconds; clicking the body jumps to the alerts
+ * page, the X just dismisses. Purely in-app: unlike the webhook channels it
+ * has no cooldown — every new alert deserves one popup while the user is at
+ * the desk.
  */
 
 const AUTO_DISMISS_MS = 8_000
@@ -96,13 +96,19 @@ export function AlertIsland() {
   // Desktop overlay mode: popups leave the window entirely (the in-app island
   // stays as the browser/fallback surface). Preview is also overlay-driven.
   const overlayOn = settings.desktopIsland && !!window.desktopBridge
-  // Diff baseline: the alerts set from the previous render
-  const prevIdsRef = useRef<ReadonlySet<string>>(new Set(alerts.map((a) => a.id)))
+  // Diff baseline: the alerts set from the previous render (id → resolved).
+  // A re-firing condition pops again: its id is known, but it flipped from
+  // resolved history back to live — that transition is a new event.
+  const prevRef = useRef<Map<string, boolean>>(new Map(alerts.map((a) => [a.id, a.resolved === true])))
 
   useEffect(() => {
-    const prev = prevIdsRef.current
-    prevIdsRef.current = new Set(alerts.map((a) => a.id))
-    const fresh = alerts.filter((a) => !prev.has(a.id))
+    const prev = prevRef.current
+    prevRef.current = new Map(alerts.map((a) => [a.id, a.resolved === true]))
+    const fresh = alerts.filter((a) => {
+      const was = prev.get(a.id)
+      if (was === undefined) return true
+      return was === true && a.resolved !== true
+    })
     if (fresh.length === 0) return
     if (overlayOn) {
       void window.desktopBridge?.islandShow(fresh)

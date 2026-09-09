@@ -81,8 +81,15 @@ function AlertRow({ alert, now, onRead }: AlertRowProps) {
           }
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-xs font-medium text-foreground">
-            {alertTitle(alert, t)}
+          <span className="flex items-center gap-1.5">
+            <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
+              {alertTitle(alert, t)}
+            </span>
+            {alert.resolved && (
+              <span className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10px] text-subtle">
+                {t.manage.alertResolved}
+              </span>
+            )}
           </span>
           {detail && <span className="block text-[11px] text-muted-foreground">{detail}</span>}
         </span>

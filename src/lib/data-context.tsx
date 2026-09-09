@@ -579,7 +579,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const t = useT()
   useEffect(() => {
     if (!settings.integrations.alertPush) return
-    const unread = alerts.filter((a) => !a.read)
+    // Resolved history rows never push (their condition already cleared)
+    const unread = alerts.filter((a) => !a.read && !a.resolved)
     if (unread.length === 0) return
     void pushAlerts(settings.integrations, unread, t)
   }, [alerts, settings, t])

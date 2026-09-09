@@ -358,6 +358,7 @@ export const zhCN: Dict = {
     alertsCenterTitle: '告警中心',
     alertsDesc: '额度、窗口与余额告警。',
     markAllRead: '全部已读',
+    alertResolved: '已恢复',
     filterUnread: '未读',
     filterAll: '全部',
     noAlerts: '当前没有告警',
