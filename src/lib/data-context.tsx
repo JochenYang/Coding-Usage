@@ -309,6 +309,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- hydration runs once on mount
   }, [])
 
+  // WeChat iLink keep-alive: main owns the getupdates long-poll once a
+  // decrypted bot token exists. The app is opened on demand, so the loop
+  // only needs to live for this run — it is what keeps sendmessage from
+  // answering {ret:-2, prepare failed} after a cold start. Disconnect and
+  // app quit both stop it.
+  useEffect(() => {
+    const bridge = window.desktopBridge
+    if (!bridge) return
+    const token = settings.integrations.weixinBotToken
+    const userId = settings.integrations.weixinBotUserId
+    if (token && !token.startsWith(ENC_PREFIX) && userId) {
+      void bridge.ilinkSessionStart(token)
+      return () => {
+        void bridge.ilinkSessionStop()
+      }
+    }
+    void bridge.ilinkSessionStop()
+  }, [settings.integrations.weixinBotToken, settings.integrations.weixinBotUserId])
+
   const refreshOne = useCallback(
     async (
       def: ProviderDef,

@@ -86,6 +86,10 @@ declare global {
     ilinkActivate(token: string): Promise<IlinkActivateResult>
     /** WeChat iLink bot: short authenticated round-trip; ok means the stored token is alive */
     ilinkCheck(token: string): Promise<{ ok: boolean; error?: string }>
+    /** WeChat iLink bot: start the main-process getupdates keep-alive for this token */
+    ilinkSessionStart(token: string): Promise<void>
+    /** WeChat iLink bot: stop the keep-alive loop (disconnect / quit) */
+    ilinkSessionStop(): Promise<void>
     /** Relay a fresh alert batch to the system-level island overlay (desktop only) */
     islandShow(alerts: unknown[]): Promise<void>
     /** Hide the system-level island overlay */

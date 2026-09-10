@@ -1,7 +1,7 @@
 import QRCode from 'qrcode'
 
 /**
- * WeChat iLink bot platform client (login + activation only).
+ * WeChat iLink bot platform client (login, activation, session keep-alive).
  *
  * ZCode's WeChat bot channel runs on WeChat's official iLink AI-bot platform
  * (ilinkai.weixin.qq.com). Protocol reversed from ZCode's bundled renderer
@@ -22,6 +22,13 @@ import QRCode from 'qrcode'
  *              the push target.
  * 4. Push:     see webhook-channels.ts 'weixin' — POST /ilink/bot/sendmessage
  *              with a msg.item_list text body; ret/errcode 0 = success.
+ *
+ * Session note (verified against ZCode's host runtime 2026-09): sendmessage
+ * returns {ret:-2,errmsg:"prepare failed"} unless the bot session was recently
+ * touched by an authenticated call. ZCode keeps a continuous getupdates
+ * long-poll alive for that reason; weixin-session.ts owns the equivalent
+ * keep-alive / warm / recover loop for this app. /getconfig is the short
+ * authenticated ping ZCode uses for connectivity tests.
  *
  * All requests run in the Electron main process (net.fetch, no CORS). Only
  * the token and the user id ever cross the IPC boundary.
@@ -60,6 +67,13 @@ export interface IlinkLoginPoll {
 export interface IlinkActivatePoll {
   /** The from_user_id of the first message the user sent to the bot */
   userId?: string
+}
+
+/** One getupdates round: activation user id (if any) plus the next cursor */
+export interface IlinkUpdatesResult {
+  userId?: string
+  /** Opaque cursor to send on the next getupdates (get_updates_buf family) */
+  nextBuf?: string
 }
 
 type NetFetch = typeof import('electron').net.fetch
@@ -113,12 +127,16 @@ async function postJson(
   headers: Record<string, string>,
   body: unknown,
   timeoutMs: number = QR_TIMEOUT_MS,
+  signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
+  // Compose an optional caller abort with the per-request timeout
+  const timeout = AbortSignal.timeout(timeoutMs)
+  const combined = signal ? AbortSignal.any([timeout, signal]) : timeout
   const res = await fetcher(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...headers },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(timeoutMs),
+    signal: combined,
   })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return unwrap(await res.json(), url.slice(url.lastIndexOf('/') + 1))
@@ -183,9 +201,39 @@ export async function ilinkPollLogin(fetcher: NetFetch, qrCode: string): Promise
 }
 
 /**
- * One activation attempt: check for a first message from the user. The
- * renderer drives the polling loop; each call is a single getupdates round
- * with a fresh cursor (activation runs before any cursor exists).
+ * Short authenticated ping (ZCode's connectivity test): POST /getconfig with
+ * base_info only. Succeeds (empty-but-ok) when the bot token is alive; throws
+ * on transport/API failure. Used to warm the send path after a cold start
+ * without waiting out a getupdates long-poll hold.
+ */
+export async function ilinkPing(
+  fetcher: NetFetch,
+  botToken: string,
+  timeoutMs: number = QR_TIMEOUT_MS,
+): Promise<void> {
+  await postJson(
+    fetcher,
+    `${ILINK_BASE}${ILINK_PREFIX}/getconfig`,
+    ilinkAuthHeaders(botToken),
+    { base_info: { channel_version: '2.0.0' } },
+    timeoutMs,
+  )
+}
+
+/** Read the opaque getupdates cursor ZCode tracks as get_updates_buf/buf/… */
+function readNextBuf(data: Record<string, unknown>): string | undefined {
+  const container = isRecord(data.data) ? { ...data, ...data.data } : data
+  for (const k of ['get_updates_buf', 'buf', 'next_buf', 'nextBuf', 'getUpdatesBuf', 'syncKey']) {
+    const v = container[k]
+    if (typeof v === 'string' && v) return v
+  }
+  return undefined
+}
+
+/**
+ * One getupdates round with an explicit cursor. Activation passes an empty
+ * buf (no cursor exists yet); the keep-alive loop feeds the persisted one so
+ * the server sees client progress across restarts.
  *
  * Doubles as a lightweight connection check (short timeout): getupdates is
  * authenticated, so a transport/API error here means the stored bot token is
@@ -199,19 +247,22 @@ export async function ilinkPollLogin(fetcher: NetFetch, qrCode: string): Promise
  * user_id/userId (or nested from/sender objects with id/wxid). Items with
  * message_type 2 are the bot's OWN sends — never the activation message.
  */
-export async function ilinkPollActivation(
+export async function ilinkGetUpdates(
   fetcher: NetFetch,
   botToken: string,
+  buf: string,
   timeoutMs: number = POLL_TIMEOUT_MS,
-): Promise<IlinkActivatePoll> {
+  signal?: AbortSignal,
+): Promise<IlinkUpdatesResult> {
   const data = await postJson(
     fetcher,
     `${ILINK_BASE}${ILINK_PREFIX}/getupdates`,
     ilinkAuthHeaders(botToken),
     // base_info rides on EVERY /ilink/bot request in ZCode's client — omitting
     // it made getupdates come back with an empty message list
-    { base_info: { channel_version: '2.0.0' }, get_updates_buf: '' },
+    { base_info: { channel_version: '2.0.0' }, get_updates_buf: buf },
     timeoutMs,
+    signal,
   )
   const containers: unknown[] = [
     data.msgs,
@@ -238,9 +289,19 @@ export async function ilinkPollActivation(
           readString(c, 'from_user_id', 'from', 'from_user', 'fromUser', 'user', 'user_id', 'userId') ||
           (isRecord(c.from) ? readString(c.from, 'id', 'wxid') : '') ||
           (isRecord(c.sender) ? readString(c.sender, 'id', 'wxid') : '')
-        if (userId) return { userId }
+        if (userId) return { userId, nextBuf: readNextBuf(data) }
       }
     }
   }
-  return {}
+  return { nextBuf: readNextBuf(data) }
+}
+
+/** Activation helper: one getupdates round with an empty cursor */
+export async function ilinkPollActivation(
+  fetcher: NetFetch,
+  botToken: string,
+  timeoutMs: number = POLL_TIMEOUT_MS,
+): Promise<IlinkActivatePoll> {
+  const res = await ilinkGetUpdates(fetcher, botToken, '', timeoutMs)
+  return { userId: res.userId }
 }

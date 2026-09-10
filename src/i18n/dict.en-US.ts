@@ -227,7 +227,8 @@ export const enUS: Dict = {
     wxDisconnect: 'Disconnect',
     wxDisconnectConfirm: 'Disconnecting requires a new QR login. Disconnect anyway?',
     wxReloginHint: 'If sending keeps failing, disconnect and scan again to rebind.',
-    wxStaleHint: 'WeChat reports ret -2: sends are rejected after long silence or bursts. Message the bot once in WeChat, then pause sending for about an hour and retry.',
+    wxStaleHint:
+      'WeChat reports ret -2 (session not ready). The app recovers the session via getupdates and retries once; if it still fails, message the bot once in WeChat and try again later.',
     wxVerify: 'Verify connection',
     wxVerifying: 'Verifying…',
     wxVerifyOk: 'Connection healthy, token is alive',

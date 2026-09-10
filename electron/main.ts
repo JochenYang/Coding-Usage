@@ -28,6 +28,13 @@ import {
   type PushChannel,
 } from './webhook-channels'
 import { ilinkBeginLogin, ilinkPollActivation, ilinkPollLogin } from './weixin-ilink'
+import {
+  ensureIlinkSessionWarm,
+  initIlinkSession,
+  recoverIlinkSession,
+  startIlinkSession,
+  stopIlinkSession,
+} from './weixin-session'
 import { initIslandWindow, islandHide, islandSetClickThrough, islandShow } from './island-window'
 
 // Tray icon: 16x16 solid indigo (#6366F1) RGBA PNG. Generated offline with a
@@ -659,10 +666,33 @@ function registerIpc(): void {
         text,
       )
       if (!request) return { ok: false, status: 0, error: 'invalid-credential' }
+      // WeChat iLink: sendmessage only lands while the bot session is
+      // "prepared" (ZCode keeps a getupdates long-poll alive for that).
+      // This app is opened on demand, so warm the session after a cold
+      // start and recover from {ret:-2,prepare failed} with one full
+      // getupdates round before the single retry below.
+      const weixinToken = channel === 'weixin' ? (c.token as string) : ''
+      if (weixinToken) {
+        await ensureIlinkSessionWarm(weixinToken)
+      }
+      const isWeixinPrepareFailed = (json: unknown): boolean => {
+        if (channel !== 'weixin' || json == null || typeof json !== 'object') return false
+        const obj = json as Record<string, unknown>
+        const layers = [obj, obj.data, obj.result].filter(
+          (l): l is Record<string, unknown> => l != null && typeof l === 'object' && !Array.isArray(l),
+        )
+        return layers.some((l) => {
+          const ret = l.ret
+          const msg = typeof l.errmsg === 'string' ? l.errmsg : typeof l.message === 'string' ? l.message : ''
+          return ret === -2 || ret === '-2' || /prepare failed/i.test(msg)
+        })
+      }
       // One retry on transport-level failure: the iLink endpoint occasionally
       // black-holes a request past the 15s timeout while the next one answers
       // instantly. A hard-down network fails both attempts quickly anyway.
+      // WeChat prepare-failed also uses the retry slot after a session recover.
       let lastError = ''
+      let weixinRecovered = false
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           const res = await net.fetch(request.url, {
@@ -682,6 +712,17 @@ function registerIpc(): void {
           // fall back to a bare "HTTP 200" and the real cause is invisible.
           const ok = isChannelSuccess(channel as PushChannel, res.ok, json)
           if (!ok) {
+            // Cold-start / idle-session rejection: re-prepare via getupdates
+            // and spend the retry slot on the same payload (not a duplicate
+            // logical message — the first attempt never delivered).
+            if (weixinToken && !weixinRecovered && isWeixinPrepareFailed(json)) {
+              weixinRecovered = true
+              const recovered = await recoverIlinkSession(weixinToken)
+              console.error(
+                `[webhook:send] channel=weixin prepare-failed, recover=${recovered ? 'ok' : 'fail'}`,
+              )
+              if (recovered) continue
+            }
             const detail = channelErrorDetail(channel as PushChannel, res.status, json)
             console.error(`[webhook:send] channel=${channel as string} status=${res.status} detail=${detail}`)
             // A platform rejection is deterministic — retrying would just
@@ -744,6 +785,18 @@ function registerIpc(): void {
       }
     },
   )
+
+  // Keep-alive: the renderer hands over the decrypted bot token once the
+  // weixin channel is configured (hydration done). Main then owns the
+  // getupdates long-poll so sendmessage has a prepared session even though
+  // this app is not a 24/7 daemon — the loop only lives for the current run.
+  ipcMain.handle('ilink:session-start', async (_event, token: unknown): Promise<void> => {
+    if (typeof token !== 'string' || !token) return
+    await startIlinkSession(token)
+  })
+  ipcMain.handle('ilink:session-stop', async (): Promise<void> => {
+    await stopIlinkSession()
+  })
 
   // System-level dynamic island: the main renderer relays fresh alert
   // batches; the overlay surface (its own tiny window) hides itself and
@@ -1026,6 +1079,7 @@ if (!gotSingleInstanceLock) {
 
   void app.whenReady().then(() => {
     applyCsp()
+    initIlinkSession(net.fetch)
     registerIpc()
     createWindow()
     createTray()
@@ -1042,5 +1096,6 @@ if (!gotSingleInstanceLock) {
   app.on('before-quit', () => {
     // Let pending close events pass through during the real quit sequence
     isQuitting = true
+    void stopIlinkSession()
   })
 }

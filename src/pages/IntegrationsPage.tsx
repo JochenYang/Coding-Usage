@@ -231,6 +231,10 @@ function WeixinChannelBlock({ onTest }: { onTest: (cred: WebhookCredential) => P
   // states above) so the two features stay separately readable
   const [confirmDisconnect, setConfirmDisconnect] = useState(false)
   const disconnect = () => {
+    // Clearing the token flips the data-context keep-alive effect, which
+    // calls ilinkSessionStop; do it explicitly too so the loop dies even if
+    // the settings write is delayed.
+    void window.desktopBridge?.ilinkSessionStop()
     updateSettings({ ...settings, integrations: { ...intg, weixinBotToken: '', weixinBotUserId: '' } })
     setPhase('idle')
     setNote('')
