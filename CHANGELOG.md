@@ -10,6 +10,20 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.5.2] - 2026-09-10
+
+### 中文
+- 修复手动刷新时活跃告警重复弹提醒：进行中或失败的查询不再被当作「条件解除」，仅在拿到成功结果后才更新告警状态；条件真实复发仍会正常提醒一次
+- 铃铛角标、铃铛预览与告警中心「未读」筛选不再计入已恢复的历史告警（历史仍只在告警中心置灰展示）
+- 本地 Agent 用量接入统一刷新：自动刷新、全部刷新与卡片按钮均会驱动扫描（主进程 5 分钟缓存 + 节流，真实扫描最快约每 5 分 30 秒一次），「手动」档不再后台扫描；「数据截至」改为真实扫描时间，缓存命中不再虚标
+- 修复微信 iLink 推送重启后 `prepare failed`（ret -2）：对齐 ZCode 会话模型——应用运行期间主进程常驻 `getupdates` 长轮询保活；冷启动推送前先 `getconfig` 预热；收到 ret -2 自动完整拉一轮 `getupdates` 后重试一次；`get_updates_buf` 游标落盘，断开/退出时停循环
+
+### English
+- Fix duplicate alert popups on manual refresh: in-flight or failed queries no longer count as "condition cleared" — alert state changes only on a successful result, and genuinely re-firing conditions still notify once
+- The bell badge, bell preview and the alerts-center "unread" filter no longer count resolved history (history stays as dimmed rows in the alerts center only)
+- Local agent usage joins the unified refresh: auto-refresh, refresh-all and the card button all drive the scan (main-process 5-min cache + throttle — a real scan at most every ~5m30s), and "Manual" no longer scans in the background; the as-of label now shows the real scan time instead of being re-stamped on cache hits
+- Fix WeChat iLink `prepare failed` (ret -2) after restarts: mirror ZCode's session model — a main-process `getupdates` long-poll keep-alive while the app runs; `getconfig` warm-up before the first cold-start send; one full `getupdates` recover + retry on ret -2; persist the `get_updates_buf` cursor; stop the loop on disconnect/quit
+
 ## [v0.5.1] - 2026-09-10
 
 ### 中文
