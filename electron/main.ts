@@ -123,6 +123,16 @@ function createWindow(): void {
   })
   mainWindow = win
 
+  // Renderer-initiated window.open / target="_blank" links (provider docs,
+  // key pages) must open in the system browser: Electron's default is a new
+  // in-app window. Only https leaves the app; everything else is dropped.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('https://')) {
+      void shell.openExternal(url).catch(() => {})
+    }
+    return { action: 'deny' }
+  })
+
   // Custom caption buttons render their own hover states in the DOM, so the
   // native Window Controls Overlay stays off; report maximize transitions so
   // the restore glyph can swap live.
