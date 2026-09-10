@@ -10,6 +10,14 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.5.3] - 2026-09-10
+
+### 中文
+- 修复 DSH 用量冻结：DSH 新版把会话转录改名为 `session.v3.jsonl.zstd`，而 tokscale 按规范文件名发现会话——改名后的会话全部不可见，用量停在改名当天。现在每次扫描前自动为 v3 转录建立规范名硬链接（同 inode：追加写入即刻可见、零拷贝）；已存在的规范名文件（如迁移前原件）绝不触碰，避免重复计数
+
+### English
+- Fix frozen DSH usage: DSH moved its transcripts to `session.v3.jsonl.zstd`, which tokscale's filename-based scanner never matches — every post-rename session was invisible. Scans now alias each v3 transcript to the canonical name with a hard link (same inode: appends are visible immediately, nothing copied); pre-existing canonical files (e.g. pre-migration originals) are never touched, so nothing is double-counted
+
 ## [v0.5.2] - 2026-09-10
 
 ### 中文
