@@ -10,7 +10,7 @@ import {
   buildKpis,
   buildTrendPoints,
 } from '@/lib/overview'
-import { displayTokens } from '@/lib/agent-usage'
+import { displayDayTokens, displayTokens } from '@/lib/agent-usage'
 import { alertDetail, alertTitle } from '@/lib/alert-text'
 import { KpiRow } from '@/components/overview/KpiRow'
 import { TrendCard } from '@/components/overview/TrendCard'
@@ -111,10 +111,8 @@ export function OverviewPage({
   }, [agentUsage, sections, results, t])
   // Trend prefers the graph-derived daily series; daily archive is the fallback
   const trend = useMemo(() => {
-    const toValue = (p: { value: number; input: number; output: number }) =>
-      settings.usageDisplayMode === 'no-cache' ? p.input + p.output : p.value
     const local = agentUsage.dailySeries.slice(-7)
-    if (local.length >= 2) return local.map((p) => ({ label: p.label, value: toValue(p) }))
+    if (local.length >= 2) return local.map((p) => ({ label: p.label, value: displayDayTokens(p, settings.usageDisplayMode) }))
     const archived = agentDailySeries(7)
     return archived.length >= 2 ? archived : buildTrendPoints(sections)
   }, [agentUsage, agentDailySeries, sections, settings.usageDisplayMode])

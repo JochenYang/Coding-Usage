@@ -10,6 +10,18 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- 用量统计新增 Token 活动热力：近 12 个月日历墙，支持每日 / 每周（整墙显示周总量）/ 累计三档，悬停显示精确值
+- 趋势折线改顺滑曲线，悬停气泡增加垂直翻转（峰顶不再顶出卡片），数据刷新不清残留气泡
+- 统一总量口径：趋势与热力改用 breakdown 加总，与概览总额头一致
+
+### English
+- Usage stats gain a Token activity heatmap: trailing-12-month calendar wall with daily / weekly (whole-wall week totals) / cumulative modes and exact-value hovers
+- Smoothed trend curves, vertical tooltip flipping at peaks, no stale bubbles across refreshes
+- Unified total definitions: trends and heatmap use the breakdown sum like the overview headline
+
 ## [v0.4.6] - 2026-09-09
 
 ### 中文

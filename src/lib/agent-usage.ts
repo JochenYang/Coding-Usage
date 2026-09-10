@@ -89,7 +89,7 @@ export interface AgentUsageVM {
   monthCostByProvider: CostSliceVM[]
   monthCostByModel: CostSliceVM[]
   /** per-day total tokens (oldest first) — powers the trend chart */
-  dailySeries: { label: string; value: number; input: number; output: number; models?: DayModelSlice[] }[]
+  dailySeries: { day?: string; label: string; value: number; input: number; output: number; cacheRead: number; cacheWrite: number; models?: DayModelSlice[] }[]
   /** Client ids whose scan failed in the degraded per-client fallback; null when clean */
   skippedClients: string[] | null
   /** Per-client failure reason keyed by client id (mirrors skippedClients); absent on old payloads */
@@ -436,10 +436,13 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
       .sort((a, b) => b.tokens - a.tokens)
       .slice(0, DAY_MODELS_KEPT)
     return {
+      day: c.date,
       label: c.date.slice(5),
       value: numberOr(c.totals.tokens),
       input: numberOr(c.tokenBreakdown?.input),
       output: numberOr(c.tokenBreakdown?.output),
+      cacheRead: numberOr(c.tokenBreakdown?.cacheRead),
+      cacheWrite: numberOr(c.tokenBreakdown?.cacheWrite),
       models,
     }
   })
@@ -485,6 +488,19 @@ function subtract(a: AgentPeriodVM, b: AgentPeriodVM): AgentPeriodVM {
  */
 export function displayTokens(p: AgentPeriodVM, mode: 'all' | 'no-cache'): number {
   return mode === 'no-cache' ? p.input + p.output : p.tokens
+}
+
+/**
+ * Mode-aware day total matching displayTokens semantics: the input+output
+ * (+cache) breakdown sum, never the raw `totals.tokens` field, which can
+ * drift from the breakdown (reasoning tokens etc.) and would make per-day
+ * views disagree with the headline totals.
+ */
+export function displayDayTokens(
+  p: { input: number; output: number; cacheRead?: number; cacheWrite?: number },
+  mode: 'all' | 'no-cache',
+): number {
+  return mode === 'no-cache' ? p.input + p.output : p.input + p.output + (p.cacheRead ?? 0) + (p.cacheWrite ?? 0)
 }
 
 // ===== daily archive (fallback so history survives without graph) =====

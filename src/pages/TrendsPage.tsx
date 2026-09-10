@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import { useData } from '@/lib/data-context'
 import { useT } from '@/i18n/useT'
 import { buildTrendPoints } from '@/lib/overview'
-import { displayTokens } from '@/lib/agent-usage'
+import { displayDayTokens, displayTokens } from '@/lib/agent-usage'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { LineChart } from '@/components/charts/LineChart'
@@ -25,7 +25,7 @@ export function TrendsPage() {
     localPoints
       ? localPoints.map((p) => ({
           label: p.label,
-          value: mode === 'no-cache' ? p.input + p.output : p.value,
+          value: displayDayTokens(p, mode),
           detail: (p.models ?? []).map((m) => ({ label: m.label, value: m.tokens })),
         }))
       : archived.length >= 2

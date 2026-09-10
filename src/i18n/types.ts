@@ -271,6 +271,15 @@ export interface Dict {
     colActions: string
     colModel: string
     unpriced: string
+    heatmapTitle: string
+    heatmapDaily: string
+    heatmapWeekly: string
+    heatmapCumulative: string
+    heatmapLess: string
+    heatmapMore: string
+    heatmapActiveDays: string
+    heatmapDays: (n: number) => string
+    heatmapBest: string
     colInput: string
     colOutput: string
     colCache: string

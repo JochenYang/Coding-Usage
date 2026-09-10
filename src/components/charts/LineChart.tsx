@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { cn } from '@/lib/cn'
 import { formatCompactValue } from '@/lib/format'
 
@@ -54,6 +54,37 @@ function r2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
+interface PlotCoord {
+  x: number
+  y: number
+}
+
+/**
+ * Catmull-Rom spline through the points, emitted as cubic Bezier segments.
+ * Straight polylines read heavy and jagged on spiky usage data; the smoothed
+ * curve keeps every data point on the path (dots stay exact) while flowing
+ * between them. Degenerate runs (< 3 points) fall back to straight lines.
+ */
+function smoothPath(coords: PlotCoord[]): string {
+  if (coords.length < 3) {
+    return coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${r2(c.x)} ${r2(c.y)}`).join(' ')
+  }
+  const last = coords.length - 1
+  let d = `M${r2(coords[0].x)} ${r2(coords[0].y)}`
+  for (let i = 0; i < last; i++) {
+    const p0 = coords[Math.max(0, i - 1)]
+    const p1 = coords[i]
+    const p2 = coords[i + 1]
+    const p3 = coords[Math.min(last, i + 2)]
+    const c1x = p1.x + (p2.x - p0.x) / 6
+    const c1y = p1.y + (p2.y - p0.y) / 6
+    const c2x = p2.x - (p3.x - p1.x) / 6
+    const c2y = p2.y - (p3.y - p1.y) / 6
+    d += ` C${r2(c1x)} ${r2(c1y)}, ${r2(c2x)} ${r2(c2y)}, ${r2(p2.x)} ${r2(p2.y)}`
+  }
+  return d
+}
+
 /**
  * Area line chart with hover crosshair + value tooltip.
  * X labels are thinned to stay readable, y ticks use the compact formatter.
@@ -71,6 +102,11 @@ export function LineChart({
   const gradientId = `line-grad-${rawId.replace(/[^a-zA-Z0-9_-]/g, '')}`
   const fmt = formatValue ?? formatCompactValue
   const [hover, setHover] = useState<number | null>(null)
+  // Same stale-hover hazard as Heatmap: the auto-refresh swaps svg nodes
+  // mid-hover and mouseleave never fires on the detached tree
+  useEffect(() => {
+    setHover(null)
+  }, [points])
 
   if (points.length < 2) {
     return (
@@ -97,7 +133,7 @@ export function LineChart({
   const yAt = (v: number) => baselineY - (v / maxTick) * innerH
 
   const coords = points.map((p, i) => ({ x: xAt(i), y: yAt(p.value), point: p }))
-  const linePath = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${r2(c.x)} ${r2(c.y)}`).join(' ')
+  const linePath = smoothPath(coords)
   const areaPath = `${linePath} L${r2(coords[coords.length - 1].x)} ${r2(baselineY)} L${r2(coords[0].x)} ${r2(baselineY)} Z`
 
   // Evenly thin x labels: always show first/last, fill the middle evenly
@@ -190,7 +226,7 @@ export function LineChart({
             key={`${c.point.label}-${i}`}
             cx={r2(c.x)}
             cy={r2(c.y)}
-            r={hover === i ? 4.5 : 3}
+            r={hover === i ? 4 : 2.5}
             fill="var(--color-accent)"
             stroke="var(--color-card)"
             strokeWidth={2}
@@ -209,7 +245,7 @@ export function LineChart({
               strokeOpacity={0.35}
               strokeDasharray="4 3"
             />
-            <circle cx={r2(active.x)} cy={r2(active.y)} r={4.5} fill="var(--color-accent)" stroke="var(--color-card)" strokeWidth={2} />
+            <circle cx={r2(active.x)} cy={r2(active.y)} r={4} fill="var(--color-accent)" stroke="var(--color-card)" strokeWidth={2} />
           </g>
         )}
 
@@ -234,35 +270,51 @@ export function LineChart({
           proportional scaling) so hover data stays crisp at any card width.
           Anchored to the hovered point's x (clamped at the edges) — a
           container-centered bubble reads as "far from the point" whenever the
-          cursor is off-center. */}
-      {active && (
-        <div
-          className={cn(
-            'pointer-events-none absolute z-10 whitespace-nowrap rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-foreground shadow-md',
-            active.x / W < 0.15 ? 'left-0' : active.x / W > 0.85 ? 'right-0' : '',
-          )}
-          style={{
-            top: `${(active.y / H) * 100}%`,
-            ...(active.x / W < 0.15 || active.x / W > 0.85
-              ? { transform: 'translateY(calc(-100% - 8px))' }
-              : { left: `${(active.x / W) * 100}%`, transform: 'translate(-50%, calc(-100% - 8px))' }),
-          }}
-        >
-          <div className="tabular-nums">
-            {active.point.label} · {fmt(active.point.value)}
-          </div>
-          {active.point.detail && active.point.detail.length > 0 && (
-            <div className="mt-1 space-y-0.5 border-t border-border/60 pt-1 font-normal text-muted-foreground">
-              {active.point.detail.slice(0, 5).map((d) => (
-                <div key={d.label} className="flex items-center justify-between gap-3 tabular-nums">
-                  <span className="max-w-40 truncate">{d.label}</span>
-                  <span>{fmt(d.value)}</span>
+          cursor is off-center. Vertical placement flips below the point when
+          there is no headroom above (tall detail bubbles on peak points would
+          otherwise bleed past the card top). */}
+      {active &&
+        (() => {
+          const hasDetail = !!active.point.detail && active.point.detail.length > 0
+          // Headroom the bubble needs, as a fraction of chart height: a tall
+          // detail bubble near a peak has nowhere to go above the point
+          const needRoom = hasDetail ? 0.34 : 0.14
+          const below = active.y / H < needRoom
+          const edge = active.x / W < 0.15 || active.x / W > 0.85
+          return (
+            <div
+              className={cn(
+                'pointer-events-none absolute z-10 whitespace-nowrap rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-foreground shadow-md',
+                active.x / W < 0.15 ? 'left-0' : active.x / W > 0.85 ? 'right-0' : '',
+              )}
+              style={{
+                top: `${(active.y / H) * 100}%`,
+                ...(edge
+                  ? { transform: below ? 'translateY(8px)' : 'translateY(calc(-100% - 8px))' }
+                  : {
+                      left: `${(active.x / W) * 100}%`,
+                      transform: below
+                        ? 'translate(-50%, 8px)'
+                        : 'translate(-50%, calc(-100% - 8px))',
+                    }),
+              }}
+            >
+              <div className="tabular-nums">
+                {active.point.label} · {fmt(active.point.value)}
+              </div>
+              {hasDetail && (
+                <div className="mt-1 space-y-0.5 border-t border-border/60 pt-1 font-normal text-muted-foreground">
+                  {active.point.detail!.slice(0, 5).map((d) => (
+                    <div key={d.label} className="flex items-center justify-between gap-3 tabular-nums">
+                      <span className="max-w-40 truncate">{d.label}</span>
+                      <span>{fmt(d.value)}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          )}
-        </div>
-      )}
+          )
+        })()}
     </div>
   )
 }
