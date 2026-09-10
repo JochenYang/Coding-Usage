@@ -6,11 +6,12 @@ import { ENC_PREFIX } from './storage'
 
 /**
  * Multi-channel webhook alert push (WeCom / WeChat iLink / Feishu-Lark /
- * Telegram). The alert engine derives the live set on every refresh; this
- * module pushes only the genuinely NEW ids (not in the previous render's
- * set), with a per-channel cooldown persisted across restarts so a flapping
- * metric cannot spam a group. Everything runs through the desktop bridge —
- * the browser path has no webhook capability.
+ * Telegram). The alert engine re-derives the full unread set on every refresh;
+ * this module offers every alert the caller passes and dedups per channel via
+ * a cooldown persisted across restarts — one alert id re-pushes at most once
+ * per cooldown window per channel, so a flapping metric cannot spam a group.
+ * Everything runs through the desktop bridge — the browser path has no webhook
+ * capability.
  */
 
 const PUSHED_KEY = 'coding-usage.alertPush.v1'

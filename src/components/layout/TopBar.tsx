@@ -188,7 +188,10 @@ export function TopBar({ onNavigate }: { onNavigate: (v: View) => void }) {
             // drops without forcing a trip to the alerts center. One batched
             // call — looping markAlertRead would race its stale closure.
             if (open) {
+              // Mark exactly what the preview renders (same filter order as
+              // AlertsPanel): resolved history never appears in the bell.
               const previewIds = alerts
+                .filter((a) => !a.resolved)
                 .slice(0, NOTIF_PREVIEW_COUNT)
                 .filter((a) => !a.read)
                 .map((a) => a.id)

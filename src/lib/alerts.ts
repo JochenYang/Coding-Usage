@@ -138,8 +138,10 @@ const RESOLVED_RETENTION_MS = 48 * 60 * 60_000
 /**
  * Derive the live alert set from current sections/results, merged with the
  * stored set (surviving alerts keep firstSeenAt/read; resolved ids are kept
- * for {@link RESOLVED_RETENTION_MS} then dropped). Pure — the caller
- * persists the result.
+ * for {@link RESOLVED_RETENTION_MS} then dropped). Alerts whose account has
+ * no settled result (status 'loading' or 'error') keep their previous state —
+ * an in-flight or failed refresh is not evidence the condition cleared.
+ * Pure — the caller persists the result.
  */
 export function deriveAlerts(
   sections: Section[],
@@ -227,6 +229,15 @@ export function deriveAlerts(
   // skip them — only the alerts center renders them as dimmed history.
   for (const old of stored) {
     if (live.has(old.id)) continue
+    // A card mid-fetch or failed carries no fresh metric: keep its previous
+    // state until a settled 'ok' fetch says otherwise. Otherwise a manual
+    // refresh (loading) or a transient error would resolve the whole set and
+    // flip it straight back — re-popping island/overlay notifications.
+    const accountStatus = results[old.accountKey]?.status
+    if (accountStatus === 'loading' || accountStatus === 'error') {
+      merged.push(old)
+      continue
+    }
     if (Date.now() - old.firstSeenAt > RESOLVED_RETENTION_MS) continue
     merged.push({ ...old, resolved: true })
   }
@@ -236,7 +247,9 @@ export function deriveAlerts(
 }
 
 export function unreadCount(items: AlertItem[]): number {
-  return items.filter((a) => !a.read).length
+  // Resolved history is display-only (alerts center) and must not inflate
+  // the bell badge.
+  return items.filter((a) => !a.read && !a.resolved).length
 }
 
 export function markAllRead(items: AlertItem[]): AlertItem[] {

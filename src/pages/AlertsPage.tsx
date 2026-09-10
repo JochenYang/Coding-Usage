@@ -113,7 +113,7 @@ export function AlertsPage({ className }: AlertsPageProps) {
   const thresholds = settings.alertThresholds
 
   const visible = useMemo(
-    () => (filter === 'unread' ? alerts.filter((a) => !a.read) : alerts),
+    () => (filter === 'unread' ? alerts.filter((a) => !a.read && !a.resolved) : alerts),
     [alerts, filter],
   )
 

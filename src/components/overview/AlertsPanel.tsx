@@ -61,11 +61,11 @@ function AlertRow({ alert, now }: { alert: AlertItem; now: number }) {
   )
 }
 
-/** "Recent alerts" card: newest entries first (pre-sorted by the store) */
+/** "Recent alerts" card: newest entries first (pre-sorted by the store); resolved history renders only in the alerts center */
 export function AlertsPanel({ alerts, onViewAll, max = 3, className }: AlertsPanelProps) {
   const t = useT()
   const now = useNowTick()
-  const visible = alerts.slice(0, max)
+  const visible = alerts.filter((a) => !a.resolved).slice(0, max)
 
   return (
     <section className={cn('rounded-2xl border border-border bg-card p-5', className)}>
@@ -82,7 +82,7 @@ export function AlertsPanel({ alerts, onViewAll, max = 3, className }: AlertsPan
 
       {visible.length === 0 ? (
         <div className="flex items-center justify-center py-6 text-[11px] text-subtle">
-          {t.overview.emptyTitle}
+          {t.manage.noAlerts}
         </div>
       ) : (
         <ul className="divide-y divide-border/60">

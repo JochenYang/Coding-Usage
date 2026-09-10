@@ -9,6 +9,7 @@ import { cn } from '@/lib/cn'
 import { useT } from '@/i18n/useT'
 import { useData } from '@/lib/data-context'
 import { ENC_PREFIX } from '@/lib/storage'
+import { unreadCount } from '@/lib/alerts'
 import { loadPushLog, logPushAttempt, clearPushLog, configuredChannels, type PushLogEntry } from '@/lib/alert-push'
 import type { Dict } from '@/i18n/types'
 import type { IntegrationsSettings } from '@/types'
@@ -407,7 +408,7 @@ function PushStatusBlock({ dirty }: { dirty: boolean }) {
   const { settings, alerts } = useData()
   const intg = settings.integrations
   const usable = configuredChannels(intg)
-  const unread = alerts.filter((a) => !a.read).length
+  const unread = unreadCount(alerts)
   const last = loadPushLog().at(-1)
   return (
     <div className="mt-3 space-y-1 rounded-xl border border-border/60 bg-background px-3 py-2 text-[11px] leading-relaxed">
