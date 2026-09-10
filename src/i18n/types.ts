@@ -219,6 +219,7 @@ export interface Dict {
     wxDisconnect: string
     wxDisconnectConfirm: string
     wxReloginHint: string
+    wxStaleHint: string
     wxVerify: string
     wxVerifying: string
     wxVerifyOk: string

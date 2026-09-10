@@ -217,6 +217,7 @@ export const zhCN: Dict = {
     wxDisconnect: '断开',
     wxDisconnectConfirm: '断开后需要重新扫码登录，确定断开？',
     wxReloginHint: '若持续发送失败，可尝试断开后重新扫码绑定。',
+    wxStaleHint: '微信侧报 ret -2：长时间未给机器人发消息或发送过频会被拒。请在微信里给机器人发任意消息，然后暂停发送约 1 小时再试。',
     wxVerify: '验证连接',
     wxVerifying: '验证中…',
     wxVerifyOk: '连接正常，令牌有效',

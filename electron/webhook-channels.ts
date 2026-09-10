@@ -23,7 +23,11 @@ import { randomUUID } from 'node:crypto'
  * - weixin:    POST https://ilinkai.weixin.qq.com/ilink/bot/sendmessage with
  *              a Bearer ilink bot token (login/activation flow lives in
  *              weixin-ilink.ts). Text item_list payload, CRLF line breaks.
- *              HTTP 200 is success unless a nonzero ret/errcode is present.
+ *              Fail-closed ack: success needs an explicit zero ret/errcode
+ *              or a message_id — HTTP 200 with neither is the platform's
+ *              silent-drop shape ({ret:-2,errmsg:"prepare failed"} = stale
+ *              session or burst throttle; {ret:0} without message_id =
+ *              accepted but never rendered).
  */
 
 export type PushChannel = 'wecom' | 'feishu' | 'telegram' | 'weixin'
@@ -134,10 +138,9 @@ export function buildChannelRequest(
 export function isChannelSuccess(channel: PushChannel, httpOk: boolean, json: unknown): boolean {
   if (!httpOk) return false
   if (json == null || typeof json !== 'object') {
-    // weixin stays lenient even on an unparseable 200 body (ZCode's parser
-    // treats a missing ret/errcode as success); the strict platforms need
-    // their explicit ok field
-    return channel === 'weixin'
+    // An unparseable 200 body (gateway HTML page etc.) proves nothing arrived:
+    // every channel, weixin included, needs a parseable ack to count success
+    return false
   }
   const obj = json as Record<string, unknown>
   switch (channel) {
@@ -148,19 +151,20 @@ export function isChannelSuccess(channel: PushChannel, httpOk: boolean, json: un
     case 'telegram':
       return obj.ok === true
     case 'weixin': {
-      // Mirror ZCode's requestWeixinJson semantics: the platform does not
-      // reliably echo ret/errcode 0 on sendmessage (verified live — HTTP 200
-      // with a delivered message carries neither field), so absence means
-      // success; only an EXPLICIT nonzero code fails. Check the root and the
-      // known envelope layers. Codes may arrive as numbers or numeric strings
-      // (a string "0" still means success).
-      const explicitFail = (o: Record<string, unknown>): boolean => {
-        for (const inner of [o, envelope(o.data), envelope(o.result)]) {
-          if (inner !== null && nonzeroCode(inner)) return true
-        }
-        return false
-      }
-      return !explicitFail(obj)
+      // Fail-closed delivery ack: a real delivery carries either an explicit
+      // zero code or a message_id. HTTP 200 with NEITHER is the platform's
+      // silent-drop shape (field-verified by third parties: ret=0 without
+      // message_id never renders, while ret=0 with message_id delivers) —
+      // treating it as success is exactly how "test says ok but nothing
+      // arrives" happens. Codes may be numbers or numeric strings.
+      // Layers checked: root plus the known data/result envelopes.
+      const layers = [obj, envelope(obj.data), envelope(obj.result)].filter(
+        (l): l is Record<string, unknown> => l !== null,
+      )
+      if (layers.some(nonzeroCode)) return false
+      // Explicit zero code without an ack id is still a failure (the detail
+      // builder reports it as weixin-noack, never as a bare HTTP status)
+      return layers.some(hasMessageId)
     }
   }
 }
@@ -169,18 +173,22 @@ export function isChannelSuccess(channel: PushChannel, httpOk: boolean, json: un
 export function channelErrorDetail(channel: PushChannel, status: number, json: unknown): string {
   if (json != null && typeof json === 'object') {
     const obj = json as Record<string, unknown>
+    const layers = [obj, envelope(obj.data), envelope(obj.result)].filter(
+      (l): l is Record<string, unknown> => l !== null,
+    )
+    // No delivery ack anywhere: report what the platform actually said
+    // (usually a bare {} or {ret:0}) instead of a misleading bare status
+    if (!layers.some(hasMessageId) && !layers.some(nonzeroCode)) return `${channel}-noack`
     // Scan the root plus the known envelope layers so a platform message
     // nested under data/result is still surfaced instead of a bare status.
-    for (const layer of [obj, envelope(obj.data), envelope(obj.result)]) {
-      if (layer === null) continue
+    for (const layer of layers) {
       const text = messageText(layer)
       if (text) {
         const code = layer.errcode ?? layer.errCode ?? layer.code ?? layer.ret ?? status
         return `${channel}-${code}: ${text}`
       }
     }
-    for (const layer of [obj, envelope(obj.data), envelope(obj.result)]) {
-      if (layer === null) continue
+    for (const layer of layers) {
       if (layer.errcode != null) return `${channel}-${layer.errcode}`
       if (layer.errCode != null) return `${channel}-${layer.errCode}`
       if (layer.code != null) return `${channel}-${layer.code}`
@@ -200,6 +208,14 @@ function envelope(v: unknown): Record<string, unknown> | null {
   return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null
 }
 
+/** True when the layer carries a delivery ack id (message_id spellings) */
+function hasMessageId(o: Record<string, unknown>): boolean {
+  for (const k of ['message_id', 'messageId', 'msg_id', 'msgid']) {
+    const v = o[k]
+    if (typeof v === 'string' ? v !== '' : typeof v === 'number' && Number.isFinite(v)) return true
+  }
+  return false
+}
 /** True when the layer carries an explicit nonzero platform code (number or numeric string) */
 function nonzeroCode(o: Record<string, unknown>): boolean {
   for (const k of ['ret', 'errcode', 'errCode', 'code']) {

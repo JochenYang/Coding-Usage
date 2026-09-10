@@ -69,8 +69,42 @@ export function logPushAttempt(channel: WebhookChannel, ok: boolean, error?: str
   }
 }
 
-/** Channels usable right now (credential present and not still ciphertext) */
-export interface UsableChannel {
+/** Per-channel failure backoff: after a failed auto-push the channel rests
+ *  instead of hammering every refresh. Retrying into a platform throttle
+ *  (iLink answers ret=-2 while throttled) EXTENDS the penalty window, so
+ *  backing off is what actually recovers delivery. Manual tests bypass this.
+ */
+const FAIL_BACKOFF_KEY = 'coding-usage.alertPush.failback.v1'
+const FAIL_BACKOFF_MS = 30 * 60_000
+const MAX_BACKOFF_ENTRIES = 20
+
+function loadBackoff(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(FAIL_BACKOFF_KEY)
+    if (!raw) return {}
+    const parsed: unknown = JSON.parse(raw)
+    if (parsed == null || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    const out: Record<string, number> = {}
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof v === 'number' && Number.isFinite(v)) out[k] = v
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+function saveBackoff(map: Record<string, number>): void {
+  const entries = Object.entries(map)
+  const trimmed = entries.length > MAX_BACKOFF_ENTRIES ? entries.slice(-MAX_BACKOFF_ENTRIES) : entries
+  try {
+    localStorage.setItem(FAIL_BACKOFF_KEY, JSON.stringify(Object.fromEntries(trimmed)))
+  } catch {
+    // best-effort
+  }
+}
+
+/** Channels usable right now (credential present and not still ciphertext) */export interface UsableChannel {
   channel: WebhookChannel
   cred: WebhookCredential
 }
@@ -155,12 +189,17 @@ export async function pushAlerts(
 
   const title = t.integrations.pushTitle
   const pushed = loadPushed()
+  const backoff = loadBackoff()
   const now = Date.now()
   const results: Record<string, PushOutcome> = {}
   let attempted = false
+  let backoffDirty = false
 
   await Promise.all(
     channels.map(async ({ channel, cred }) => {
+      // Failure backoff first: hammering a throttled platform only extends
+      // its penalty window, so a recently-failed channel rests quietly
+      if ((backoff[channel] ?? 0) > now) return
       // Per-channel cooldown: an id pushed recently through this channel waits
       const fresh = items.filter((a) => now - (pushed[`${channel}:${a.id}`] ?? 0) > PUSH_COOLDOWN_MS)
       if (fresh.length === 0) return
@@ -176,9 +215,17 @@ export async function pushAlerts(
       logPushAttempt(channel, res.ok, res.ok ? undefined : (res.error ?? `HTTP ${res.status}`))
       if (res.ok) {
         for (const a of fresh) pushed[`${channel}:${a.id}`] = now
+        if (backoff[channel] != null) {
+          delete backoff[channel]
+          backoffDirty = true
+        }
+      } else {
+        backoff[channel] = now + FAIL_BACKOFF_MS
+        backoffDirty = true
       }
     }),
   )
   if (attempted) savePushed(pushed)
+  if (backoffDirty) saveBackoff(backoff)
   return results
 }

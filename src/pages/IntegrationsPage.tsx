@@ -375,7 +375,11 @@ function WeixinChannelBlock({ onTest }: { onTest: (cred: WebhookCredential) => P
         </p>
       )}
       {(test === 'fail' || verify === 'fail') && (
-        <p className="mt-1 text-[11px] text-subtle">{t.integrations.wxReloginHint}</p>
+        <p className="mt-1 text-[11px] text-subtle">
+          {/-2/.test(testDetail || verifyDetail)
+            ? t.integrations.wxStaleHint
+            : t.integrations.wxReloginHint}
+        </p>
       )}
     </div>
   )

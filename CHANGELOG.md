@@ -10,6 +10,18 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- 微信成功判定收紧：无 message_id 的 HTTP 200 视为静默失败（`weixin-noack`），不再误报发送成功
+- 失败退避：自动推送失败后该通道休息 30 分钟再试，避免把平台限流越拖越长；手动测试不受影响
+- ret -2 显示专项指引（给机器人发消息＋暂停发送），不再只提示重新扫码
+
+### English
+- Stricter WeChat ack: HTTP 200 without message_id counts as a silent failure (`weixin-noack`), no more false "sent" reports
+- Failure backoff: a failed channel rests 30 minutes before auto-push retries, so platform throttles can decay; manual tests unaffected
+- Dedicated ret -2 guidance (message the bot + pause sending) instead of only suggesting re-login
+
 ## [v0.4.5] - 2026-09-08
 
 ### 中文
