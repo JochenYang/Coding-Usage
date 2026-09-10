@@ -10,6 +10,16 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.5.4] - 2026-09-10
+
+### 中文
+- 修复火山引擎套餐查询始终报「网络请求失败」：异步签名类适配器（火山 Ark）不再被预检逻辑拦截，真实签名请求得以发出；请求域名对齐官方文档（ark.cn-beijing.volcengineapi.com），并适配 GetAFPUsage 文档契约（字符串化数值、毫秒重置时间戳）
+- 「获取 Key」「文档」等外链改用系统默认浏览器打开，不再弹出应用内窗口
+
+### English
+- Fix Volcengine plan queries always failing with a network error: async-signing adapters (Volcengine Ark) are no longer blocked by the preflight path, so the real signed request goes out; the endpoint now matches the official docs (ark.cn-beijing.volcengineapi.com) and the GetAFPUsage contract (string-ified numbers, millisecond reset timestamps)
+- External links such as "Get Key" and "Docs" now open in the system browser instead of an in-app window
+
 ## [v0.5.3] - 2026-09-10
 
 ### 中文
