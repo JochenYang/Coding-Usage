@@ -138,7 +138,7 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
           <Tooltip text={t.card.refresh}>
             <button
               type="button"
-              onClick={onRefresh}
+              onClick={() => onRefresh()}
               aria-label={t.card.refresh}
               className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >

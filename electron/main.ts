@@ -235,11 +235,16 @@ interface TokScanResult {
   skippedClients?: string[]
   /** Per-client failure reason, keyed by client id (mirrors skippedClients) */
   skippedDetails?: Record<string, string>
+  /** Epoch ms when the scan was requested — kept stable across cache hits so
+   *  the renderer can show an honest as-of time instead of re-stamping "now" */
+  scannedAt?: number
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 let tokScanCache: { at: number; result: TokScanResult } | null = null
+/** In-flight scan shared by overlapping requests (tick + manual click) */
+let tokScanInflight: Promise<TokScanResult> | null = null
 
 // Subscription probes cost upstream API calls (Gemini up to three round-trips),
 // so successful outcomes are cached briefly to survive Plans-page revisits.
@@ -982,17 +987,32 @@ function registerIpc(): void {
   )
 
   // Local agent usage scan. Cached in the main process: a full three-period
-  // scan takes tens of seconds, so repeated renderer refreshes are cheap.
+  // scan takes tens of seconds, so repeated renderer refreshes are cheap. Each
+  // result carries the epoch ms of its scan request (`scannedAt`) — cache hits
+  // return the original stamp, so the renderer's as-of time stays honest — and
+  // overlapping calls share one in-flight round-trip instead of spawning the
+  // binary twice.
   ipcMain.handle('tokscale:scan', async (): Promise<TokScanResult> => {
     const now = Date.now()
     if (tokScanCache && now - tokScanCache.at < TOKSCALE_CACHE_MS) return tokScanCache.result
-    try {
-      const result = await scanTokscaleUsage()
-      tokScanCache = { at: now, result }
-      return result
-    } catch (e) {
-      return { error: String(e instanceof Error ? e.message : e) }
-    }
+    if (tokScanInflight) return tokScanInflight
+    const pending = (async (): Promise<TokScanResult> => {
+      try {
+        const result = await scanTokscaleUsage()
+        // Stamp the request time, not the completion time: the data is read
+        // during the scan, and the label must never claim fresher than we
+        // asked. Same anchor as the cache window (`at`) above.
+        const stamped: TokScanResult = { ...result, scannedAt: now }
+        tokScanCache = { at: now, result: stamped }
+        return stamped
+      } catch (e) {
+        return { error: String(e instanceof Error ? e.message : e) }
+      } finally {
+        tokScanInflight = null
+      }
+    })()
+    tokScanInflight = pending
+    return pending
   })
 }
 

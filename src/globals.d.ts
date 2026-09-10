@@ -156,6 +156,8 @@ declare global {
     daily?: unknown
     /** Set when the scan failed (binary missing, exit code, timeout, ...) */
     error?: string
+    /** Epoch ms when the scan finished; stable across main-process cache hits */
+    scannedAt?: number
   }
 
   interface Window {

@@ -283,7 +283,7 @@ function addPeriod(a: AgentPeriodVM, b: AgentPeriodVM): AgentPeriodVM {
  */
 export function summarizeScan(raw: unknown): AgentUsageVM {
   if (!raw || typeof raw !== 'object') return emptyVM(null)
-  const root = raw as { daily?: unknown; error?: string; skippedClients?: unknown; skippedDetails?: unknown }
+  const root = raw as { daily?: unknown; error?: string; skippedClients?: unknown; skippedDetails?: unknown; scannedAt?: unknown }
   const skippedClients = Array.isArray(root.skippedClients)
     ? root.skippedClients.filter((c): c is string => typeof c === 'string')
     : null
@@ -466,7 +466,13 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
     dailySeries,
     skippedClients,
     skippedDetails,
-    scannedAt: Date.now(),
+    // The real scan time from the main process (kept stable across its
+    // 5-minute cache window). Undatable payloads stay null (no as-of shown)
+    // rather than pretending "now" — a missing stamp must not fake freshness.
+    scannedAt:
+      typeof root.scannedAt === 'number' && Number.isFinite(root.scannedAt)
+        ? root.scannedAt
+        : null,
     error: null,
   }
 }

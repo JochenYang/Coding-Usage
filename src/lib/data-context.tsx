@@ -361,6 +361,80 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [locale],
   )
 
+  // Local agent scan. One shot at mount (a local scan needs no decrypted
+  // keys), then it rides the same refresh cycle as everything else — the
+  // manual refresh buttons and the auto-refresh tick, both through refreshAll —
+  // so its cadence follows the user's auto-refresh setting instead of a hidden
+  // timer. The main process caches a scan for 5 minutes; silent (timer-driven)
+  // attempts are throttled just past that window, so each allowed attempt
+  // yields a real rescan instead of re-transferring cached JSON.
+  const AGENT_REFRESH_MIN_MS = 5 * 60_000 + 30_000
+  const agentAttemptAtRef = useRef(0)
+  /** In-flight scan shared by overlapping callers (mount cycle + refreshAll) */
+  const agentInflightRef = useRef<Promise<void> | null>(null)
+
+  const refreshAgentUsage = useCallback(async (opts?: { silent?: boolean }) => {
+    const bridge = window.desktopBridge
+    if (!bridge) return
+    const silent = opts?.silent ?? false
+    if (silent && Date.now() - agentAttemptAtRef.current < AGENT_REFRESH_MIN_MS) return
+    // Overlapping triggers (mount effect + mount refreshAll, rapid clicks)
+    // share the running round-trip; the initiating call owns the spinner.
+    if (agentInflightRef.current) return agentInflightRef.current
+    agentAttemptAtRef.current = Date.now()
+    const run = (async (): Promise<void> => {
+      if (!silent) setAgentUsageLoading(true)
+      // A warm main-process cache answers in milliseconds — hold the spinner up
+      // briefly anyway so the press always reads as "a refresh happened".
+      const startedAt = Date.now()
+      try {
+        const raw = await bridge.tokscaleScan()
+        const summary = summarizeScan(raw)
+        // Only archive REAL today numbers: with the corrected bucketing an empty
+        // today now yields 0, and writing 0 would clobber today's archived value
+        if (summary.error == null && summary.todayTotal.tokens > 0) {
+          archiveDailyUsage(summary.todayTotal.tokens)
+          saveCachedAgentUsage(summary)
+        } else if (summary.error == null) {
+          saveCachedAgentUsage(summary)
+        }
+        setAgentUsage(summary)
+      } catch (e) {
+        setAgentUsage(summarizeScan({ error: String(e) }))
+      } finally {
+        if (!silent) {
+          const elapsed = Date.now() - startedAt
+          const MIN_SPIN_MS = 600
+          if (elapsed < MIN_SPIN_MS) await new Promise((r) => setTimeout(r, MIN_SPIN_MS - elapsed))
+          setAgentUsageLoading(false)
+        }
+      }
+    })()
+    agentInflightRef.current = run
+    try {
+      await run
+    } finally {
+      if (agentInflightRef.current === run) agentInflightRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!window.desktopBridge) return
+    void refreshAgentUsage()
+  }, [refreshAgentUsage])
+
+  // Returning to a visible window (wake from sleep, minimized across midnight)
+  // asks for a silent attempt so "today" numbers cannot sit on yesterday's
+  // totals; quick switch-backs are absorbed by the throttle above.
+  useEffect(() => {
+    if (!window.desktopBridge) return
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void refreshAgentUsage({ silent: true })
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [refreshAgentUsage])
+
   // Keep a ref so the callback identity stays stable across settings edits
   // (typing in an editor field must not tear down the auto-refresh interval).
   const settingsRef = useRef(settings)
@@ -372,6 +446,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     async (opts?: { silent?: boolean }) => {
       const silent = opts?.silent ?? false
       if (!silent) setRefreshingAll(true)
+      // Fire-and-forget: the local-usage card owns its own spinner, and a real
+      // rescan takes far longer than the provider fetches.
+      void refreshAgentUsage({ silent })
       try {
         const sections = buildSections(settingsRef.current)
         const cards = sections.flatMap((s) => s.cards)
@@ -381,7 +458,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         if (!silent) setRefreshingAll(false)
       }
     },
-    [refreshOne],
+    [refreshOne, refreshAgentUsage],
   )
 
   useEffect(() => {
@@ -422,44 +499,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     )
     return () => clearInterval(t)
   }, [settings.autoRefreshMin, refreshAll])
-
-  // Local agent scan: on mount (Electron only) + every 5 minutes. The main
-  // process caches the expensive scan, so this polling is cheap.
-  const refreshAgentUsage = useCallback(async () => {
-    const bridge = window.desktopBridge
-    if (!bridge) return
-    setAgentUsageLoading(true)
-    // A warm main-process cache answers in milliseconds — hold the spinner up
-    // briefly anyway so the press always reads as "a refresh happened".
-    const startedAt = Date.now()
-    try {
-      const raw = await bridge.tokscaleScan()
-      const summary = summarizeScan(raw)
-      // Only archive REAL today numbers: with the corrected bucketing an empty
-      // today now yields 0, and writing 0 would clobber today's archived value
-      if (summary.error == null && summary.todayTotal.tokens > 0) {
-        archiveDailyUsage(summary.todayTotal.tokens)
-        saveCachedAgentUsage(summary)
-      } else if (summary.error == null) {
-        saveCachedAgentUsage(summary)
-      }
-      setAgentUsage(summary)
-    } catch (e) {
-      setAgentUsage(summarizeScan({ error: String(e) }))
-    } finally {
-      const elapsed = Date.now() - startedAt
-      const MIN_SPIN_MS = 600
-      if (elapsed < MIN_SPIN_MS) await new Promise((r) => setTimeout(r, MIN_SPIN_MS - elapsed))
-      setAgentUsageLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!window.desktopBridge) return
-    void refreshAgentUsage()
-    const t = setInterval(() => void refreshAgentUsage(), 5 * 60_000)
-    return () => clearInterval(t)
-  }, [refreshAgentUsage])
 
   const markAllAlertsRead = useCallback(() => {
     // Compute from current state (not inside the updater) so persistence stays

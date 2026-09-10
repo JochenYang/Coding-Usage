@@ -63,11 +63,15 @@ The overview "Local agent usage" card and the agents page read real consumption
 from local session logs (Codex / Kimi Code / OpenCode) via the
 [`tokscale`](https://github.com/junhoyeo/tokscale) CLI (`tokscale@^4.14.0`,
 platform binary ships as optional dependency). The scan happens in the Electron
-main process (`tokscale:scan` IPC, 5-min in-process cache, `--json --client
-codex,kimi,opencode --today/--month/--since 2024-01-01`); aggregation lives in
-`src/lib/agent-usage.ts`. Everything stays local — only aggregated numbers are
-rendered, never message content. Packaging requires the `asarUnpack` entries in
-`electron-builder.yml` (spawning from inside the asar is impossible).
+main process (`tokscale:scan` IPC — the `graph` subcommand over all configured
+clients with `--since 2020-01-01 --no-spinner`, plus a best-effort `trae sync` —
+with a 5-min in-process cache and one shared in-flight round-trip); aggregation
+lives in `src/lib/agent-usage.ts`. Renderer scans ride the shared refresh cycle
+(mount / manual buttons / auto-refresh tick, silent attempts throttled just past
+the cache window) instead of a hidden timer. Everything stays local — only
+aggregated numbers are rendered, never message content. Packaging requires the
+`asarUnpack` entries in `electron-builder.yml` (spawning from inside the asar
+is impossible).
 
 ## Development Commands
 
