@@ -21,6 +21,7 @@ import { fetchGrokUsage } from './grok-usage'
 import { getPricingTable, priceTokens } from './model-pricing'
 import { mergeGraphPayloads } from './tokscale-merge'
 import { reconcileProviderAttribution } from './provider-reconcile'
+import { ensureDshSessionAliases } from './dsh-aliases'
 import {
   buildChannelRequest,
   channelErrorDetail,
@@ -476,6 +477,12 @@ async function ensurePricingCache(): Promise<void> {
  *    ones, so one bad session set never blanks the whole local-usage view.
  */
 async function scanTokscaleUsage(): Promise<TokScanResult> {
+  // Alias DSH's versioned transcripts to the canonical names tokscale scans
+  // for (see dsh-aliases.ts) — best-effort, a missing DSH root is a no-op.
+  await ensureDshSessionAliases(
+    process.env.DSH_HOME?.trim() || join(homedir(), '.dsh'),
+    join(app.getPath('userData'), 'dsh-aliases.json'),
+  )
   await ensurePricingCache()
   // --no-spinner: the interactive progress renderer is both the source of
   // ANSI/CR garbage in captured stderr and the prime suspect for the

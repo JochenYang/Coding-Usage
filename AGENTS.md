@@ -68,7 +68,10 @@ clients with `--since 2020-01-01 --no-spinner`, plus a best-effort `trae sync` �
 with a 5-min in-process cache and one shared in-flight round-trip); aggregation
 lives in `src/lib/agent-usage.ts`. Renderer scans ride the shared refresh cycle
 (mount / manual buttons / auto-refresh tick, silent attempts throttled just past
-the cache window) instead of a hidden timer. Everything stays local — only
+the cache window) instead of a hidden timer. DSH's versioned `session.v3.*`
+transcripts — invisible to tokscale's filename-based scanner — are hard-linked
+to the canonical discovery names before every scan (`electron/dsh-aliases.ts`).
+Everything stays local — only
 aggregated numbers are rendered, never message content. Packaging requires the
 `asarUnpack` entries in `electron-builder.yml` (spawning from inside the asar
 is impossible).
