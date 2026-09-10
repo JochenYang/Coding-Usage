@@ -12,6 +12,7 @@ import {
   OpenCode,
   Qwen,
   Trae,
+  XiaomiMiMo,
 } from '@lobehub/icons'
 import type { AgentClientId, AgentPeriodVM, AgentUsageVM } from '@/lib/agent-usage'
 import { formatCompactValue } from '@/lib/format'
@@ -54,6 +55,8 @@ const AGENT_ICONS: Partial<Record<AgentClientId, ReactNode>> = {
   workbuddy: <img src={workbuddyLogo} className="h-5 w-5 rounded" alt="" />,
   // Same story for ZCode: lobehub carries no mark, bundle the install-dir icon
   zcode: <img src={zcodeLogo} className="h-5 w-5 rounded" alt="" />,
+  // XiaomiMiMo ships no Color variant — its Avatar tile fills the slot
+  micode: <XiaomiMiMo.Avatar size={16} />,
 }
 
 /** Proper nouns — brand names, not translated. Ids = tokscale client ids. */
@@ -80,6 +83,7 @@ const AGENT_LABELS: Record<AgentClientId, string> = {
   grok: 'Grok Build',
   dsh: 'DSH',
   zcode: 'ZCode',
+  micode: 'MiMo',
 }
 
 interface PeriodColumnProps {

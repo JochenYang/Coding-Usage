@@ -216,6 +216,7 @@ const TOKSCALE_CLIENTS = [
   'grok',
   'dsh',
   'zcode',
+  'micode',
 ]
 const TOKSCALE_CACHE_MS = 5 * 60_000
 

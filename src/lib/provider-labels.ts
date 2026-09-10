@@ -48,6 +48,7 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   amp: 'Amp',
   dsh: 'DSH',
   zcode: 'ZCode',
+  xiaomi: 'Xiaomi MiMo',
 }
 
 /** Display label for a tokscale provider id (raw id when unmapped) */

@@ -42,6 +42,7 @@ export const AGENT_CLIENTS = [
   'grok',
   'dsh',
   'zcode',
+  'micode',
 ] as const
 export type AgentClientId = (typeof AGENT_CLIENTS)[number]
 

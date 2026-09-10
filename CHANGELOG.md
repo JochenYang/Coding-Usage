@@ -10,6 +10,14 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- 本地 Agent 用量新增小米 MiMo：经 tokscale `micode` 客户端直读会话（模型 `mimo-x-pro-preview`、渠道 Xiaomi MiMo），随扫描管线、标签与图标完整接入
+
+### English
+- Local agent usage adds Xiaomi MiMo: sessions read via the tokscale `micode` client (model `mimo-x-pro-preview`, Xiaomi MiMo attribution), wired through the scan pipeline with label and icon
+
 ## [v0.5.0] - 2026-09-10
 
 ### 中文
