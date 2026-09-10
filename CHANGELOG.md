@@ -10,7 +10,7 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
-## [Unreleased]
+## [v0.4.6] - 2026-09-09
 
 ### 中文
 - 微信成功判定收紧：无 message_id 的 HTTP 200 视为静默失败（`weixin-noack`），不再误报发送成功
