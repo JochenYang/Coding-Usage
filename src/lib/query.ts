@@ -65,35 +65,41 @@ export async function fetchUsage(
 ): Promise<ProviderResult> {
   if (!cfg.apiKey) return { status: 'unconfigured' }
   const { url, headers } = def.buildRequest(cfg.apiKey, cfg.regionId)
+  // Adapters with skipPreflight sign asynchronously inside parseResponse —
+  // their buildRequest URL is a placeholder, so no transport preflight runs
+  // and "no result" is the expected path INTO parseResponse, not an error.
+  const skipPreflight = def.skipPreflight === true
   try {
-    // Some adapters (e.g. Volcengine SK-signed) only emit a placeholder URL
-    // from buildRequest and issue the real request inside parseResponse:
-    // skip the transport preflight so their own signed request can run.
-    let result: { httpStatus: number; json: unknown } | null = null
-    if (!def.skipPreflight) {
+    // Preflight payload feeds parseResponse. Adapters with skipPreflight sign
+    // asynchronously inside parseResponse — their buildRequest URL is a
+    // placeholder, so no transport preflight runs and an empty payload is the
+    // expected input there, not an error.
+    let preflightJson: unknown = {}
+    if (!skipPreflight) {
       // Try direct fetch first. If it fails (CORS), fall back to corsproxy.io —
       // browser path only: under Electron the main-process fetch has no CORS
       // restrictions and third-party proxies are not allowed.
-      result = await tryFetch(url, headers)
+      let result = await tryFetch(url, headers)
       if (!result && !bridge) {
         result = await tryFetch(`https://corsproxy.io/?url=${encodeURIComponent(url)}`, headers)
       }
-    }
-    if (!result) {
-      return { status: 'error', error: '网络请求失败（跨域或网络不可达）' }
-    }
-    const { httpStatus, json } = result
-    if (httpStatus === 401 || httpStatus === 403) {
-      return { status: 'error', error: def.id === 'opencode' ? 'Key 无效，或该账号没有 Go 订阅' : 'Key 无效或无权限' }
-    }
-    if (httpStatus !== 200) {
-      return { status: 'error', error: `HTTP ${httpStatus}` }
-    }
-    if (json == null || typeof json !== 'object') {
-      return { status: 'error', error: '响应格式异常：空响应或非 JSON' }
+      if (!result) {
+        return { status: 'error', error: '网络请求失败（跨域或网络不可达）' }
+      }
+      const { httpStatus, json } = result
+      if (httpStatus === 401 || httpStatus === 403) {
+        return { status: 'error', error: def.id === 'opencode' ? 'Key 无效，或该账号没有 Go 订阅' : 'Key 无效或无权限' }
+      }
+      if (httpStatus !== 200) {
+        return { status: 'error', error: `HTTP ${httpStatus}` }
+      }
+      if (json == null || typeof json !== 'object') {
+        return { status: 'error', error: '响应格式异常：空响应或非 JSON' }
+      }
+      preflightJson = json
     }
     const ctxFetch = await makeCtxFetch()
-    const metrics = await def.parseResponse(json, {
+    const metrics = await def.parseResponse(preflightJson, {
       regionId: cfg.regionId,
       key: cfg.apiKey,
       fetch: ctxFetch,
@@ -104,7 +110,9 @@ export async function fetchUsage(
     const msg = e instanceof Error ? e.message : String(e)
     return {
       status: 'error',
-      error: /failed to fetch|networkerror|load failed/i.test(msg) ? '网络请求失败或被拦截' : msg,
+      error: /failed to fetch|networkerror|network request failed|load failed/i.test(msg)
+        ? '网络请求失败或被拦截'
+        : msg,
     }
   }
 }

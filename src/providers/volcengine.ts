@@ -20,7 +20,7 @@ const DICTS = { 'zh-CN': zhCN, 'en-US': enUS } as const
  * signature is async (WebCrypto) — buildRequest only emits a placeholder.
  */
 
-const HOST = 'open.volcengineapi.com'
+const HOST = 'ark.cn-beijing.volcengineapi.com'
 const DEFAULT_REGION = 'cn-beijing'
 
 interface ArkTier {
@@ -34,6 +34,19 @@ interface ArkTier {
   UsagePercent?: number
   ResetTimestamp?: number
   ResetTime?: number
+}
+
+/** Ark APIs return numeric-ish strings ("123.45"); tolerate real numbers too.
+ *  Variadic: returns the first parseable value (mirrors the old maxNum). */
+function num(...vals: unknown[]): number | undefined {
+  for (const v of vals) {
+    if (typeof v === 'number' && Number.isFinite(v)) return v
+    if (typeof v === 'string' && v.trim() !== '') {
+      const n = Number(v)
+      if (Number.isFinite(n)) return n
+    }
+  }
+  return undefined
 }
 
 async function sha256Hex(data: string): Promise<string> {
@@ -107,38 +120,45 @@ async function tryAfp(fetchFn: (u: string, h: Record<string, string>) => Promise
     ResponseMetadata?: { Error?: { Code?: string; Message?: string } }
     Result?: {
       PlanType?: string
-      AFPFiveHour?: { Quota?: number; Used?: number; ResetTime?: number }
-      AFPWeekly?: { Quota?: number; Used?: number; ResetTime?: number }
-      AFPMonthly?: { Quota?: number; Used?: number; ResetTime?: number }
+      AFPFiveHour?: { Quota?: number | string; Used?: number | string; ResetTime?: number }
+      AFPDaily?: { Quota?: number | string; Used?: number | string; ResetTime?: number }
+      AFPWeekly?: { Quota?: number | string; Used?: number | string; ResetTime?: number }
+      AFPMonthly?: { Quota?: number | string; Used?: number | string; ResetTime?: number }
     }
   } | null
   if (isAuthError(json)) throw new Error(errs.volcSignature)
   const plan = json?.Result
   if (!plan) return null
   // Not subscribed: every window quota <= 0
-  const anyActive = [plan.AFPFiveHour?.Quota, plan.AFPWeekly?.Quota, plan.AFPMonthly?.Quota].some((q) => (q ?? 0) > 0)
+  const anyActive = [plan.AFPFiveHour?.Quota, plan.AFPDaily?.Quota, plan.AFPWeekly?.Quota, plan.AFPMonthly?.Quota].some((q) => (num(q) ?? 0) > 0)
   if (!anyActive) return null
 
   const mk = (
     id: string,
     label: string,
-    win: { Quota?: number; Used?: number; ResetTime?: number } | undefined,
+    win: { Quota?: number | string; Used?: number | string; ResetTime?: number } | undefined,
   ): UsageMetric | null => {
-    if (!win || (win.Quota ?? 0) <= 0) return null
-    const used = win.Used ?? 0
+    const quota = num(win?.Quota)
+    if (!win || quota == null || quota <= 0) return null
+    const used = num(win.Used) ?? 0
     return {
       id,
       label,
       kind: 'percent',
-      percent: Math.min(100, (used / (win.Quota ?? 1)) * 100),
+      percent: Math.min(100, (used / quota) * 100),
       used,
-      total: win.Quota,
-      resetsAt: win.ResetTime ? win.ResetTime * 1000 : undefined,
+      total: quota,
+      // Per the docs AFP ResetTime is already epoch milliseconds.
+      resetsAt: win.ResetTime != null ? win.ResetTime : undefined,
     }
   }
   const out: UsageMetric[] = []
   const five = mk('volc-afp-5h', t.fiveHour, plan.AFPFiveHour)
   if (five) out.push(five)
+  // AFPDaily (rolling 1-day window) participates in subscription detection
+  // above but is not rendered: the shared windows dict has no label for it
+  // (i18n subtree is another agent's scope) and it adds little beyond the
+  // 5h/week/month trio for plan monitoring.
   const week = mk('volc-afp-week', t.weeklyPlan ?? '周窗口', plan.AFPWeekly)
   if (week) out.push(week)
   const month = mk('volc-afp-month', t.monthly ?? '月窗口', plan.AFPMonthly)
@@ -158,12 +178,12 @@ async function tryCodingPlan(fetchFn: (u: string, h: Record<string, string>) => 
   const out: UsageMetric[] = []
   for (let i = 0; i < tiers.length; i++) {
     const tier = tiers[i]
-    const pct = Math.min(100, Math.max(0, maxNum(tier.Percent, tier.UsedPercent, tier.UsagePercent) ?? 0))
-    if (pct == null) continue
+    // Same string-ified numbers as GetAFPUsage — reuse num().
+    const pct = Math.min(100, Math.max(0, num(tier.Percent, tier.UsedPercent, tier.UsagePercent) ?? 0))
     const level = String(tier.Level ?? tier.Type ?? tier.Period ?? tier.Label ?? tier.Window ?? '').toLowerCase()
     const label =
       level.includes('session') || level.includes('5h') ? t.fiveHour : level.includes('weekly') ? t.weeklyPlan ?? '周窗口' : level.includes('monthly') ? t.monthly ?? '月窗口' : tier.Level ?? t.planQuota
-    const reset = maxNum(tier.ResetTimestamp, tier.ResetTime)
+    const reset = num(tier.ResetTimestamp, tier.ResetTime)
     out.push({
       id: `volc-cp-${i}`,
       label,
@@ -176,13 +196,6 @@ async function tryCodingPlan(fetchFn: (u: string, h: Record<string, string>) => 
   return out
 }
 
-function maxNum(...vals: (number | undefined)[]): number | undefined {
-  for (const v of vals) {
-    if (typeof v === 'number' && Number.isFinite(v)) return v
-  }
-  return undefined
-}
-
 export const volcengine: ProviderDef = {
   id: 'volcengine',
   name: 'Volcengine Ark',
@@ -191,7 +204,7 @@ export const volcengine: ProviderDef = {
   logoLetter: 'V',
   tagline: (t) => t.providers.volcengine.tagline,
   regions: [
-    { id: 'cn-beijing', label: 'cn-beijing', baseUrl: 'https://open.volcengineapi.com' },
+    { id: 'cn-beijing', label: 'cn-beijing', baseUrl: 'https://ark.cn-beijing.volcengineapi.com' },
   ],
   docsUrl: 'https://www.volcengine.com/docs/82379/1540833',
   keyUrl: 'https://console.volcengine.com/iam/keymanage/',
