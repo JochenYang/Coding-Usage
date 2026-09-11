@@ -10,6 +10,14 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.5.5] - 2026-09-11
+
+### 中文
+- 本地 Agent 用量纳入 WorkBuddy AI 国际版：其转录存于 `~/.workbuddy-ai`，此前完全不参与扫描；现在每次扫描前自动将国际版转录硬链接进被扫描的 `~/.workbuddy`（同 inode：追加写入即时可见、零拷贝），与国内版合并为同一条 WorkBuddy 统计；已存在的真实会话文件绝不触碰，源文件删除时自动清理别名
+
+### English
+- Local agent usage now includes the international WorkBuddy AI app: its transcripts live under `~/.workbuddy-ai`, which the scanner never visited; before every scan they are hard-linked into the scanned `~/.workbuddy` (same inode: appends are visible immediately, nothing copied) and merge into the same WorkBuddy totals as the domestic app. Pre-existing real session files are never touched and aliases are pruned when their sources are removed
+
 ## [v0.5.4] - 2026-09-10
 
 ### 中文
