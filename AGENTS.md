@@ -71,8 +71,10 @@ lives in `src/lib/agent-usage.ts`. Renderer scans ride the shared refresh cycle
 the cache window) instead of a hidden timer. DSH's versioned `session.v3.*`
 transcripts — invisible to tokscale's filename-based scanner — are hard-linked
 to the canonical discovery names before every scan (`electron/dsh-aliases.ts`).
-Everything stays local — only
-aggregated numbers are rendered, never message content. Packaging requires the
+WorkBuddy AI's transcripts live under `~/.workbuddy-ai` — a home tokscale never
+scans — and are hard-linked into the scanned `~/.workbuddy` before every scan
+(`electron/workbuddy-aliases.ts`). Everything stays local — only aggregated
+numbers are rendered, never message content. Packaging requires the
 `asarUnpack` entries in `electron-builder.yml` (spawning from inside the asar
 is impossible).
 

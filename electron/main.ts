@@ -22,6 +22,7 @@ import { getPricingTable, priceTokens } from './model-pricing'
 import { mergeGraphPayloads } from './tokscale-merge'
 import { reconcileProviderAttribution } from './provider-reconcile'
 import { ensureDshSessionAliases } from './dsh-aliases'
+import { ensureWorkbuddyAliases } from './workbuddy-aliases'
 import {
   buildChannelRequest,
   channelErrorDetail,
@@ -492,6 +493,13 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
   await ensureDshSessionAliases(
     process.env.DSH_HOME?.trim() || join(homedir(), '.dsh'),
     join(app.getPath('userData'), 'dsh-aliases.json'),
+  )
+  // WorkBuddy AI (international) keeps its transcripts in a home tokscale
+  // never scans — mirror them into the scanned one (see workbuddy-aliases.ts).
+  await ensureWorkbuddyAliases(
+    join(homedir(), '.workbuddy'),
+    join(homedir(), '.workbuddy-ai'),
+    join(app.getPath('userData'), 'workbuddy-aliases.json'),
   )
   await ensurePricingCache()
   // --no-spinner: the interactive progress renderer is both the source of
