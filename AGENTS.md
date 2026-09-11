@@ -165,3 +165,4 @@ Packaging config lives in `electron-builder.yml` (appId, win targets, GitHub pub
 - Commit format: `<type>(<scope>): <subject>`; subject in English imperative, lowercase, no period, ≤ 50 characters.
 - Each commit should focus on a single purpose. Split unrelated refactoring into separate commits.
 - Do not push, force-push, rebase, tag, or release without explicit authorization.
+- Once a release IS authorized, own the whole flow end to end: bump the version + finalize the CHANGELOG → commit (`chore(release): vX.Y.Z`) → tag + push → wait for the release workflow → verify the draft's bilingual notes and installers → publish it as Latest (`gh release edit vX.Y.Z --draft=false`). Never leave the release as a draft for manual publishing.
