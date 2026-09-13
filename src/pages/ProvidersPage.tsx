@@ -1,7 +1,7 @@
 import { ExternalLink, Plus } from 'lucide-react'
 import type { Dict } from '@/i18n/types'
 import type { ProviderDef, ProviderRegion } from '@/types'
-import { PROVIDERS } from '@/providers/registry'
+import { providersByName } from '@/providers/registry'
 import { getProviderEntries } from '@/lib/storage'
 import { useData } from '@/lib/data-context'
 import { ProviderLogo } from '@/components/ProviderLogo'
@@ -151,7 +151,7 @@ export function ProvidersPage({ onAddAccount, onEditAccount }: ProvidersPageProp
       <PageHeader title={t.manage.providersTitle} description={t.manage.providersDesc} />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {PROVIDERS.map((def) => (
+        {providersByName().map((def) => (
           <ProviderCard
             key={def.id}
             def={def}

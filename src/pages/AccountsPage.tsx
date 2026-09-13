@@ -3,7 +3,7 @@ import { Settings, Trash2, Users } from 'lucide-react'
 import { useT } from '@/i18n/useT'
 import { useData } from '@/lib/data-context'
 import { getProviderEntries } from '@/lib/storage'
-import { PROVIDERS } from '@/providers/registry'
+import { providersByName } from '@/providers/registry'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { Badge } from '@/components/common/Badge'
@@ -31,8 +31,9 @@ export function AccountsPage({ onEditAccount, onAddAccount }: AccountsPageProps)
   /** Pending row deletion (themed confirm replaces the native message box) */
   const [pendingDelete, setPendingDelete] = useState<{ providerId: string; index: number } | null>(null)
 
-  // Only providers that actually hold accounts form a group; registry order kept
-  const groups = PROVIDERS.flatMap((def) => {
+  // Only providers that actually hold accounts form a group; alphabetical so
+  // the page matches the add-account picker and the providers grid.
+  const groups = providersByName().flatMap((def) => {
     const entries = getProviderEntries(settings, def.id)
     return entries.length > 0 ? [{ def, entries }] : []
   })

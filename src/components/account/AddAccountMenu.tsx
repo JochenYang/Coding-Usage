@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { ProviderLogo } from '@/components/ProviderLogo'
-import { PROVIDERS } from '@/providers/registry'
+import { providersByName } from '@/providers/registry'
 import { useData } from '@/lib/data-context'
 import { getProviderEntries } from '@/lib/storage'
 import { useT } from '@/i18n/useT'
@@ -29,6 +29,10 @@ export function AddAccountMenu({
   const { settings } = useData()
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
+
+  // Alphabetical picker: registry order groups new additions at the end, which
+  // reads as arbitrary once the list grows past a screenful.
+  const sortedProviders = providersByName()
 
   // Close on outside pointer / Escape, same semantics as the beui popover
   useEffect(() => {
@@ -63,7 +67,7 @@ export function AddAccountMenu({
 
       {open && (
         <div className="absolute right-0 top-full z-30 mt-1 min-w-44 rounded-xl border border-border bg-popover p-1 shadow-lg">
-          {PROVIDERS.map((def) => (
+          {sortedProviders.map((def) => (
             <button
               key={def.id}
               type="button"
