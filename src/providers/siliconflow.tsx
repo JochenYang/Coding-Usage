@@ -11,11 +11,16 @@ export const siliconflow: ProviderDef = {
   accent: 'from-fuchsia-500 to-purple-600',
   logo: 'siliconcloud-color',
   tagline: (t) => t.providers.siliconflow.tagline,
+  regions: (t) => [
+    { id: 'cn', label: t.regions.siliconflowCN, baseUrl: 'https://api.siliconflow.cn' },
+    { id: 'intl', label: t.regions.siliconflowIntl, baseUrl: 'https://api.siliconflow.com' },
+  ],
   docsUrl: 'https://docs.siliconflow.com/cn/api-reference/userinfo/get-user-info',
   keyUrl: 'https://cloud.siliconflow.cn/account/ak',
-  buildRequest(key) {
+  buildRequest(key, regionId) {
+    const base = regionId === 'intl' ? 'https://api.siliconflow.com' : 'https://api.siliconflow.cn'
     return {
-      url: 'https://api.siliconflow.cn/v1/user/info',
+      url: `${base}/v1/user/info`,
       headers: { Authorization: `Bearer ${key}` },
     }
   },
