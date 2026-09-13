@@ -69,10 +69,11 @@ export function KpiRow({ kpis, displayCurrency, balanceItems, className }: KpiRo
     balanceCard = (
       <Popover trigger="hover" align="start">
         <PopoverTrigger>
-          <div className="w-full cursor-default text-left">
+          <div className="h-full w-full cursor-default text-left">
             <StatCard
               title={t.overview.kpiBalance}
               icon={CircleDollarSign}
+              className="h-full"
               iconSlot={
                 <span className="flex -space-x-2">
                   {chipDefs.slice(0, 2).map((def) => (
