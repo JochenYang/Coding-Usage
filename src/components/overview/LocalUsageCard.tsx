@@ -23,6 +23,7 @@ import { useTheme } from '@/components/ThemeProvider'
 import { useData } from '@/lib/data-context'
 import { displayTokens } from '@/lib/agent-usage'
 import { Tooltip } from '@/components/common/Tooltip'
+import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
 import { cn } from '@/lib/cn'
 
 export interface LocalUsageCardProps {
@@ -119,9 +120,12 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
   // Kimi's brand mark is a white K on a dark tile: flip it on the light theme
   // the same way ProviderLogo handles logoDarkInvert marks.
   const invertOnLight = resolved === 'light'
+  // Every row's brand mark carries its own <title>, which Chromium would show
+  // as a native hover tooltip (see useStripSvgTitle)
+  const brandRef = useStripSvgTitle<HTMLElement>()
 
   return (
-    <section className={cn('rounded-2xl border border-border bg-card p-5', className)}>
+    <section ref={brandRef} className={cn('rounded-2xl border border-border bg-card p-5', className)}>
       <div className="flex items-center justify-between">
         <h2 className="text-[15px] font-semibold text-foreground">{t.overview.localUsageTitle}</h2>
         <div className="flex items-center gap-2">

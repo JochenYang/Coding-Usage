@@ -14,6 +14,7 @@ import {
 } from '@lobehub/icons'
 import { cn } from '@/lib/cn'
 import { useTheme } from '@/components/ThemeProvider'
+import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
 import commandcodeLogo from '@/components/logos/commandcode.png'
 
 /**
@@ -62,6 +63,9 @@ export function ProviderLogo({
   // Some brand marks are drawn in white (dark-background art, e.g. Kimi's K):
   // flip them on the light theme so they stay visible on the white cards.
   const invertOnLight = def.logoDarkInvert && resolved === 'light'
+  // The bundled mark's own <title> would pop a native tooltip on hover (see
+  // useStripSvgTitle); the wrapper's aria-label carries the name instead.
+  const brandRef = useStripSvgTitle<HTMLDivElement>()
 
   // 1. Inline ReactNode (self-filled)
   if (def.logo && typeof def.logo !== 'string') {
@@ -82,6 +86,7 @@ export function ProviderLogo({
   if (typeof def.logo === 'string' && ICON_MAP[def.logo]) {
     return (
       <div
+        ref={brandRef}
         className={cn(
           'flex shrink-0 items-center justify-center overflow-hidden rounded-md',
           className,

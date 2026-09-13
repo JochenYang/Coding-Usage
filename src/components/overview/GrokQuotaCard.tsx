@@ -3,6 +3,7 @@ import { Grok } from '@lobehub/icons'
 import { useT } from '@/i18n/useT'
 import { formatCountdown } from '@/lib/format'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
+import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
 import { summarizeGrokQuota, type GrokQuotaVM } from '@/lib/grok-quota'
 import { ProgressBar } from '@/components/common/ProgressBar'
 import { cn } from '@/lib/cn'
@@ -17,6 +18,9 @@ export function GrokQuotaCard({ className }: { className?: string }) {
   const t = useT()
   const [vm, setVm] = useState<GrokQuotaVM | null>(null)
   const [loading, setLoading] = useState(false)
+  // Wrapper catches the brand mark's own <title> before it can pop a native
+  // hover tooltip (see useStripSvgTitle)
+  const brandRef = useStripSvgTitle<HTMLSpanElement>()
 
   useEffect(() => {
     const bridge = window.desktopBridge
@@ -37,7 +41,7 @@ export function GrokQuotaCard({ className }: { className?: string }) {
   return (
     <section className={cn('rounded-2xl border border-border bg-card p-5', className)}>
       <div className="flex items-center gap-2.5">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted [&>svg]:h-5 [&>svg]:w-5" aria-hidden>
+        <span ref={brandRef} className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted [&>svg]:h-5 [&>svg]:w-5" aria-hidden>
           {/* Grok ships no .Color variant; .Avatar is its colored brand tile */}
           <Grok.Avatar size={20} />
         </span>
