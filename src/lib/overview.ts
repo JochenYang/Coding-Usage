@@ -152,6 +152,8 @@ export interface BalanceProviderInfo {
   /** Native-unit figure straight from the provider metric */
   rawAmount: number
   unit: string
+  /** Provider-supplied sub-rows (e.g. top-up/grant split, lifetime cost/calls) */
+  detail: { label: string; value: number }[]
 }
 
 /**
@@ -180,9 +182,13 @@ export function buildBalanceProviders(
       if (converted == null) continue
       const key = `${sec.def.id}|${bal.unit}`
       const hit =
-        per.get(key) ?? { def: sec.def, amount: 0, rawAmount: 0, unit: bal.unit }
+        per.get(key) ?? { def: sec.def, amount: 0, rawAmount: 0, unit: bal.unit, detail: [] }
       hit.amount += converted
       hit.rawAmount += bal.remaining
+      // Detail rows are provider-supplied context (top-up split, lifetime
+      // totals); keep the first account's set so a second account in the same
+      // currency does not append a duplicate block.
+      if (hit.detail.length === 0 && bal.detail?.length) hit.detail = bal.detail
       per.set(key, hit)
     }
   }

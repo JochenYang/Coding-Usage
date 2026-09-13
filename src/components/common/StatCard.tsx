@@ -9,12 +9,14 @@ export interface StatCardProps {
   /** Fully replaces the default icon chip when provided (e.g. brand logos) */
   iconSlot?: ReactNode
   value: string
+  /** Fully replaces the value line when provided (e.g. to wrap it in a tooltip) */
+  valueSlot?: ReactNode
   footer?: ReactNode
   className?: string
 }
 
 /** Metric card: title + icon chip, large tabular value, optional footer line */
-export function StatCard({ title, icon, iconClassName, iconSlot, value, footer, className }: StatCardProps) {
+export function StatCard({ title, icon, iconClassName, iconSlot, value, valueSlot, footer, className }: StatCardProps) {
   const Icon = icon
 
   return (
@@ -27,9 +29,11 @@ export function StatCard({ title, icon, iconClassName, iconSlot, value, footer, 
           </div>
         )}
       </div>
-      <div className="mt-2 text-[28px] font-semibold leading-tight tabular-nums text-foreground">
-        {value}
-      </div>
+      {valueSlot ?? (
+        <div className="mt-2 text-[28px] font-semibold leading-tight tabular-nums text-foreground">
+          {value}
+        </div>
+      )}
       {footer && <div className="mt-1 text-xs">{footer}</div>}
     </div>
   )

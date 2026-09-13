@@ -4,7 +4,7 @@ import { cn } from '@/lib/cn'
 import { currencySymbol, formatAmount, formatCompactValue } from '@/lib/format'
 import type { BalanceProviderInfo, KpisVM } from '@/lib/overview'
 import { ProviderLogo } from '@/components/ProviderLogo'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/beui/popover'
+import { Tooltip } from '@/components/beui/tooltip'
 import { useLocale } from '@/i18n/LocaleProvider'
 import { StatCard } from '@/components/common/StatCard'
 import { useT } from '@/i18n/useT'
@@ -66,48 +66,76 @@ export function KpiRow({ kpis, displayCurrency, balanceItems, className }: KpiRo
       />
     )
   } else if (balanceInfos.length > 1) {
+    // beui's motion Tooltip, anchored to the FIGURE rather than the card: the
+    // card reserves a footer line below the value, so anchoring to the card
+    // edge left the panel ~85px below the number it describes. Wrapping the
+    // value line puts the panel right under the figure it breaks down.
     balanceCard = (
-      <Popover trigger="hover" align="start">
-        <PopoverTrigger>
-          <div className="h-full w-full cursor-default text-left">
-            <StatCard
-              title={t.overview.kpiBalance}
-              icon={CircleDollarSign}
-              className="h-full"
-              iconSlot={
-                <span className="flex -space-x-2">
-                  {chipDefs.slice(0, 2).map((def) => (
-                    <ProviderLogo
-                      key={def.id}
-                      def={def}
-                      className="h-8 w-8 rounded-lg ring-2 ring-accent-soft"
-                      imgClassName="h-4 w-4"
-                    />
-                  ))}
-                </span>
-              }
-              value={balanceValue}
-              footer={<Dash />}
-            />
-          </div>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto min-w-[16rem] p-3">
-          <ul className="space-y-1.5">
-            {balanceInfos.map((info) => (
-              <li key={`${info.def.id}|${info.unit}`} className="flex items-center gap-2 text-xs">
-                <ProviderLogo def={info.def} className="h-5 w-5 rounded-md" imgClassName="h-3 w-3" />
-                <span className="min-w-0 flex-1 truncate text-foreground">
-                  {info.def.name}
-                  <span className="ml-1 text-subtle">{info.unit}</span>
-                </span>
-                <span className="tabular-nums text-foreground">
-                  {`${currencySymbol(info.unit)}${formatAmount(info.rawAmount, locale)}`}
-                </span>
-              </li>
+      <StatCard
+        title={t.overview.kpiBalance}
+        icon={CircleDollarSign}
+        className="h-full"
+        iconSlot={
+          <span className="flex -space-x-2">
+            {chipDefs.slice(0, 2).map((def) => (
+              <ProviderLogo
+                key={def.id}
+                def={def}
+                className="h-8 w-8 rounded-lg ring-2 ring-accent-soft"
+                imgClassName="h-4 w-4"
+              />
             ))}
-          </ul>
-        </PopoverContent>
-      </Popover>
+          </span>
+        }
+        value={balanceValue}
+        valueSlot={
+          <Tooltip
+            side="bottom"
+            wrapperClassName="mt-2 w-full justify-start"
+            className="w-max whitespace-normal p-2.5 text-left font-normal"
+            content={
+              <ul className="space-y-1.5">
+                {balanceInfos.map((info) => (
+                  <li key={`${info.def.id}|${info.unit}`}>
+                    <div className="flex items-center gap-2 text-xs">
+                      <ProviderLogo def={info.def} className="h-5 w-5 rounded-md" imgClassName="h-3 w-3" />
+                      <span className="min-w-0 flex-1 truncate text-foreground">
+                        {info.def.name}
+                        <span className="ml-1 text-subtle">{info.unit}</span>
+                      </span>
+                      <span className="tabular-nums text-foreground">
+                        {`${currencySymbol(info.unit)}${formatAmount(info.rawAmount, locale)}`}
+                      </span>
+                    </div>
+                    {info.detail.length > 0 && (
+                      <div className="mt-0.5 space-y-0.5 pl-7">
+                        {info.detail.map((d, i) => (
+                          <div
+                            key={`${d.label}-${i}`}
+                            className="flex items-center justify-between gap-2 text-[11px] text-subtle"
+                          >
+                            <span className="min-w-0 truncate">{d.label}</span>
+                            <span className="shrink-0 tabular-nums">
+                              {d.value >= 1000
+                                ? formatCompactValue(d.value)
+                                : formatAmount(d.value, locale)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            }
+          >
+            <span className="block cursor-default text-[28px] font-semibold leading-tight tabular-nums text-foreground">
+              {balanceValue}
+            </span>
+          </Tooltip>
+        }
+        footer={<Dash />}
+      />
     )
   }
 
