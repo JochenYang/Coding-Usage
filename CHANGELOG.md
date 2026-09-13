@@ -10,6 +10,20 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.5.7] - 2026-09-14
+
+### 中文
+- 概览页账户余额卡片的多服务商悬停明细改为锚定在金额正下方的气泡（原 Popover 落在卡片下方、离金额太远），并补充每家的充值/赠送拆分、累计花费与请求数；动效使用 beui 官方 Tooltip，与全站一致
+- 套餐计划卡片同时显示余额与额度窗口（此前只显示额度窗口）
+- 修复品牌图标悬停弹出系统原生提示框（无法自定义的黑框）：@lobehub/icons 在每个图标内嵌了 SVG `<title>`，Chromium 会把它渲染成原生提示；现已在全部品牌图标（余额卡片、明细气泡内小图标、本地 Agent 用量行、四张订阅额度卡）中剥离该元素，可访问名称继续由外层 aria-label / aria-hidden 承担
+- 修复金额明细气泡在浅色主题下与页面底色同为浅灰而糊在一起：改用卡片底色，与 Popover、Drawer 等浮层的选色一致
+
+### English
+- The overview balance card's multi-provider hover panel is now a tooltip anchored right under the figure (the old popover opened below the card, far from the number) and lists each provider's top-up/grant split plus lifetime cost and request count; it uses beui's own Tooltip so the motion matches the rest of the app
+- Plan cards show the balance alongside the quota windows (previously windows only)
+- Fix brand marks popping the OS-styled native tooltip on hover: @lobehub/icons embeds an SVG `<title>` in every mark, which Chromium paints as an unstyleable black box; the element is now stripped from every brand mark (balance card, the breakdown panel's mini logos, local agent usage rows, the four subscription quota cards) while the wrappers keep carrying the accessible name (aria-label / aria-hidden)
+- Fix the balance breakdown panel blending into the page in the light theme (both were light grey): it now uses the card surface, the same choice as the other floating layers (Popover, Drawer)
+
 ## [v0.5.6] - 2026-09-14
 
 ### 中文
