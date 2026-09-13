@@ -10,6 +10,20 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.5.6] - 2026-09-14
+
+### 中文
+- 新增两个服务商：Command Code GOAT（API key 认证：额度余额 + 5h/周窗口 + 累计花费/请求数）、Ollama Cloud（API key 认证：5h/周窗口，重置时间按官方固定周期本地推算）
+- 硅基流动新增国际站区域（api.siliconflow.com），并修正国际站域名标签（原误写为 siliconflow.ai，实为跳转域名）
+- 添加服务商下拉菜单、服务商管理页与账户管理页统一按名称字母排序（原为注册顺序，新服务商总是排在末尾）
+- 修复概览页账户余额卡片高度与其他 KPI 卡片不齐（多服务商悬停明细卡片的包装层未撑满高度）
+
+### English
+- Add two providers: Command Code GOAT (API-key auth: credit balance + 5h/weekly windows + lifetime cost/requests) and Ollama Cloud (API-key auth: 5h/weekly windows, reset times derived locally from the documented fixed schedule)
+- SiliconFlow gains an international region (api.siliconflow.com); its region label is corrected (was siliconflow.ai, a redirect domain)
+- The add-provider menu, providers page and accounts page now sort alphabetically by name (was registry order, which pushed new providers to the bottom)
+- Fix the overview balance card rendering shorter than its sibling KPI cards (the multi-provider hover card's wrapper did not stretch to full height)
+
 ## [v0.5.5] - 2026-09-11
 
 ### 中文
