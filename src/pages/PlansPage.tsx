@@ -117,12 +117,12 @@ function PlanWindowRow({ win, now }: { win: PlanWindowVM; now: number }) {
 }
 
 /** Balance figure plus its detail rows (top-up / grant breakdown) */
-function PlanBalanceBlock({ balance }: { balance: BalanceVM }) {
+function PlanBalanceBlock({ balance, className }: { balance: BalanceVM; className?: string }) {
   const t = useT()
 
   return (
-    <>
-      <div className="mt-4 text-xs text-muted-foreground">
+    <div className={className}>
+      <div className="text-xs text-muted-foreground">
         {t.provider.balanceLabel(balance.currency)}
       </div>
       <div className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
@@ -139,7 +139,7 @@ function PlanBalanceBlock({ balance }: { balance: BalanceVM }) {
           ))}
         </div>
       )}
-    </>
+    </div>
   )
 }
 
@@ -155,11 +155,18 @@ function PlanGridCard({ card, now }: { card: PlanCardVM; now: number }) {
             <PlanWindowRow key={win.id} win={win} now={now} />
           ))}
         </div>
-      ) : card.balance ? (
-        <PlanBalanceBlock balance={card.balance} />
-      ) : (
+      ) : null}
+      {/* Balance renders alongside windows when a plan reports both (e.g.
+          Command Code's credit balance next to its quota windows); plans with
+          only one of the two look exactly as before. */}
+      {card.balance ? (
+        <PlanBalanceBlock
+          balance={card.balance}
+          className={card.windows.length > 0 ? 'mt-4 border-t border-border/60 pt-4' : 'mt-4'}
+        />
+      ) : card.windows.length === 0 ? (
         <p className="mt-4 text-xs text-subtle">{t.card.unconfigured}</p>
-      )}
+      ) : null}
     </article>
   )
 }
