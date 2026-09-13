@@ -90,6 +90,8 @@ export const enUS: Dict = {
     volcengine: { name: 'Volcengine Ark', tagline: 'Subscription · 5h/weekly/monthly window', plan: 'Coding Plan' },
     stepfun: { name: 'StepFun', tagline: 'Pay-as-you-go · CNY balance', plan: 'Pay-as-you-go' },
     novita: { name: 'Novita', tagline: 'Pay-as-you-go · USD balance', plan: 'Pay-as-you-go' },
+    commandcode: { name: 'Command Code GOAT', tagline: 'Subscription · credits + 5h/weekly windows', plan: 'GOAT' },
+    ollamaCloud: { name: 'Ollama Cloud', tagline: 'Subscription · 5h/weekly windows', plan: 'Ollama Cloud' },
   },
   provider: {
     balanceLabel: (currency: string) => `Balance (${currency})`,
@@ -97,6 +99,9 @@ export const enUS: Dict = {
     totalBalanceLabel: (currency: string) => `Total balance (${currency})`,
     topUpBalance: 'Topped up',
     grantBalance: 'Granted',
+    recentSpend: 'Recent spend (USD)',
+    lifetimeCost: 'Lifetime cost (USD)',
+    lifetimeCalls: 'Lifetime requests',
   },
   metric: {
     unlimited: 'Unlimited',
@@ -133,7 +138,7 @@ export const enUS: Dict = {
     minimaxCN: 'China · minimaxi.com',
     minimaxIntl: 'International · minimax.io',
     siliconflowCN: 'China · siliconflow.cn',
-    siliconflowIntl: 'International · siliconflow.ai',
+    siliconflowIntl: 'International · siliconflow.com',
   },
   autoRefresh: {
     manual: 'Manual',
@@ -443,6 +448,8 @@ export const enUS: Dict = {
     volcSignature: 'Volcengine AK/SK signature rejected (check credentials)',
     volcCredFormat: 'Volcengine credentials must be in the AK:SK form',
     volcNoWindows: 'No quota windows in the Volcengine response',
+    networkFailed: 'Network request failed (CORS or unreachable)',
+    noWindows: 'No quota windows in the response',
   },
   updater: {
     readyTitle: 'Update ready',

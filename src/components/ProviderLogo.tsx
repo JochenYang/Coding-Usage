@@ -4,6 +4,7 @@ import {
   Kimi,
   Minimax,
   Novita,
+  Ollama,
   OpenCode,
   OpenRouter,
   SiliconCloud,
@@ -13,6 +14,7 @@ import {
 } from '@lobehub/icons'
 import { cn } from '@/lib/cn'
 import { useTheme } from '@/components/ThemeProvider'
+import commandcodeLogo from '@/components/logos/commandcode.png'
 
 /**
  * Brand icon registry: maps a ProviderDef.logo slug to a bundled
@@ -34,6 +36,10 @@ const ICON_MAP: Record<string, ReactNode> = {
   // StepFun ships no .Color variant; .Avatar is its colored brand tile
   'stepfun-avatar': <Stepfun.Avatar size={16} />,
   'novita-color': <Novita.Color />,
+  // Ollama ships no .Color variant; .Avatar is its colored brand tile
+  'ollama-avatar': <Ollama.Avatar size={16} />,
+  // Command Code's official app icon (from commandcode.ai), bundled locally
+  'commandcode-avatar': <img src={commandcodeLogo} className="h-full w-full rounded" alt="" />,
 }
 
 /**

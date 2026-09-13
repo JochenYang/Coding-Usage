@@ -89,6 +89,8 @@ export const zhCN: Dict = {
     volcengine: { name: 'Volcengine Ark', tagline: '订阅套餐 · 5h/周/月窗口', plan: 'Coding Plan' },
     stepfun: { name: 'StepFun', tagline: '按量计费 · CNY 余额', plan: '按量计费' },
     novita: { name: 'Novita', tagline: '按量计费 · USD 余额', plan: '按量计费' },
+    commandcode: { name: 'Command Code GOAT', tagline: '订阅套餐 · 额度 + 5h/周窗口', plan: 'GOAT' },
+    ollamaCloud: { name: 'Ollama Cloud', tagline: '订阅套餐 · 5h/周窗口', plan: 'Ollama Cloud' },
   },
   provider: {
     balanceLabel: (currency: string) => `账户余额（${currency}）`,
@@ -96,6 +98,9 @@ export const zhCN: Dict = {
     totalBalanceLabel: (currency: string) => `总余额（${currency}）`,
     topUpBalance: '充值余额',
     grantBalance: '赠送余额',
+    recentSpend: '近期花费（USD）',
+    lifetimeCost: '累计花费（USD）',
+    lifetimeCalls: '累计请求数',
   },
   metric: {
     unlimited: '无限',
@@ -132,7 +137,7 @@ export const zhCN: Dict = {
     minimaxCN: '国内 minimaxi.com',
     minimaxIntl: '国际 minimax.io',
     siliconflowCN: '国内 siliconflow.cn',
-    siliconflowIntl: '国际 siliconflow.ai',
+    siliconflowIntl: '国际 siliconflow.com',
   },
   autoRefresh: {
     manual: '手动',
@@ -428,6 +433,8 @@ export const zhCN: Dict = {
     volcSignature: '火山 AK/SK 签名被拒绝（检查凭据）',
     volcCredFormat: '火山凭据格式应为 AK:SK',
     volcNoWindows: '火山响应中没有任何额度窗口',
+    networkFailed: '网络请求失败（跨域或网络不可达）',
+    noWindows: '响应中没有任何额度窗口',
   },
   updater: {
     readyTitle: '更新已就绪',

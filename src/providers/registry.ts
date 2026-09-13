@@ -9,6 +9,8 @@ import { minimax } from './minimax'
 import { volcengine } from './volcengine'
 import { stepfun } from './stepfun'
 import { novita } from './novita'
+import { commandcode } from './commandcode'
+import { ollamaCloud } from './ollama-cloud'
 
 /** Add a new provider: write an adapter file and register it below */
 export const PROVIDERS: ProviderDef[] = [
@@ -22,8 +24,20 @@ export const PROVIDERS: ProviderDef[] = [
   volcengine,
   stepfun,
   novita,
+  commandcode,
+  ollamaCloud,
 ]
 
 export function getProvider(id: string): ProviderDef | undefined {
   return PROVIDERS.find((p) => p.id === id)
+}
+
+/**
+ * Providers sorted by display name for pickers and grids. Registry order is
+ * chronological (new adapters append at the end), which reads as arbitrary
+ * once the list grows; sorting by the name the user actually scans keeps the
+ * add-account menu, the providers grid and the accounts page in one order.
+ */
+export function providersByName(): ProviderDef[] {
+  return [...PROVIDERS].sort((a, b) => a.name.localeCompare(b.name))
 }

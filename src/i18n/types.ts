@@ -90,6 +90,8 @@ export interface Dict {
     volcengine: { name: string; tagline: string; plan: string }
     stepfun: { name: string; tagline: string; plan: string }
     novita: { name: string; tagline: string; plan: string }
+    commandcode: { name: string; tagline: string; plan: string }
+    ollamaCloud: { name: string; tagline: string; plan: string }
   }
   provider: {
     balanceLabel: (currency: string) => string
@@ -97,6 +99,9 @@ export interface Dict {
     totalBalanceLabel: (currency: string) => string
     topUpBalance: string
     grantBalance: string
+    recentSpend: string
+    lifetimeCost: string
+    lifetimeCalls: string
   }
   metric: {
     unlimited: string
@@ -428,6 +433,8 @@ export interface Dict {
     volcSignature: string
     volcCredFormat: string
     volcNoWindows: string
+    networkFailed: string
+    noWindows: string
   }
   updater: {
     readyTitle: string
