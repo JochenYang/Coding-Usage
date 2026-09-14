@@ -101,6 +101,7 @@ export const zhCN: Dict = {
     recentSpend: '近期花费（USD）',
     lifetimeCost: '累计花费（USD）',
     lifetimeCalls: '累计请求数',
+    planExpiry: '套餐到期',
   },
   metric: {
     unlimited: '无限',

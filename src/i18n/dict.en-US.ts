@@ -102,6 +102,7 @@ export const enUS: Dict = {
     recentSpend: 'Recent spend (USD)',
     lifetimeCost: 'Lifetime cost (USD)',
     lifetimeCalls: 'Lifetime requests',
+    planExpiry: 'Plan expires',
   },
   metric: {
     unlimited: 'Unlimited',

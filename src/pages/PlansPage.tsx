@@ -3,8 +3,9 @@ import { CreditCard } from 'lucide-react'
 import type { PlanCardVM, PlanWindowVM } from '@/lib/overview'
 import { buildPlanCards } from '@/lib/overview'
 import { PROVIDERS } from '@/providers/registry'
-import { currencySymbol, formatAmount, formatCountdown } from '@/lib/format'
+import { currencySymbol, formatAmount, formatCountdown, formatDaysFromNow } from '@/lib/format'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
+import { useLocale } from '@/i18n/LocaleProvider'
 import { useData } from '@/lib/data-context'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
@@ -143,6 +144,27 @@ function PlanBalanceBlock({ balance, className }: { balance: BalanceVM; classNam
   )
 }
 
+/** Expiry line: absolute date plus the relative offset, toned by urgency */
+function PlanExpiryRow({ expiresAt, now }: { expiresAt: number; now: number }) {
+  const t = useT()
+  const { locale } = useLocale()
+  const { primary, tone } = formatDaysFromNow(expiresAt, now, t)
+
+  return (
+    <div className="flex items-center justify-between gap-3 text-xs">
+      <span className="min-w-0 truncate text-muted-foreground">{t.provider.planExpiry}</span>
+      <span
+        className={cn(
+          'shrink-0 tabular-nums',
+          tone === 'warning' ? 'text-warning' : tone === 'danger' ? 'text-danger' : 'text-foreground',
+        )}
+      >
+        {`${new Date(expiresAt).toLocaleDateString(locale, { year: 'numeric', month: '2-digit', day: '2-digit' })} · ${primary}`}
+      </span>
+    </div>
+  )
+}
+
 /** Grid variant of the plan card (w-full instead of the row's fixed width) */
 function PlanGridCard({ card, now }: { card: PlanCardVM; now: number }) {
   const t = useT()
@@ -156,6 +178,13 @@ function PlanGridCard({ card, now }: { card: PlanCardVM; now: number }) {
           ))}
         </div>
       ) : null}
+      {/* Expiry sits between the windows and the balance: it belongs to the
+          subscription cycle, not to either usage figure */}
+      {card.expiresAt != null && (
+        <div className={card.windows.length > 0 ? 'mt-3' : 'mt-4'}>
+          <PlanExpiryRow expiresAt={card.expiresAt} now={now} />
+        </div>
+      )}
       {/* Balance renders alongside windows when a plan reports both (e.g.
           Command Code's credit balance next to its quota windows); plans with
           only one of the two look exactly as before. */}

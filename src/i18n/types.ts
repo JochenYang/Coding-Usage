@@ -102,6 +102,7 @@ export interface Dict {
     recentSpend: string
     lifetimeCost: string
     lifetimeCalls: string
+    planExpiry: string
   }
   metric: {
     unlimited: string

@@ -45,6 +45,13 @@ interface CreditsBody {
   }
 }
 
+interface SubscriptionsBody {
+  data?: {
+    status?: unknown
+    currentPeriodEnd?: unknown
+  }
+}
+
 /** One windowLimit entry → a percent metric, or null when the window is absent/empty */
 function windowMetric(
   id: string,
@@ -114,6 +121,13 @@ export const commandcode: ProviderDef = {
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null)
 
+    // Same deal for the subscription: the plan card is complete without an
+    // expiry line, so a key without billing-scope access (or any other
+    // failure) degrades to "no expiry shown", never to an error card.
+    const subsBody = await get('/alpha/billing/subscriptions')
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)
+
     const credits = (creditsBody.credits ?? creditsBody) as Record<string, unknown>
     const metrics: UsageMetric[] = []
 
@@ -145,6 +159,22 @@ export const commandcode: ProviderDef = {
     if (five) metrics.push(five)
     const weekly = windowMetric('commandcode-week', t.windows.weeklyPlan, creditsBody.windowLimits?.weekly)
     if (weekly) metrics.push(weekly)
+
+    // Subscription period end (ISO string, e.g. "2026-10-14T01:12:06.000Z").
+    // Only active subscriptions carry a meaningful renewal date; anything else
+    // (canceled, past-due, trialing) would show a misleading "expiry".
+    const subs = subsBody as SubscriptionsBody | null
+    const periodEnd = subs?.data?.currentPeriodEnd
+    const expiresAt =
+      typeof periodEnd === 'string' && subs?.data?.status === 'active'
+        ? (() => {
+            const parsed = Date.parse(periodEnd)
+            return Number.isNaN(parsed) ? undefined : parsed
+          })()
+        : undefined
+    if (expiresAt != null) {
+      metrics.push({ id: 'commandcode-expiry', label: t.provider.planExpiry, kind: 'expiry', expiresAt })
+    }
 
     // Lifetime totals become detail rows on the balance metric (informational)
     const summary = summaryBody as Record<string, unknown> | null

@@ -275,6 +275,8 @@ export interface PlanCardVM {
   windows: PlanWindowVM[]
   /** First balance metric incl. its detail rows (top-up / grant breakdown) */
   balance: { amount: number; currency: string; details: { label: string; value: number }[] } | null
+  /** First expiry metric's timestamp (epoch ms); null when no provider reports one */
+  expiresAt: number | null
   /** True when any window is at/over the attention threshold (drives the badge) */
   attention: boolean
 }
@@ -312,6 +314,12 @@ export function buildPlanCards(
               (m) => m.kind === 'balance' && m.remaining != null && m.unit && m.unit !== UNLIMITED_KEY,
             )
           : undefined
+      // The label lives on the metric but rendering uses a single i18n string
+      // (some producers hardcode their own label), so only the timestamp crosses here.
+      const expiry =
+        status === 'ok' && result.metrics
+          ? result.metrics.find((m) => m.kind === 'expiry' && m.expiresAt != null)
+          : undefined
       cards.push({
         key: card.key,
         providerId: sec.def.id,
@@ -324,6 +332,7 @@ export function buildPlanCards(
           bal?.remaining != null && bal.unit
             ? { amount: bal.remaining, currency: bal.unit, details: bal.detail ?? [] }
             : null,
+        expiresAt: expiry?.expiresAt ?? null,
         attention: windows.some((w) => w.pct >= attentionPct),
       })
     }
