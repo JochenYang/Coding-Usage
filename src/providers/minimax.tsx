@@ -131,10 +131,15 @@ async function fetchExpiry(
       Accept: 'application/json',
     })
     if (!res.ok) return undefined
+    // Shape drift (observed 2026-09): the subscription block used to sit under
+    // a `data` envelope, but the live API returns it at the top level. Accept
+    // both. Prefer the numeric `*_ts` field over the locale date string.
     const json = (await res.json()) as {
-      data?: { current_subscribe?: { current_subscribe_end_time?: unknown } }
+      data?: { current_subscribe?: Record<string, unknown> }
+      current_subscribe?: Record<string, unknown>
     }
-    return toEpochMs(json.data?.current_subscribe?.current_subscribe_end_time)
+    const sub = json.data?.current_subscribe ?? json.current_subscribe
+    return toEpochMs(sub?.current_subscribe_end_time_ts ?? sub?.current_subscribe_end_time)
   } catch {
     return undefined
   }
