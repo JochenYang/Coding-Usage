@@ -10,6 +10,16 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.5.8] - 2026-09-14
+
+### 中文
+- Command Code GOAT 套餐卡片新增「套餐到期」行（绝对日期 + 剩余天数，临期变色）：补调了一直只写在注释里的第三个接口 `/alpha/billing/subscriptions`，取当前计费周期的结束时间；仅有效订阅显示，接口无权限或订阅非有效时静默隐藏，不影响卡片其余内容
+- 顺带点亮 MiniMax 套餐的到期时间：它的过期接口与格式化函数早就写好，但一直没有渲染链路，本次一并接上
+
+### English
+- Command Code GOAT plan cards gain a "Plan expires" line (absolute date + days left, urgency-toned): the adapter now calls the third endpoint it always named but never queried, `/alpha/billing/subscriptions`, reading the current billing period's end; shown for active subscriptions only, silently hidden without billing-scope access or on inactive subscriptions, never affecting the rest of the card
+- MiniMax plan expiry lights up as a side effect: its expiry fetch and formatter existed but had no render path until now
+
 ## [v0.5.7] - 2026-09-14
 
 ### 中文
