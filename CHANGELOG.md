@@ -10,6 +10,14 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.5.9] - 2026-09-14
+
+### 中文
+- 修复 MiniMax 套餐到期时间不显示：套餐接口实际把订阅块放在顶层返回，适配器却一直在 `data` 包裹层下查找，永远读空且静默失败；现两种结构都兼容，并优先使用更可靠的数字时间戳字段。v0.5.8 日志中超前的那句在此真正兑现
+
+### English
+- Fix MiniMax plan expiry never showing: the plan API returns the subscription block at the top level, but the adapter kept looking under a `data` envelope that does not exist — always empty, always silent; both shapes are accepted now, preferring the more reliable numeric timestamp field. This finally delivers what the v0.5.8 notes prematurely promised
+
 ## [v0.5.8] - 2026-09-14
 
 ### 中文
