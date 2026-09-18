@@ -10,6 +10,24 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.5.10] - 2026-09-18
+
+### 中文
+- 概览页服务商分布改为按用量排序：原按成本排序，而价格未收录的服务商成本同为 0 而并列，图例看起来像随机排列（环形图的弧长本来就是按 token 画的）
+- 修复微信 iLink 机器人重启后发送必失败：会话就绪判定改为依赖 getupdates 轮询（原用 getconfig 探活，而它对着未就绪的会话也会正常应答），recover 也把"被服务端 hold 住"判为成功而非失败；同时移除只会误报的「验证连接」按钮
+- 本地扫描不再因模型/供应商名含中文等非 ASCII 字符而丢失整个客户端：tokscale 的字节切片会 panic（exit 101、stdout 为空），现于扫描前把 id 百分号编码、结果回传前解码，界面仍显示原始中文且不丢 token
+- 本地 Agent 用量新增 MiniMax Code：tokscale 不读取它的会话存储，现由主进程直接解析 `~/.minimax/v2/sessions` 并计入今日/本月/累计
+- MiniMax Code 计入迁移前的历史用量：旧版把用量记在 sqlite，而 v2 会话存储是 2026-08-13 由迁移建立的、此前数据没有会话文件；两代数据按世代时间窗隔离、sqlite 内的重复行按会话+轮次折叠，避免重复计数
+- 非 ASCII 兼容层的单文件大小上限由 32MB 提升到 192MB（真实转录最大 42MB，原上限恰好跳过最大的文件）
+
+### English
+- Provider distribution on the overview is now ordered by usage: it was ordered by cost, and providers missing from the pricing catalogue all tied at zero, so the legend read as a shuffled list (the ring's arc length is token-based to begin with)
+- Fix WeChat iLink sends failing after every restart: session readiness now follows the getupdates poll instead of a getconfig ping (which answers happily against a session the platform has not prepared), and recovery counts a server-held poll as success rather than failure; the "verify connection" button, which could only report the wrong signal, is gone
+- The local scan no longer loses an entire client when a model or provider id contains non-ASCII text: tokscale panics on its byte slice (exit 101, empty stdout), so ids are percent-encoded before the scan and decoded again for display — the UI keeps the original text and no token is lost
+- Local agent usage now counts MiniMax Code, whose session store tokscale does not read, by parsing `~/.minimax/v2/sessions` directly in the main process
+- MiniMax Code usage recorded before the v2 session store existed is included: older builds kept it in sqlite, and the session store was created by a migration on 2026-08-13, so nothing earlier has session files. The two generations are separated by era and duplicate rows inside sqlite are collapsed, so no usage is counted twice
+- The non-ASCII compatibility layer's per-file size cap rises from 32 MB to 192 MB (the largest real transcript is 42 MB, which the old cap skipped)
+
 ## [v0.5.9] - 2026-09-14
 
 ### 中文
