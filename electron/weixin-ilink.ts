@@ -27,8 +27,7 @@ import QRCode from 'qrcode'
  * returns {ret:-2,errmsg:"prepare failed"} unless the bot session was recently
  * touched by an authenticated call. ZCode keeps a continuous getupdates
  * long-poll alive for that reason; weixin-session.ts owns the equivalent
- * keep-alive / warm / recover loop for this app. /getconfig is the short
- * authenticated ping ZCode uses for connectivity tests.
+ * keep-alive / warm / recover loop for this app.
  *
  * All requests run in the Electron main process (net.fetch, no CORS). Only
  * the token and the user id ever cross the IPC boundary.
@@ -201,26 +200,7 @@ export async function ilinkPollLogin(fetcher: NetFetch, qrCode: string): Promise
 }
 
 /**
- * Short authenticated ping (ZCode's connectivity test): POST /getconfig with
- * base_info only. Succeeds (empty-but-ok) when the bot token is alive; throws
- * on transport/API failure. Used to warm the send path after a cold start
- * without waiting out a getupdates long-poll hold.
- */
-export async function ilinkPing(
-  fetcher: NetFetch,
-  botToken: string,
-  timeoutMs: number = QR_TIMEOUT_MS,
-): Promise<void> {
-  await postJson(
-    fetcher,
-    `${ILINK_BASE}${ILINK_PREFIX}/getconfig`,
-    ilinkAuthHeaders(botToken),
-    { base_info: { channel_version: '2.0.0' } },
-    timeoutMs,
-  )
-}
-
-/** Read the opaque getupdates cursor ZCode tracks as get_updates_buf/buf/… */
+ * Read the opaque getupdates cursor ZCode tracks as get_updates_buf/buf/… */
 function readNextBuf(data: Record<string, unknown>): string | undefined {
   const container = isRecord(data.data) ? { ...data, ...data.data } : data
   for (const k of ['get_updates_buf', 'buf', 'next_buf', 'nextBuf', 'getUpdatesBuf', 'syncKey']) {

@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { ilinkGetUpdates, ilinkPing } from './weixin-ilink'
+import { ilinkGetUpdates } from './weixin-ilink'
 
 /**
  * WeChat iLink bot session keeper (main process).
@@ -13,9 +13,14 @@ import { ilinkGetUpdates, ilinkPing } from './weixin-ilink'
  * contract only for the current run:
  *
  *  - start() spins a background getupdates loop as soon as a token is known
- *  - ensureWarmed() pings getconfig before the first send after a cold start
- *  - on prepare-failed, recover() runs one full getupdates round then the
- *    caller retries the send once
+ *  - ensureWarmed() waits for that loop's request to sit with the server,
+ *    which is the signal that keeps the session fresh (a short config ping
+ *    does NOT — it answers happily against a stale session, which is exactly
+ *    how a cold start used to collect {ret:-2,prepare failed} on its first
+ *    send)
+ *  - on prepare-failed, recover() re-issues the poll and lets the caller
+ *    retry; an idle hold counts, because the server holding our authenticated
+ *    poll is the same state ZCode's always-on loop leaves it in
  *  - the get_updates_buf cursor is persisted so restarts do not replay the
  *    whole backlog or confuse the server about client progress
  *
@@ -28,12 +33,22 @@ type NetFetch = typeof import('electron').net.fetch
 const WARM_STALE_MS = 2 * 60_000
 /** Long-poll timeout for the background loop (ZCode uses 90s) */
 const LOOP_TIMEOUT_MS = 90_000
-/** Recovery getupdates: one full idle hold, then give up */
-const RECOVER_TIMEOUT_MS = 45_000
-/** Fast authenticated ping used before the first send of a cold start */
-const PING_TIMEOUT_MS = 15_000
-/** How long ensureWarmed waits for an in-flight first loop round */
+/**
+ * Recovery getupdates: one idle hold, then let the caller retry. The hold is
+ * the point — the server keeps an idle poll open, so the round rarely
+ * "completes" and waiting the full loop timeout would only delay the retry.
+ */
+const RECOVER_TIMEOUT_MS = 15_000
+/** How long ensureWarmed waits for the loop's poll to settle with the server */
 const WARM_WAIT_MS = 20_000
+/**
+ * A poll the server has been holding this long counts as "the session is
+ * fresh": an idle getupdates is answered by holding it open, so a request
+ * still in flight is evidence the platform sees this client polling.
+ */
+const POLL_SETTLE_MS = 2_000
+/** Poll interval while waiting for the loop to settle */
+const WARM_POLL_MS = 250
 /** Backoff after a failed loop round before polling again */
 const LOOP_ERROR_BACKOFF_MS = 5_000
 
@@ -43,10 +58,10 @@ interface SessionState {
   buf: string
   /** Epoch ms of the last successful authenticated round-trip */
   lastOkAt: number
+  /** Epoch ms the in-flight getupdates was dispatched; 0 when none is in flight */
+  pollStartedAt: number
   running: boolean
   abort: AbortController | null
-  /** In-flight first-success waiter, if any */
-  warmWaiters: Array<(ok: boolean) => void>
   /** True while recover() owns the connection — the background loop must wait */
   recovering: boolean
 }
@@ -102,16 +117,6 @@ function saveCursor(token: string, buf: string): void {
 function markOk(): void {
   if (!state) return
   state.lastOkAt = Date.now()
-  const waiters = state.warmWaiters
-  state.warmWaiters = []
-  for (const w of waiters) w(true)
-}
-
-function markWarmFailed(): void {
-  if (!state) return
-  const waiters = state.warmWaiters
-  state.warmWaiters = []
-  for (const w of waiters) w(false)
 }
 
 /** Bind the net.fetch implementation (called once from registerIpc) */
@@ -121,6 +126,20 @@ export function initIlinkSession(fetchImpl: NetFetch): void {
 
 export function isIlinkSessionWarm(): boolean {
   return state != null && state.lastOkAt > 0 && Date.now() - state.lastOkAt < WARM_STALE_MS
+}
+
+/**
+ * True once the background loop's poll has been in flight long enough that the
+ * server must be holding it (an idle getupdates is answered by holding the
+ * request open, not by a fast error). This is what tells us the platform is
+ * currently prepared to accept sendmessage from this client.
+ */
+function isPollSettled(): boolean {
+  return (
+    state != null &&
+    state.pollStartedAt > 0 &&
+    Date.now() - state.pollStartedAt >= POLL_SETTLE_MS
+  )
 }
 
 /**
@@ -136,9 +155,9 @@ export async function startIlinkSession(token: string): Promise<void> {
     token,
     buf,
     lastOkAt: 0,
+    pollStartedAt: 0,
     running: true,
     abort: null,
-    warmWaiters: [],
     recovering: false,
   }
   state = next
@@ -151,77 +170,47 @@ export async function stopIlinkSession(): Promise<void> {
   cur.running = false
   cur.abort?.abort()
   cur.abort = null
-  markWarmFailed()
   state = null
   // Give the aborted fetch a tick to settle; no need to await the loop body
   await Promise.resolve()
 }
 
 /**
- * One fast authenticated ping (POST /getconfig). Cheap enough to run before
- * every cold-start send; success marks the session warm.
- */
-export async function pingIlinkSession(token: string): Promise<boolean> {
-  if (!fetcher) return false
-  try {
-    await ilinkPing(fetcher, token, PING_TIMEOUT_MS)
-    if (state?.token === token) markOk()
-    else if (!state) {
-      // Session not looping yet (e.g. send raced hydration) — still remember
-      // that this token is currently alive for the warm check below.
-      state = {
-        token,
-        buf: '',
-        lastOkAt: Date.now(),
-        running: false,
-        abort: null,
-        warmWaiters: [],
-        recovering: false,
-      }
-    }
-    return true
-  } catch {
-    return false
-  }
-}
-
-/**
  * Make sure the bot session can accept sendmessage. Never throws.
  *
- * Order: hot session → true; cold → getconfig ping; still cold → wait briefly
- * for the background loop's first round. The long-poll itself is NOT run
- * inline here (it would block an alert for ~30s); recover() owns that path.
+ * The platform prepares the send path while an authenticated getupdates poll
+ * is live, so "warm" means either a recent completed round or a poll that has
+ * been in flight long enough for the server to be holding it. The long-poll
+ * result is often never observed (the server holds it until the next message),
+ * which is why the in-flight state is treated as the success signal instead of
+ * waiting for a round to return.
  */
 export async function ensureIlinkSessionWarm(token: string): Promise<boolean> {
   if (!fetcher) return false
   if (state?.token !== token) {
     await startIlinkSession(token)
   }
-  if (isIlinkSessionWarm()) return true
-  if (await pingIlinkSession(token)) return true
-  // Background loop may already be mid long-poll — wait for its first success
-  const cur = state
-  if (!cur || !cur.running) return false
-  if (cur.lastOkAt > 0 && Date.now() - cur.lastOkAt < WARM_STALE_MS) return true
-  return await new Promise<boolean>((resolve) => {
-    let settled = false
-    const done = (ok: boolean): void => {
-      if (settled) return
-      settled = true
-      resolve(ok)
-    }
-    cur.warmWaiters.push(done)
-    setTimeout(() => done(isIlinkSessionWarm()), WARM_WAIT_MS)
-  })
+  if (isIlinkSessionWarm() || isPollSettled()) return true
+  // Fresh loop: its first poll needs a moment to reach the server. Wait for
+  // the settle window rather than the round's completion — an idle round only
+  // ends when the server lets go of it.
+  const deadline = Date.now() + WARM_WAIT_MS
+  while (Date.now() < deadline) {
+    if (isIlinkSessionWarm() || isPollSettled()) return true
+    if (!state?.running) return false
+    await new Promise((r) => setTimeout(r, WARM_POLL_MS))
+  }
+  return isIlinkSessionWarm() || isPollSettled()
 }
 
 /**
- * Full recovery after {ret:-2, prepare failed}: one complete getupdates
- * round (the same call ZCode's keep-alive uses) so the platform re-prepares
- * the send path. Returns true when the round succeeded.
+ * Recovery after {ret:-2, prepare failed}: re-issue the authenticated poll so
+ * the platform re-prepares the send path, then let the caller retry.
  *
- * Aborts any in-flight long-poll first — two concurrent getupdates on the
- * same bot token can confuse the server-side session.
+ * A round that ends by timeout/abort has still done its job — the server held
+ * our poll for the whole window, which is the prepared state. Treating that
+ * hold as failure (the previous behaviour) made every cold-start recovery
+ * report "failed" and the retry never happened.
  */
 export async function recoverIlinkSession(token: string): Promise<boolean> {
   if (!fetcher) return false
@@ -230,10 +219,13 @@ export async function recoverIlinkSession(token: string): Promise<boolean> {
   }
   const cur = state
   if (!cur) return false
+  // A poll the server is already holding means the session is prepared
+  if (isPollSettled()) return true
   // Cancel the background hold so this recovery round owns the connection
   cur.recovering = true
   cur.abort?.abort()
   cur.abort = null
+  const startedAt = Date.now()
   try {
     const res = await ilinkGetUpdates(fetcher, token, cur.buf, RECOVER_TIMEOUT_MS)
     if (res.nextBuf && res.nextBuf !== cur.buf) {
@@ -242,13 +234,27 @@ export async function recoverIlinkSession(token: string): Promise<boolean> {
     }
     markOk()
     return true
-  } catch {
+  } catch (e) {
+    // A timeout/abort means the server kept the poll open — that IS the
+    // prepared state, so the retry is worth spending.
+    const held = Date.now() - startedAt >= RECOVER_TIMEOUT_MS - 1_000
+    if (held || isIlinkAbortError(e)) {
+      markOk()
+      return true
+    }
     return false
   } finally {
     cur.recovering = false
     // The original runLoop (if any) observes recovering=false and resumes;
     // never spawn a second loop here or two long-polls would race the token.
   }
+}
+
+/** AbortError / TimeoutError from AbortSignal.timeout or an explicit abort */
+function isIlinkAbortError(e: unknown): boolean {
+  if (e == null || typeof e !== 'object') return false
+  const name = (e as { name?: unknown }).name
+  return name === 'AbortError' || name === 'TimeoutError'
 }
 
 /** Background keep-alive: serial long-polls until stop() aborts the token */
@@ -262,18 +268,33 @@ async function runLoop(s: SessionState): Promise<void> {
     }
     const abort = new AbortController()
     s.abort = abort
+    // Stamp the dispatch time: an idle poll is answered by the server holding
+    // it open, so "in flight past the settle window" is the strongest
+    // available evidence that the platform is prepared for sendmessage.
+    s.pollStartedAt = Date.now()
+    const startedAt = s.pollStartedAt
     try {
       const res = await ilinkGetUpdates(fetcher, s.token, s.buf, LOOP_TIMEOUT_MS, abort.signal)
       if (!s.running || state !== s) return
+      s.pollStartedAt = 0
       if (res.nextBuf && res.nextBuf !== s.buf) {
         s.buf = res.nextBuf
         saveCursor(s.token, res.nextBuf)
       }
       markOk()
-    } catch {
+    } catch (e) {
       if (!s.running || state !== s) return
+      s.pollStartedAt = 0
       // Recover aborted this round on purpose — loop back and wait
       if (s.recovering) continue
+      // A poll our own timeout ended is a healthy idle round (the server held
+      // it open and simply had nothing to deliver), so it counts as a
+      // successful keep-alive and the next round re-arms immediately.
+      // Backing off here would let the session cool down between alerts.
+      if (Date.now() - startedAt >= LOOP_TIMEOUT_MS - 1_000) {
+        markOk()
+        continue
+      }
       // Transient network / platform blip: rest briefly then poll again.
       // Auth failures also land here; the send path surfaces them.
       await new Promise((r) => setTimeout(r, LOOP_ERROR_BACKOFF_MS))

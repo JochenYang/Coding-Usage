@@ -128,10 +128,6 @@ function WeixinChannelBlock({ onTest }: { onTest: (cred: WebhookCredential) => P
   const [qrCode, setQrCode] = useState('')
   const [note, setNote] = useState('')
   const [test, setTest] = useState<TestState>('idle')
-  // Connection check (token alive vs dead), separate from the send test so
-  // the UI can tell "re-login needed" apart from "payload rejected"
-  const [verify, setVerify] = useState<TestState>('idle')
-  const [verifyDetail, setVerifyDetail] = useState('')
   // Raw failure detail of the last test send (for the copy button); the
   // visible note is the localized sentence wrapping this detail.
   const [testDetail, setTestDetail] = useState('')
@@ -242,20 +238,6 @@ function WeixinChannelBlock({ onTest }: { onTest: (cred: WebhookCredential) => P
     setConfirmDisconnect(false)
   }
 
-  const runVerify = async () => {
-    if (!bridge) return
-    setVerify('sending')
-    setVerifyDetail('')
-    try {
-      const res = await bridge.ilinkCheck(intg.weixinBotToken)
-      setVerify(res.ok ? 'ok' : 'fail')
-      if (!res.ok) setVerifyDetail(res.error ?? '')
-    } catch (e) {
-      setVerify('fail')
-      setVerifyDetail(e instanceof Error ? e.message : String(e))
-    }
-  }
-
   const runTest = async () => {
     const cred = { token: intg.weixinBotToken, userId: intg.weixinBotUserId }
     setTest('sending')
@@ -290,14 +272,6 @@ function WeixinChannelBlock({ onTest }: { onTest: (cred: WebhookCredential) => P
         <div className="flex shrink-0 items-center gap-2">
           {connected && (
             <>
-              <button
-                type="button"
-                onClick={() => void runVerify()}
-                disabled={verify === 'sending' || test === 'sending'}
-                className="rounded-lg border border-border px-2.5 py-1 text-[11px] hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {verify === 'sending' ? t.integrations.wxVerifying : t.integrations.wxVerify}
-              </button>
               <button
                 type="button"
                 onClick={() => void runTest()}
@@ -342,12 +316,6 @@ function WeixinChannelBlock({ onTest }: { onTest: (cred: WebhookCredential) => P
           {t.integrations.wxConnected(maskId(intg.weixinBotUserId))}
         </p>
       )}
-      {verify === 'ok' && <p className="mt-1.5 text-[11px] text-success">{t.integrations.wxVerifyOk}</p>}
-      {verify === 'fail' && (
-        <p className="mt-1.5 text-[11px] text-danger">
-          {t.integrations.testFailed(verifyDetail || 'check')}
-        </p>
-      )}
       {test === 'ok' && <p className="mt-1.5 text-[11px] text-success">{t.integrations.testOk}</p>}
 
       {phase === 'qr' && (
@@ -379,9 +347,9 @@ function WeixinChannelBlock({ onTest }: { onTest: (cred: WebhookCredential) => P
           )}
         </p>
       )}
-      {(test === 'fail' || verify === 'fail') && (
+      {test === 'fail' && (
         <p className="mt-1 text-[11px] text-subtle">
-          {/-2/.test(testDetail || verifyDetail)
+          {/-2/.test(testDetail)
             ? t.integrations.wxStaleHint
             : t.integrations.wxReloginHint}
         </p>

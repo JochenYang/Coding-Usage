@@ -730,7 +730,14 @@ function registerIpc(): void {
       // getupdates round before the single retry below.
       const weixinToken = channel === 'weixin' ? (c.token as string) : ''
       if (weixinToken) {
-        await ensureIlinkSessionWarm(weixinToken)
+        // The return value matters: a bare send against an unprepared session
+        // is the deterministic {ret:-2} this whole path exists to avoid. When
+        // warming fails we still try — the platform occasionally accepts it —
+        // but the log line is what makes a cold-start failure diagnosable.
+        const warm = await ensureIlinkSessionWarm(weixinToken)
+        if (!warm) {
+          console.error('[webhook:send] channel=weixin warm=fail, sending anyway')
+        }
       }
       const isWeixinPrepareFailed = (json: unknown): boolean => {
         if (channel !== 'weixin' || json == null || typeof json !== 'object') return false
@@ -825,23 +832,6 @@ function registerIpc(): void {
       return { error: String(e instanceof Error ? e.message : e) }
     }
   })
-
-  // Connection check for a stored bot token: one short getupdates round. An
-  // empty-but-ok round means the token is alive (there are simply no new
-  // messages); only a transport/API error reports failure. Lets the UI tell
-  // "token dead, re-login" apart from "token alive, send payload rejected".
-  ipcMain.handle(
-    'ilink:check',
-    async (_event, token: unknown): Promise<{ ok: boolean; error?: string }> => {
-      if (typeof token !== 'string' || !token) return { ok: false, error: 'invalid-request' }
-      try {
-        await ilinkPollActivation(net.fetch, token, 15_000)
-        return { ok: true }
-      } catch (e) {
-        return { ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 300) }
-      }
-    },
-  )
 
   // Keep-alive: the renderer hands over the decrypted bot token once the
   // weixin channel is configured (hydration done). Main then owns the

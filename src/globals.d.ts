@@ -84,8 +84,6 @@ declare global {
     ilinkPoll(qrCode: string): Promise<IlinkPollResult>
     /** WeChat iLink bot: one activation check; userId appears after the user messages the bot */
     ilinkActivate(token: string): Promise<IlinkActivateResult>
-    /** WeChat iLink bot: short authenticated round-trip; ok means the stored token is alive */
-    ilinkCheck(token: string): Promise<{ ok: boolean; error?: string }>
     /** WeChat iLink bot: start the main-process getupdates keep-alive for this token */
     ilinkSessionStart(token: string): Promise<void>
     /** WeChat iLink bot: stop the keep-alive loop (disconnect / quit) */
