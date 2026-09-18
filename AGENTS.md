@@ -166,3 +166,8 @@ Packaging config lives in `electron-builder.yml` (appId, win targets, GitHub pub
 - Each commit should focus on a single purpose. Split unrelated refactoring into separate commits.
 - Do not push, force-push, rebase, tag, or release without explicit authorization.
 - Once a release IS authorized, own the whole flow end to end: bump the version + finalize the CHANGELOG → commit (`chore(release): vX.Y.Z`) → tag + push → wait for the release workflow → verify the draft's bilingual notes and installers → publish it as Latest (`gh release edit vX.Y.Z --draft=false`). Never leave the release as a draft for manual publishing.
+
+### Version numbering
+
+- Every release is exactly three parts, `vX.Y.Z`, and the patch is a single digit: `Z` counts 0–9, so stepping past 9 carries into the minor instead of widening the patch. `v0.5.9` is followed by `v0.6.0`, never `v0.5.10`. The carry repeats one position up (`v0.9.9` → `v1.0.0`).
+- History: `v0.5.10` was tagged before this rule existed; the next release after it is `v0.6.0`.
