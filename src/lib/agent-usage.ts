@@ -18,6 +18,11 @@ import { displayProviderName } from './provider-labels'
  * Local agent clients tracked through the tokscale scan. Ids must be valid
  * `tokscale graph --client` values; keep electron/main.ts TOKSCALE_CLIENTS in
  * sync (the same list is passed to the CLI). Order = display order.
+ *
+ * `mcode` (MiniMax Code) is the deliberate exception: tokscale only supports
+ * that agent through headless capture, so TOKSCALE_CLIENTS omits it and the main
+ * process collects its usage itself (electron/minimax-code-usage.ts). The id
+ * lives here to drive the renderer's row, label and icon.
  */
 export const AGENT_CLIENTS = [
   'codex',
@@ -43,6 +48,7 @@ export const AGENT_CLIENTS = [
   'dsh',
   'zcode',
   'micode',
+  'mcode',
 ] as const
 export type AgentClientId = (typeof AGENT_CLIENTS)[number]
 

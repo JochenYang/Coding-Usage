@@ -128,3 +128,25 @@ export function mergeGraphPayloads(payloads: unknown[]): unknown {
 
   return { meta, summary, years: yearRows, contributions }
 }
+
+/**
+ * True when any contribution carries a client entry with this id.
+ *
+ * Guards app-collected usage against double counting: when tokscale starts
+ * reporting a client natively, the locally synthesized payload for that client
+ * must be dropped instead of merged alongside its own numbers.
+ */
+export function hasClientEntries(payload: unknown, clientId: string): boolean {
+  const root = asRecord(payload)
+  if (!root) return false
+  const contributions = Array.isArray(root.contributions) ? root.contributions : []
+  for (const c of contributions) {
+    const rec = asRecord(c)
+    if (!rec) continue
+    const clients = Array.isArray(rec.clients) ? rec.clients : []
+    for (const cl of clients) {
+      if (asRecord(cl)?.client === clientId) return true
+    }
+  }
+  return false
+}
