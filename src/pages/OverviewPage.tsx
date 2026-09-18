@@ -79,11 +79,15 @@ export function OverviewPage({
   const dist = useMemo(() => {
     // Provider distribution prefers real measured spend (local agents, by
     // provider); the API-quota share is the fallback when no local data
-    // exists. Providers are ordered by cost so the donut legend reads like the
-    // cost analysis page (which sorts the same list by cost). Long tails fold
-    // into "other" so the card renders fully without scrolling.
+    // exists. Slices are ordered by the value the ring actually encodes
+    // (tokens), so the largest arc comes first — ordering by cost instead left
+    // every unpriced provider (cost 0: tokscale-native and catalog-unknown
+    // models) tied in scan order, which reads as a random legend. Long tails
+    // fold into "other" so the card renders fully without scrolling.
     if (agentUsage.monthCostByProvider.length > 0) {
-      const sorted = [...agentUsage.monthCostByProvider].sort((a, b) => b.costUsd - a.costUsd)
+      const sorted = [...agentUsage.monthCostByProvider].sort(
+        (a, b) => b.tokens - a.tokens || a.label.localeCompare(b.label),
+      )
       const monthTotal = agentUsage.monthTotal.tokens || 1
       const slices: { label: string; value: number; color: string }[] = []
       let rest = 0
