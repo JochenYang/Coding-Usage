@@ -9,6 +9,7 @@ import {
   Gemini,
   Kiro,
   Kimi,
+  Minimax,
   OpenCode,
   Qwen,
   Trae,
@@ -58,6 +59,7 @@ const AGENT_ICONS: Partial<Record<AgentClientId, ReactNode>> = {
   zcode: <img src={zcodeLogo} className="h-5 w-5 rounded" alt="" />,
   // XiaomiMiMo ships no Color variant — its Avatar tile fills the slot
   micode: <XiaomiMiMo.Avatar size={16} />,
+  mcode: <Minimax.Color />,
 }
 
 /** Proper nouns — brand names, not translated. Ids = tokscale client ids. */
@@ -85,6 +87,7 @@ const AGENT_LABELS: Record<AgentClientId, string> = {
   dsh: 'DSH',
   zcode: 'ZCode',
   micode: 'MiMo',
+  mcode: 'MiniMax Code',
 }
 
 interface PeriodColumnProps {

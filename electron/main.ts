@@ -19,10 +19,12 @@ import { autoUpdater } from 'electron-updater'
 import { fetchClaudeUsage, fetchGeminiUsage, type QuotaOutcome } from './subscription-quotas'
 import { fetchGrokUsage } from './grok-usage'
 import { getPricingTable, priceTokens } from './model-pricing'
-import { mergeGraphPayloads } from './tokscale-merge'
+import { hasClientEntries, mergeGraphPayloads } from './tokscale-merge'
+import { readMiniMaxCodeUsage } from './minimax-code-usage'
 import { reconcileProviderAttribution } from './provider-reconcile'
 import { ensureDshSessionAliases } from './dsh-aliases'
 import { ensureWorkbuddyAliases } from './workbuddy-aliases'
+import { decodeNonAsciiIds, ensureScannableModelIds } from './model-id-sanitize'
 import {
   buildChannelRequest,
   channelErrorDetail,
@@ -501,6 +503,21 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
     join(homedir(), '.workbuddy-ai'),
     join(app.getPath('userData'), 'workbuddy-aliases.json'),
   )
+  // Neutralize non-ASCII model/provider ids before tokscale reads them: its
+  // kimi reader slices an alias at a raw byte index and panics on any
+  // multi-byte character, dropping the whole client from the dashboard (see
+  // model-id-sanitize.ts). Best-effort — a failed sweep must not stop the scan.
+  await ensureScannableModelIds(
+    [join(homedir(), '.kimi-code', 'sessions'), join(homedir(), '.kimi', 'sessions')],
+    join(app.getPath('userData'), 'model-id-sanitize.json'),
+  )
+  // MiniMax Code keeps its usage where tokscale never looks — that client only
+  // supports headless capture — so read its session store here and merge it in.
+  // Skipped when tokscale already reports the client itself, which it would
+  // once upstream support lands and double counting becomes possible.
+  const minimax = await readMiniMaxCodeUsage(homedir())
+  const withMiniMax = (payload: unknown): unknown =>
+    minimax == null || hasClientEntries(payload, 'mcode') ? payload : mergeGraphPayloads([payload, minimax])
   await ensurePricingCache()
   // --no-spinner: the interactive progress renderer is both the source of
   // ANSI/CR garbage in captured stderr and the prime suspect for the
@@ -522,18 +539,28 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
     }
   }
   if (daily != null) {
-    const costs = await overrideCosts(daily)
-    return { daily: reconcileProviderAttribution(costs) }
+    const costs = await overrideCosts(withMiniMax(daily))
+    // Decode last: the cost override and the provider attribution read the
+    // encoded ids, whose router prefix is ASCII either way.
+    return { daily: decodeNonAsciiIds(reconcileProviderAttribution(costs)) }
   }
 
   const merged = await scanPerClientWithFallback(baseArgs)
   // Throw (not return `{error}`): the IPC handler surfaces failures without
   // caching them, so a manual refresh always re-attempts the scan instead of
   // replaying a stale error for the cache window.
-  if (merged == null) throw new Error('tokscale scan failed for every client')
-  const costs = await overrideCosts(merged.daily)
+  if (merged == null) {
+    // Every tokscale client failed; MiniMax Code's own numbers still beat a
+    // blank card, so serve those rather than surfacing nothing at all.
+    if (minimax != null) {
+      const costs = await overrideCosts(minimax)
+      return { daily: decodeNonAsciiIds(reconcileProviderAttribution(costs)) }
+    }
+    throw new Error('tokscale scan failed for every client')
+  }
+  const costs = await overrideCosts(withMiniMax(merged.daily))
   return {
-    daily: reconcileProviderAttribution(costs),
+    daily: decodeNonAsciiIds(reconcileProviderAttribution(costs)),
     skippedClients: merged.skippedClients,
     skippedDetails: merged.skippedDetails,
   }
