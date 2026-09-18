@@ -30,13 +30,25 @@ import type { Stats } from 'node:fs'
 /** Id-bearing keys tokscale reads (session transcripts and graph payloads) */
 const ID_KEYS = ['model', 'modelAlias', 'modelId', 'provider', 'providerId'] as const
 
-/** Files larger than this are left alone — the biggest real wire.jsonl is ~2 MB */
-const MAX_FILE_BYTES = 32 * 1024 * 1024
+/**
+ * Files larger than this are left alone. The cap is a memory guard (the sweep
+ * holds the decoded text plus its encoded replacement), not a correctness one:
+ * a skipped file keeps raw ids and can still panic tokscale, so it is set well
+ * above real transcripts — the biggest wire.jsonl observed is 42 MB, against
+ * ~2 MB for a typical one.
+ */
+const MAX_FILE_BYTES = 192 * 1024 * 1024
 
 /**
  * Files touched within this window are skipped: the running agent appends to
  * its own live transcript, and rewriting that file (temp + rename) would leave
  * the writer holding the replaced inode, losing the session tail.
+ *
+ * The cost is a bounded gap: an agent actively writing with a non-ASCII id
+ * keeps producing raw lines until it goes quiet for this long, and tokscale
+ * panics on the first of them — the client drops out of the card and returns
+ * once the file has been idle and re-swept. Rewriting a live transcript is the
+ * worse failure, so the guard stays.
  */
 const LIVE_FILE_GUARD_MS = 90_000
 
