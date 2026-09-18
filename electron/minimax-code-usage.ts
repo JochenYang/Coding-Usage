@@ -21,6 +21,12 @@ import { join } from 'node:path'
  * `<home>/.mavis` is a symlink to `.minimax`; only the canonical path is scanned
  * so no session can be counted twice.
  *
+ * Usage recorded before the v2 store existed lives in `<home>/.minimax/
+ * sqlite.db` (`token_usage`): `v2/migration/manifests/<date>/` shows the session
+ * store was created by a migration on that date, and on a real install that left
+ * 1.2 B tokens of earlier usage with no session files behind it. Both stores are
+ * read; `readSqliteRecords` documents how they are kept from double counting.
+ *
  * Privacy: only token counters are read. Message bodies (`message.content`,
  * tool-call results, thinking blocks) are never touched.
  */
@@ -30,6 +36,16 @@ const SESSIONS_REL = ['.minimax', 'v2', 'sessions'] as const
 
 /** Client id this module feeds; must exist in AGENT_CLIENTS (src/lib/agent-usage.ts) */
 const CLIENT_ID = 'mcode'
+
+/** Provider every MiniMax Code channel is attributed to */
+const VENDOR_PROVIDER = 'minimax'
+
+/** Pre-v2 usage store, next to the session tree */
+const SQLITE_FILE = 'sqlite.db'
+
+/** Only counters and the id columns are selected — `raw` holds the whole turn */
+const SQLITE_QUERY =
+  'SELECT session_id, turn_id, model, ts, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM token_usage'
 
 /** Recursion guard for the session-tree walk (root→year→month→day→session) */
 const MAX_WALK_DEPTH = 6
@@ -85,10 +101,26 @@ function localDay(ms: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-/** Provider id without MiniMax's synthetic `custom_provider:` routing prefix */
+/**
+ * Provider id without MiniMax's synthetic `custom_provider:` routing prefix.
+ *
+ * The agent routes through several internal channels — `minimax`,
+ * `minimax_api`, `custom_provider:minimax-legacy` on a real install — and all
+ * of them are the same account on the same catalogue. Letting each channel own
+ * a slice would split one vendor across three rows of the provider
+ * distribution and the cost-by-provider list, so they collapse onto the vendor.
+ */
 function normalizeProvider(raw: string): string {
   const stripped = raw.replace(/^custom_provider:/, '').trim()
-  return stripped || 'minimax'
+  if (!stripped) return VENDOR_PROVIDER
+  return /^minimax(?:[_-]|$)/i.test(stripped) ? VENDOR_PROVIDER : stripped
+}
+
+/** `minimax/MiniMax-M3` → vendor + model; a bare id is MiniMax's own model */
+function splitVendorModel(model: string): { providerId: string; modelId: string } {
+  const slash = model.indexOf('/')
+  if (slash <= 0) return { providerId: VENDOR_PROVIDER, modelId: model }
+  return { providerId: model.slice(0, slash), modelId: model.slice(slash + 1) }
 }
 
 /** Token counters of one `usage` object, or null when it carries no usage at all */
@@ -253,6 +285,74 @@ function buildPayload(records: UsageRecord[]): unknown {
   return { meta: null, contributions }
 }
 
+/**
+ * Usage rows from MiniMax Code's pre-v2 sqlite store.
+ *
+ * Two guards keep these from double counting the session store:
+ *   - rows at or after `jsonlFloorMs` are dropped. The two stores come from
+ *     generations with unrelated id spaces (`mvs_…`/`msg_…` against
+ *     `session_…`/`msg-…`), so they cannot be matched row by row; the v2
+ *     migration bounds the eras instead, and anything inside the JSONL window is
+ *     assumed to be represented there already. With no JSONL records at all the
+ *     floor is infinite and every row counts.
+ *   - exact repeats inside sqlite collapse. MiniMax Code wrote 2 of the 8374
+ *     rows on a real install twice — same session, turn and counters, ~1 s
+ *     apart — which would otherwise inflate those turns.
+ *
+ * Best-effort: a missing file, an absent table (older/newer schema) or a
+ * database busy with the running agent all degrade to "no rows".
+ */
+async function readSqliteRecords(roots: string[], jsonlFloorMs: number): Promise<UsageRecord[]> {
+  for (const root of roots) {
+    const dbPath = join(root, SQLITE_FILE)
+    try {
+      const info = await stat(dbPath)
+      if (!info.isFile() || info.size === 0) continue
+    } catch {
+      continue // no sqlite store on this install
+    }
+    try {
+      const { DatabaseSync } = await import('node:sqlite')
+      const db = new DatabaseSync(dbPath, { readOnly: true })
+      try {
+        const rows = db.prepare(SQLITE_QUERY).all() as Array<Record<string, unknown>>
+        const out: UsageRecord[] = []
+        const seen = new Set<string>()
+        for (const row of rows) {
+          const tsMs = num(row.ts)
+          if (!(tsMs > 0) || tsMs >= jsonlFloorMs) continue
+          const counters = readCounters(row)
+          if (!counters) continue
+          const key = [
+            str(row.session_id),
+            str(row.turn_id),
+            counters.input,
+            counters.output,
+            counters.cacheRead,
+            counters.cacheWrite,
+          ].join('|')
+          if (seen.has(key)) continue
+          seen.add(key)
+          const { providerId, modelId } = splitVendorModel(str(row.model))
+          out.push({
+            tsMs,
+            modelId: modelId || 'unknown',
+            providerId: normalizeProvider(providerId),
+            ...counters,
+          })
+        }
+        return out
+      } finally {
+        db.close()
+      }
+    } catch {
+      // sqlite module unavailable, table missing, or locked — the session store
+      // still reports everything recorded after the migration
+    }
+  }
+  return []
+}
+
 /** Collect the usage records under one session root (empty when it holds none) */
 async function collectRecords(root: string): Promise<UsageRecord[]> {
   const dirs = await collectSessionDirs(root)
@@ -285,18 +385,30 @@ async function collectRecords(root: string): Promise<UsageRecord[]> {
  * installs, so both are probed. The first root that yields usage wins, which
  * keeps a symlinked pair from ever being counted twice.
  *
+ * The payload carries both generations: the v2 session store, plus the sqlite
+ * rows recorded before it existed (older than the store's first record).
+ *
  * Best-effort by contract — a missing store, an unreadable file or a directory
  * being rewritten mid-read must never affect the scan. Returns null when the
  * agent has no recorded usage (or is not installed).
  */
 export async function readMiniMaxCodeUsage(home: string): Promise<unknown | null> {
   try {
-    const roots = [join(home, ...SESSIONS_REL), join(home, '.mavis', 'v2', 'sessions')]
-    for (const root of roots) {
-      const records = await collectRecords(root)
-      if (records.length > 0) return buildPayload(records)
+    const sessionRoots = [join(home, ...SESSIONS_REL), join(home, '.mavis', 'v2', 'sessions')]
+    let records: UsageRecord[] = []
+    for (const root of sessionRoots) {
+      records = await collectRecords(root)
+      if (records.length > 0) break
     }
-    return null
+    // Everything before the session store's first record belongs to the sqlite
+    // generation; with no session records the floor stays infinite.
+    let floor = Number.POSITIVE_INFINITY
+    for (const record of records) {
+      if (record.tsMs > 0 && record.tsMs < floor) floor = record.tsMs
+    }
+    const legacy = await readSqliteRecords([join(home, '.minimax'), join(home, '.mavis')], floor)
+    const all = [...legacy, ...records]
+    return all.length > 0 ? buildPayload(all) : null
   } catch {
     return null
   }

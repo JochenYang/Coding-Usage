@@ -24,6 +24,10 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   xai: 'xAI',
   zhipu: 'Z.ai',
   minimax: 'MiniMax',
+  // MiniMax Code's internal routing channels; the mcode reader collapses them
+  // onto `minimax`, so these only catch the same ids arriving from other clients
+  minimax_api: 'MiniMax API',
+  'minimax-legacy': 'MiniMax (legacy)',
   siliconflow: 'SiliconFlow',
   novita: 'Novita',
   volcengine: 'Volcengine Ark',

@@ -211,9 +211,13 @@ function createTray(): void {
 
 // ===== tokscale local agent scanner =====
 
-// Must stay in sync with AGENT_CLIENTS in src/lib/agent-usage.ts (same ids,
-// which also drive the renderer's labels/icons). tokscale accepts each id via
-// `graph --client`; clients without local session dirs are skipped by the CLI.
+// Scanned through `graph --client`. Mostly mirrors AGENT_CLIENTS in
+// src/lib/agent-usage.ts (which also drives the renderer's labels/icons), with
+// one deliberate difference: `mcode` (MiniMax Code) is absent here because
+// tokscale's reader for it only covers headless capture — the main process
+// collects that agent itself (electron/minimax-code-usage.ts) and merges the
+// result, so asking the CLI for it would only add an empty payload.
+// Clients without local session dirs are skipped by the CLI.
 const TOKSCALE_CLIENTS = [
   'codex',
   'claude',
