@@ -237,8 +237,9 @@ async function fetchKimiPlan(
     if (metrics.length > 0) return metrics
   }
 
-  // cc-switch 实测 shapes: `limits: [{ detail: {...} }]` (array of entries) —
-  // defensive support for both the array and the plain object form.
+  // Shapes observed live through cc-switch: `limits: [{ detail: {...} }]`
+  // (array of entries) — defensive support for both the array and the plain
+  // object form.
   const limitDetails: (number | string | undefined)[] = []
   const limitRemainings: (number | string | undefined)[] = []
   const limitResets: (number | string | undefined)[] = []
