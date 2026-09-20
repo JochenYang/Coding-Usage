@@ -96,6 +96,9 @@ export interface Dict {
   provider: {
     balanceLabel: (currency: string) => string
     balanceLabelFallback: string
+    availableBalance: string
+    cashBalance: string
+    voucherBalance: string
     totalBalanceLabel: (currency: string) => string
     topUpBalance: string
     grantBalance: string

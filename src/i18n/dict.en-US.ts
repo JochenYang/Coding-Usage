@@ -96,6 +96,9 @@ export const enUS: Dict = {
   provider: {
     balanceLabel: (currency: string) => `Balance (${currency})`,
     balanceLabelFallback: 'Balance',
+    availableBalance: 'Available balance',
+    cashBalance: 'Cash balance',
+    voucherBalance: 'Vouchers',
     totalBalanceLabel: (currency: string) => `Total balance (${currency})`,
     topUpBalance: 'Topped up',
     grantBalance: 'Granted',

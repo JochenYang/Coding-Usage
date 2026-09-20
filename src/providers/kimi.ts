@@ -95,13 +95,13 @@ export const kimi: ProviderDef = {
       }
       const metric: UsageMetric = {
         id: 'kimi-available',
-        label: '可用余额',
+        label: t.provider.availableBalance,
         kind: 'balance',
         remaining: d.available_balance,
         unit: regionId === 'intl' ? 'USD' : 'CNY',
         detail: [
-          { label: '现金余额', value: d.cash_balance ?? 0 },
-          { label: '代金券', value: d.voucher_balance ?? 0 },
+          { label: t.provider.cashBalance, value: d.cash_balance ?? 0 },
+          { label: t.provider.voucherBalance, value: d.voucher_balance ?? 0 },
         ],
       }
       const metrics: UsageMetric[] = [metric]

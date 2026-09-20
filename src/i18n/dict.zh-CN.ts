@@ -95,6 +95,11 @@ export const zhCN: Dict = {
   provider: {
     balanceLabel: (currency: string) => `账户余额（${currency}）`,
     balanceLabelFallback: '账户余额',
+    // Moonshot names its paid and granted pools cash and vouchers, so its card
+    // keeps this provider's own wording rather than the top-up/granted pair.
+    availableBalance: '可用余额',
+    cashBalance: '现金余额',
+    voucherBalance: '代金券',
     totalBalanceLabel: (currency: string) => `总余额（${currency}）`,
     topUpBalance: '充值余额',
     grantBalance: '赠送余额',
