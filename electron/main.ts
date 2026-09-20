@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
@@ -270,6 +271,18 @@ let tokScanInflight: Promise<TokScanResult> | null = null
 // Failures stay uncached: a fresh login must show up on the very next visit.
 const QUOTA_CACHE_MS = 2 * 60_000
 const quotaCache = new Map<string, { at: number; result: QuotaOutcome }>()
+
+/**
+ * Cache identity for a probe, with the credential folded in as a digest. Two
+ * accounts on the same provider must never share an entry, and the raw key must
+ * not sit in a long-lived map where a heap snapshot could expose it — the
+ * digest is enough to tell one credential from another and is not reversible.
+ */
+function quotaCacheKey(provider: string, credential?: string): string {
+  if (!credential) return provider
+  const digest = createHash('sha256').update(credential).digest('hex').slice(0, 16)
+  return `${provider}:${digest}`
+}
 
 async function cachedQuotaOutcome(
   key: string,
@@ -1042,7 +1055,9 @@ function registerIpc(): void {
   // that is not a non-empty string is dropped here rather than forwarded.
   ipcMain.handle('kimi:usage', async (_event, apiKey?: unknown): Promise<QuotaOutcome> => {
     const key = typeof apiKey === 'string' && apiKey.trim() !== '' ? apiKey : undefined
-    return cachedQuotaOutcome('kimi', () => fetchKimiUsage(net.fetch, homedir(), key))
+    // The credential is part of the cache identity: a second account's key must
+    // not read the first account's cached windows.
+    return cachedQuotaOutcome(quotaCacheKey('kimi', key), () => fetchKimiUsage(net.fetch, homedir(), key))
   })
 
   // Local agent usage scan. Cached in the main process: a full three-period

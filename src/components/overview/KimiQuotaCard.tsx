@@ -26,6 +26,15 @@ const WINDOW_LABELS: Record<KimiWindowId, (t: Dict) => string> = {
 }
 
 /**
+ * Race budget for the main-process probe. `electron/kimi-usage.ts` bounds every
+ * attempt at 10s (PROBE_TIMEOUT_MS) and tries three loopback ports before the
+ * remote endpoint, so a worst-case probe legitimately runs 40s; a shorter race
+ * would declare `timeout` on a probe that was still working. The cleanup in the
+ * effect clears it, so a settled race leaves no live timer behind.
+ */
+const PROBE_RACE_TIMEOUT_MS = 45_000
+
+/**
  * Wallet amount as money. A known currency code becomes its symbol (¥ / $),
  * an unknown one keeps its ISO code as a prefix; a null currency means the
  * payload carried no currency field at all, so the bare number is shown rather
@@ -66,14 +75,16 @@ export function KimiQuotaCard({ className }: { className?: string }) {
     setLoading(true)
     // Race against a hard timeout: the main-process abort is best-effort, and a
     // hung IPC must not leave the card loading forever.
-    const timeout = new Promise<never>((_resolve, reject) =>
-      setTimeout(() => reject(new Error('timeout')), 12_000),
-    )
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error('timeout')), PROBE_RACE_TIMEOUT_MS)
+    })
     // Called with no argument: the main process resolves the local login itself.
     Promise.race([bridge.kimiUsage(), timeout])
       .then((raw) => setVm(summarizeKimiQuota(raw)))
       .catch(() => setVm(summarizeKimiQuota({ available: false, reason: 'timeout' })))
       .finally(() => setLoading(false))
+    return () => clearTimeout(timer)
   }, [])
 
   // Minute-resolution clock so reset countdowns stay live on this card alone
@@ -83,9 +94,11 @@ export function KimiQuotaCard({ className }: { className?: string }) {
   const staleLogin = vm != null && ['http-401', 'http-403'].includes(vm.reason ?? '')
   const wallet = vm?.wallet ?? null
   // The wallet is display garnish: hide the whole block when no amount survived
-  // parsing instead of rendering an empty frame
+  // parsing instead of rendering an empty frame. `total` alone does not count —
+  // only `remaining` and `used` get a row, so a payload carrying just the total
+  // would still draw an empty frame.
   const walletHasAmount =
-    wallet != null && (wallet.remaining != null || wallet.used != null || wallet.total != null)
+    wallet != null && (wallet.remaining != null || wallet.used != null)
 
   return (
     <section className={cn('rounded-2xl border border-border bg-card p-5', className)}>
@@ -95,7 +108,7 @@ export function KimiQuotaCard({ className }: { className?: string }) {
         </span>
         <div className="min-w-0">
           <h2 className="text-sm font-semibold text-foreground">Kimi Code</h2>
-          <p className="truncate text-[11px] text-subtle">{t.kimiQuota.title}</p>
+          <p className="truncate text-[11px] text-subtle">{t.kimiQuota.subtitle}</p>
         </div>
       </div>
 

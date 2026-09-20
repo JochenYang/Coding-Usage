@@ -122,10 +122,21 @@ function asNumber(v: unknown): number | null {
   return null
 }
 
+/**
+ * Reset instant as epoch ms. The endpoints mix encodings: ISO-8601 strings
+ * (quota model) and epoch numbers (legacy model), with epochs arriving in
+ * either seconds or milliseconds. A numeric value below 1e12 is seconds — the
+ * same rule `src/providers/kimi.ts` applies to this endpoint's `resetTime`, so
+ * both surfaces of the same subscription read a countdown identically.
+ */
 function asEpochMs(v: unknown): number | null {
-  if (typeof v !== 'string' || v === '') return null
-  const ms = Date.parse(v)
-  return Number.isFinite(ms) ? ms : null
+  if (typeof v === 'string' && !/^\d+$/.test(v)) {
+    const ms = Date.parse(v)
+    return Number.isFinite(ms) ? ms : null
+  }
+  const n = asNumber(v)
+  if (n == null) return null
+  return n < 1e12 ? n * 1000 : n
 }
 
 function clampPercent(n: number): number {
@@ -167,8 +178,12 @@ function windowIdFromDescriptor(desc: unknown): KimiWindowId | null {
   if (unit.startsWith('hour') && duration === 5) return 'fiveHour'
   if (unit.startsWith('week')) return 'weekly'
   if (unit.startsWith('month')) {
-    // The provider splits a calendar month into a total pool and a coding pool;
-    // both surface as month windows, distinguished by duration when present.
+    // Every month-unit descriptor maps to the total pool. The provider's two
+    // month windows are told apart by the remote quota model's key names
+    // (`limit_month_total` / `limit_month_code`), not by anything this
+    // descriptor carries, so `monthCode` is unreachable from this path: a
+    // descriptor-based payload with both would collapse to the later entry in
+    // `finalize`'s last-write-wins.
     return 'monthTotal'
   }
   if (unit.startsWith('day') && duration === 7) return 'weekly'
@@ -293,8 +308,13 @@ function parseRemote(json: unknown): ParsedUsage | null {
   }
   if (Array.isArray(root.limits)) {
     for (const entry of root.limits) {
-      const e = entry as Record<string, unknown>
-      fromLimitPair(e?.detail ?? e, 'fiveHour')
+      const e = entry as Record<string, unknown> | null
+      const detail = e?.detail && typeof e.detail === 'object' ? (e.detail as Record<string, unknown>) : e
+      // Prefer the entry's own window descriptor: a legacy payload carrying
+      // several windows would otherwise label every one of them `fiveHour`,
+      // and `finalize` keeps only the last write per id — the rest would
+      // silently vanish into that single row.
+      fromLimitPair(detail, windowIdFromDescriptor(e?.window ?? detail?.window) ?? 'fiveHour')
     }
   }
   fromLimitPair(root.usage, 'weekly')
