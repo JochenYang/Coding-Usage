@@ -28,7 +28,7 @@ src/
   components/
     layout/              # AppShell / Sidebar (nav + status card) / TopBar (agent filter / auto-refresh / bell / settings)
     common/              # ProgressBar / StatusDot / Badge / SearchInput / PageHeader / StatCard / EmptyState / Tooltip
-    charts/              # Self-built SVG: LineChart (trend) / DonutChart (distribution)
+    charts/              # Self-built SVG: LineChart / DonutChart / StackedBarLineChart / MultiSeriesChart / ModelCompareChart, shared ChartLegend + ChartTooltip
     overview/            # KpiRow / TrendCard / DistributionCard / AttentionList / AlertsPanel / PlanCardsRow / LocalUsageCard
     account/             # AccountDrawer (single-account editor: alias / key / region / enable / test)
     beui/                # Self-built components: drawer / loader / switch / select / popover / confirm-dialog
@@ -53,6 +53,8 @@ src/
     snapshots.ts         # Local time-series store (trends / today consumption)
     alerts.ts            # Alert derivation engine (window reset / high usage / low balance)
     rates.ts             # Static FX rates for cross-currency totals
+    chart-math.ts        # Shared SVG chart geometry: rounded ticks / compact path data / monotone smoothing
+    trend-analysis.ts    # Trend bucketing + per-model daily series for the trends page (pure, DOM-free)
     agent-usage.ts       # Local AI agent scanner: validates + aggregates tokscale output
   i18n/                  # Locale dictionaries (zh-CN, en-US) + LocaleProvider + useT
 ```
@@ -106,6 +108,7 @@ Packaging config lives in `electron-builder.yml` (appId, win targets, GitHub pub
 - All colors use `var(--color-*)` CSS variables, injected by Tailwind via `@theme`. Add new tokens in `src/index.css` first, then use utility classes.
 - Theme switching is done via `:root.dark` (or `html.dark`) redefining the same CSS variables. Do not hardcode hex values in components with `dark:`.
 - Provider brand gradients: keep the `accent: 'from-xxx to-xxx'` Tailwind class fragment; no need to parse into CSS variables.
+- Chart colours are tokens too: `--color-chart-1..8` is the series palette (`modelColor()` in `src/lib/trend-analysis.ts` picks by ordinal, falling back to a name hash), and `--color-stack-cache` / `-input` / `-output` are the three tiers of a single hue used by the stacked bars.
 - `cn()` (`src/lib/cn.ts:5`) merges classes and resolves conflicts. Use clsx syntax for conditional classes.
 
 ## Animation Conventions

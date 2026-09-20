@@ -323,6 +323,52 @@ export interface Dict {
     monthCol: string
     allTimeCol: string
   }
+  trends: {
+    pageDesc: string
+    /** Range selector */
+    rangeLabel: string
+    rangeAll: string
+    rangeDays: (n: number) => string
+    /** View mode */
+    viewAggregate: string
+    viewByModel: string
+    /** KPI row */
+    kpiTokens: string
+    kpiCalls: string
+    kpiHitRate: string
+    /** Cache split is only reported per day, never per model */
+    hitRateUnavailable: string
+    hitRateUnavailableShort: string
+    kpiSpeed: string
+    /** Speed is apportioned from session-active time, not measured */
+    speedHint: string
+    estimated: string
+    /** Chart titles */
+    chartTrend: string
+    chartSplit: string
+    chartSplitHint: string
+    chartCompare: string
+    chartCompareHint: string
+    /** Series / axis labels */
+    seriesCacheRead: string
+    seriesInput: string
+    seriesOutput: string
+    seriesCalls: string
+    seriesSpeed: string
+    /** Model filter */
+    filterTitle: string
+    filterAll: string
+    filterClear: string
+    filterSelected: (n: number) => string
+    /** States */
+    emptyTitle: string
+    emptyDesc: string
+    gathering: string
+    /** Bucketing note for long ranges */
+    weeklyNote: string
+    /** Filtered view cannot split input from cache */
+    filteredSplitNote: string
+  }
   manage: {
     agentsTitle: string
     agentsDesc: string
