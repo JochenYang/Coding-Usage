@@ -425,6 +425,22 @@ export interface Dict {
       via: (mirror: string) => string
     }
   }
+  /** Kimi Code subscription quota card (local loopback server / remote usages endpoint) */
+  kimiQuota: {
+    title: string
+    subtitle: string
+    windowWeekly: string
+    windowFiveHour: string
+    windowMonthTotal: string
+    windowMonthCode: string
+    windowOther: string
+    noLocalLogin: string
+    staleLogin: string
+    percentNote: string
+    walletTitle: string
+    walletRemaining: string
+    walletUsed: string
+  }
   providerErrors: {
     keyInvalid: string
     badResponse: string
@@ -433,6 +449,9 @@ export interface Dict {
     volcNoWindows: string
     networkFailed: string
     noWindows: string
+    kimiWrongSurface: string
+    kimiQuotaUnavailable: string
+    kimiQuotaNoServer: string
   }
   updater: {
     readyTitle: string

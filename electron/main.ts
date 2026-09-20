@@ -18,6 +18,7 @@ import {
 import { autoUpdater } from 'electron-updater'
 import { fetchClaudeUsage, fetchGeminiUsage, type QuotaOutcome } from './subscription-quotas'
 import { fetchGrokUsage } from './grok-usage'
+import { fetchKimiUsage } from './kimi-usage'
 import { getPricingTable, priceTokens } from './model-pricing'
 import { hasClientEntries, mergeGraphPayloads } from './tokscale-merge'
 import { readMiniMaxCodeUsage } from './minimax-code-usage'
@@ -1031,6 +1032,18 @@ function registerIpc(): void {
     async (): Promise<QuotaOutcome> =>
       cachedQuotaOutcome('grok', () => fetchGrokUsage(net.fetch, homedir())),
   )
+
+  // Kimi Code subscription quota. Two distinct billing surfaces exist and the
+  // probe keeps them apart: a Moonshot platform API key only ever yields a
+  // money balance, while the 5-hour / weekly quota windows live behind the
+  // Kimi Code subscription (local loopback server, or the remote usages
+  // endpoint). The renderer may pass the account's pasted API key so an OAuth
+  // token that the CLI has not refreshed yet cannot mask a valid key; anything
+  // that is not a non-empty string is dropped here rather than forwarded.
+  ipcMain.handle('kimi:usage', async (_event, apiKey?: unknown): Promise<QuotaOutcome> => {
+    const key = typeof apiKey === 'string' && apiKey.trim() !== '' ? apiKey : undefined
+    return cachedQuotaOutcome('kimi', () => fetchKimiUsage(net.fetch, homedir(), key))
+  })
 
   // Local agent usage scan. Cached in the main process: a full three-period
   // scan takes tens of seconds, so repeated renderer refreshes are cheap. Each

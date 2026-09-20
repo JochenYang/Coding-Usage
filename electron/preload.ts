@@ -38,6 +38,9 @@ const desktopBridge: DesktopBridge = {
   claudeUsage: () => ipcRenderer.invoke('claude:usage'),
   geminiUsage: () => ipcRenderer.invoke('gemini:usage'),
   grokUsage: () => ipcRenderer.invoke('grok:usage'),
+  // Optional pasted Kimi Code API key; undefined keeps the probe on the local
+  // OAuth state. main.ts re-validates the argument at the boundary.
+  kimiUsage: (apiKey) => ipcRenderer.invoke('kimi:usage', apiKey),
   settingsBackupWrite: (payload) => ipcRenderer.invoke('settings:backup-write', payload),
   settingsBackupRead: () => ipcRenderer.invoke('settings:backup-read'),
   minimizeWindow: () => ipcRenderer.invoke('window:minimize'),

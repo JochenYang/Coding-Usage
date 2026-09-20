@@ -440,6 +440,22 @@ export const enUS: Dict = {
       via: (mirror: string) => `via ${mirror} mirror`,
     },
   },
+  kimiQuota: {
+    title: 'Kimi Code quota',
+    subtitle: 'Subscription quota · 5-hour / weekly windows',
+    windowWeekly: 'Weekly window',
+    windowFiveHour: '5-hour window',
+    windowMonthTotal: 'Monthly total',
+    windowMonthCode: 'Monthly coding',
+    windowOther: 'Other window',
+    noLocalLogin:
+      'No local Kimi Code login detected, or the local server is not running. Run the Kimi Code CLI to sign in first, or enter a Kimi Code API key below.',
+    staleLogin: 'Your Kimi Code login has expired. Run the Kimi Code CLI again in a terminal to sign in.',
+    percentNote: 'Quota is shown as a share of the plan (percentage); Kimi exposes no absolute token counts.',
+    walletTitle: 'Booster wallet',
+    walletRemaining: 'Remaining',
+    walletUsed: 'Used this month',
+  },
   providerErrors: {
     keyInvalid: 'Invalid key or the request was rejected',
     badResponse: 'Response format changed: available_balance missing',
@@ -448,6 +464,12 @@ export const enUS: Dict = {
     volcNoWindows: 'No quota windows in the Volcengine response',
     networkFailed: 'Network request failed (CORS or unreachable)',
     noWindows: 'No quota windows in the response',
+    kimiWrongSurface:
+      'This key cannot read a balance: the Kimi Code subscription quota and the Moonshot platform balance are two separate systems. See the Kimi Code card on Overview for subscription quota; a balance lookup needs a Moonshot platform API key.',
+    kimiQuotaUnavailable:
+      'Could not read the Kimi Code subscription quota (local server not running, or the key lacks permission).',
+    kimiQuotaNoServer:
+      'No local Kimi Code service or login found, so the subscription quota could not be read.',
   },
   updater: {
     readyTitle: 'Update ready',

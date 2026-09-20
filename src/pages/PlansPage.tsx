@@ -17,6 +17,7 @@ import { CodexQuotaCard } from '@/components/overview/CodexQuotaCard'
 import { ClaudeQuotaCard } from '@/components/overview/ClaudeQuotaCard'
 import { GeminiQuotaCard } from '@/components/overview/GeminiQuotaCard'
 import { GrokQuotaCard } from '@/components/overview/GrokQuotaCard'
+import { KimiQuotaCard } from '@/components/overview/KimiQuotaCard'
 import {
   Select,
   SelectContent,
@@ -323,6 +324,7 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
           <ClaudeQuotaCard />
           <GeminiQuotaCard />
           <GrokQuotaCard />
+          <KimiQuotaCard />
         </div>
       </section>
     </div>
