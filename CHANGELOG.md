@@ -10,6 +10,22 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.6.0] - 2026-09-21
+
+### 中文
+- 智能体管理页新增「Agent 配置」：直接读取并编辑 Kimi Code（`~/.kimi-code/config.toml`）与 MiniMax Code（`~/.minimax/config.yaml`）的 Provider、Base URL、密钥与模型列表，不必再手改配置文件
+- 每个模型可单独发起一次最小请求做连通性测试，结果用图标加短标识直接显示（401/403 是密钥、404 是路径、400/422 是请求被拒、超时是网络），不需要悬停面板
+- 可从服务商拉取模型列表并批量加入，已存在的模型自动过滤；拉取与测试都会在候选路径与两种鉴权风格之间依次回退，因此声明为 Anthropic 协议、实际却用 Bearer 鉴权的网关也能查通
+- 每次写入前自动备份到同目录，写入时比对文件是否被外部改动（不一致就拒绝而不是覆盖），并以临时文件原子替换；删除 Provider 时一并清理指向它的默认模型设置
+- 新增 `smol-toml` 与 `yaml` 两个依赖用于解析两种配置格式，写入会保留未改动的内容（TOML 可逐行不变，YAML 需开启单引号选项才能达到同样效果）
+
+### English
+- The agents page gains an "Agent configuration" section: read and edit the providers, base URLs, credentials and model lists of Kimi Code (`~/.kimi-code/config.toml`) and MiniMax Code (`~/.minimax/config.yaml`) without hand-editing either file
+- Each model can be probed with one minimal live request, and the result appears as a glyph plus a short label (401/403 is the key, 404 the path, 400/422 a rejected body, timeout the network) with no hover panel to open
+- A provider's model list can be fetched and added in bulk, with existing models filtered out; both fetching and probing fall back across candidate paths and both credential styles, so a gateway that declares the Anthropic protocol yet authenticates with a bearer token still answers
+- Every write is backed up beside the file first, refused when the file changed underneath rather than overwritten, and applied as a temporary file plus an atomic replace; removing a provider also clears the default-model pointers into it
+- Adds `smol-toml` and `yaml` for the two config formats; writing preserves what it did not change (TOML line-for-line, YAML once the single-quote option is enabled)
+
 ## [v0.5.10] - 2026-09-18
 
 ### 中文
