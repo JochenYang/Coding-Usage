@@ -13,3 +13,4 @@ test-results
 seed-*.mjs
 seed-*.js
 .playwright-cli/
+.tmp/

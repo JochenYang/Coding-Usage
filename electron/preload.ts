@@ -38,6 +38,17 @@ const desktopBridge: DesktopBridge = {
   claudeUsage: () => ipcRenderer.invoke('claude:usage'),
   geminiUsage: () => ipcRenderer.invoke('gemini:usage'),
   grokUsage: () => ipcRenderer.invoke('grok:usage'),
+  agentConfigRead: (agent) => ipcRenderer.invoke('agentConfig:read', agent),
+  agentConfigReveal: (agent, providerId) =>
+    ipcRenderer.invoke('agentConfig:reveal', agent, providerId),
+  agentConfigSave: (agent, revision, input) =>
+    ipcRenderer.invoke('agentConfig:save', agent, revision, input),
+  agentConfigRemove: (agent, revision, providerId) =>
+    ipcRenderer.invoke('agentConfig:remove', agent, revision, providerId),
+  agentConfigListModels: (agent, providerId, override) =>
+    ipcRenderer.invoke('agentConfig:listModels', agent, providerId, override),
+  agentConfigTestModel: (agent, providerId, modelId) =>
+    ipcRenderer.invoke('agentConfig:testModel', agent, providerId, modelId),
   settingsBackupWrite: (payload) => ipcRenderer.invoke('settings:backup-write', payload),
   settingsBackupRead: () => ipcRenderer.invoke('settings:backup-read'),
   minimizeWindow: () => ipcRenderer.invoke('window:minimize'),

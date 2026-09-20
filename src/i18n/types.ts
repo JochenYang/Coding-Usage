@@ -440,4 +440,102 @@ export interface Dict {
     installNow: string
     later: string
   }
+  agentConfig: {
+    title: string
+    desc: string
+    desktopOnlyTitle: string
+    desktopOnlyDesc: string
+    loading: string
+    notInstalled: (agent: string) => string
+    notInstalledHint: string
+    parseError: string
+    reload: string
+    searchPlaceholder: string
+    noMatch: string
+    providersSummary: (providers: number, models: number) => string
+    addProvider: string
+    edit: string
+    delete: string
+    deleteHint: string
+    builtinBadge: string
+    builtinHint: string
+    migratedBadge: string
+    migratedHint: string
+    protocol: string
+    baseUrl: string
+    baseUrlUnset: string
+    apiKey: string
+    keyUnset: string
+    keyFromEnv: (name: string) => string
+    show: string
+    hide: string
+    revealFailed: string
+    models: string
+    noModels: string
+    modelId: string
+    modelName: string
+    contextLimit: string
+    outputLimit: string
+    capabilities: string
+    efforts: string
+    defaultEffort: string
+    readOnly: string
+    cliMissing: string
+    globalsTitle: string
+    defaultModel: string
+    defaultProvider: string
+    permissionMode: string
+    defaultVariant: string
+    newProviderTitle: string
+    editProviderTitle: string
+    providerName: string
+    providerNamePlaceholder: string
+    providerNameHint: string
+    protocolHint: string
+    baseUrlPlaceholder: string
+    apiKeyPlaceholder: string
+    apiKeyKeepHint: string
+    modelsLabel: string
+    modelIdPlaceholder: string
+    modelNamePlaceholder: string
+    addModel: string
+    removeModel: string
+    save: string
+    cancel: string
+    saving: string
+    savedWithBackup: (path: string) => string
+    saveFailed: (message: string) => string
+    fetchModels: string
+    fetching: string
+    fetchOk: (count: number) => string
+    fetchFailed: (message: string) => string
+    fetchNone: string
+    addSelected: string
+    selectAll: string
+    deselectAll: string
+    modelParams: string
+    inputModalities: string
+    modalityText: string
+    modalityImage: string
+    modalityVideo: string
+    modalityAudio: string
+    modalityPdf: string
+    behaviour: string
+    behaviourToolUse: string
+    behaviourThinking: string
+    behaviourAlwaysThinking: string
+    effortLevels: string
+    effortDefault: string
+    effortUnset: string
+    limitHint: string
+    expandModel: string
+    collapseModel: string
+    testModel: string
+    testing: string
+    testOk: (ms: number) => string
+    testFailed: string
+    testHint: string
+    testTimeout: string
+    testSuccess: string
+  }
 }

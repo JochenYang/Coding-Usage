@@ -4,6 +4,15 @@
  * Electron; the plain browser dev path must work without it (hence optional).
  */
 import type { AlertItem } from './lib/alerts'
+import type {
+  AgentConfigPayload,
+  AgentId,
+  AgentKeyReveal,
+  AgentModelListResult,
+  AgentModelTestResult,
+  AgentProviderInput,
+  AgentWriteResult,
+} from './lib/agent-config'
 
 export {}
 
@@ -116,6 +125,37 @@ declare global {
     geminiUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Grok Build (SuperGrok) quota via the local `grok login` state; body is a normalized {percent,resetsAt,plan,email} */
     grokUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /** Read one coding agent's provider configuration; credentials arrive masked */
+    agentConfigRead(agent: AgentId): Promise<AgentConfigPayload>
+    /** Reveal one provider's plaintext credential — only on an explicit user request */
+    agentConfigReveal(agent: AgentId, providerId: string): Promise<AgentKeyReveal>
+    /** Create or update one provider; `revision` is the compare-and-swap token from the read */
+    agentConfigSave(
+      agent: AgentId,
+      revision: string,
+      input: AgentProviderInput,
+    ): Promise<AgentWriteResult>
+    /** Delete one provider and clear every pointer into it */
+    agentConfigRemove(agent: AgentId, revision: string, providerId: string): Promise<AgentWriteResult>
+    /**
+     * Ask a provider which models it serves (main-process request).
+     * `override` supplies values not saved yet, so a provider being created can
+     * be queried too; anything omitted is read from the config file.
+     */
+    agentConfigListModels(
+      agent: AgentId,
+      providerId: string,
+      override?: { baseUrl?: string; apiKey?: string; protocol?: string },
+    ): Promise<AgentModelListResult>
+    /**
+     * Send one minimal live request through a configured model. `modelId` is the
+     * wire name; this costs tokens, so it only runs on an explicit user action.
+     */
+    agentConfigTestModel(
+      agent: AgentId,
+      providerId: string,
+      modelId: string,
+    ): Promise<AgentModelTestResult>
     /** Mirror the encrypted v3 settings document to a userData file */
     settingsBackupWrite(payload: string): Promise<void>
     /** Read the mirrored settings document, or null when none exists */

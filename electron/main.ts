@@ -40,6 +40,22 @@ import {
   stopIlinkSession,
 } from './weixin-session'
 import { initIslandWindow, islandHide, islandSetClickThrough, islandShow } from './island-window'
+import {
+  listAgentProviderModels,
+  readAgentConfig,
+  removeAgentProvider,
+  revealAgentKey,
+  saveAgentProvider,
+  testAgentModel,
+} from './agent-config-service'
+import { parseProviderInput } from '../src/lib/agent-config'
+import type {
+  AgentConfigPayload,
+  AgentKeyReveal,
+  AgentModelListResult,
+  AgentModelTestResult,
+  AgentWriteResult,
+} from '../src/lib/agent-config'
 
 // Tray icon: 16x16 solid indigo (#6366F1) RGBA PNG. Generated offline with a
 // small Node script (hand-built PNG chunks + zlib deflate) and inlined as base64
@@ -1060,6 +1076,89 @@ function registerIpc(): void {
     tokScanInflight = pending
     return pending
   })
+
+  // ===== Agent configuration (kimicode / mcode) =====
+  //
+  // Every handler is a thin wrapper. Parsing, credential masking and the
+  // compare-and-swap live in agent-config-service.ts, which returns masked
+  // previews only — the plaintext of a credential leaves the main process sole
+  // through `agentConfig:reveal`, and only for the one provider the user asked
+  // to see.
+  ipcMain.handle('agentConfig:read', async (_event, agent: unknown): Promise<AgentConfigPayload> => {
+    return readAgentConfig(agent === 'mcode' ? 'mcode' : 'kimi')
+  })
+
+  ipcMain.handle(
+    'agentConfig:reveal',
+    async (_event, agent: unknown, providerId: unknown): Promise<AgentKeyReveal> => {
+      if (typeof providerId !== 'string' || providerId.length === 0) {
+        return { ok: false, message: 'invalid-provider' }
+      }
+      return revealAgentKey(agent === 'mcode' ? 'mcode' : 'kimi', providerId)
+    },
+  )
+
+  ipcMain.handle(
+    'agentConfig:save',
+    async (_event, agent: unknown, revision: unknown, input: unknown): Promise<AgentWriteResult> => {
+      const parsed = parseProviderInput(input)
+      if (!parsed) return { ok: false, reason: 'invalid', message: 'invalid provider payload' }
+      return saveAgentProvider(agent === 'mcode' ? 'mcode' : 'kimi', typeof revision === 'string' ? revision : '', parsed)
+    },
+  )
+
+  ipcMain.handle(
+    'agentConfig:remove',
+    async (_event, agent: unknown, revision: unknown, providerId: unknown): Promise<AgentWriteResult> => {
+      if (typeof providerId !== 'string' || providerId.length === 0) {
+        return { ok: false, reason: 'invalid', message: 'invalid provider id' }
+      }
+      return removeAgentProvider(agent === 'mcode' ? 'mcode' : 'kimi', typeof revision === 'string' ? revision : '', providerId)
+    },
+  )
+
+  // Ask a configured provider which models it serves. The request runs here, so
+  // there is no CORS preflight and the credential never leaves this machine.
+  ipcMain.handle(
+    'agentConfig:listModels',
+    async (
+      _event,
+      agent: unknown,
+      providerId: unknown,
+      override: unknown,
+    ): Promise<AgentModelListResult> => {
+      if (typeof providerId !== 'string') return { ok: false, message: 'invalid provider id' }
+      const patch: { baseUrl?: string; apiKey?: string; protocol?: string } = {}
+      if (typeof override === 'object' && override !== null) {
+        const raw = override as Record<string, unknown>
+        if (typeof raw.baseUrl === 'string' && raw.baseUrl.trim()) patch.baseUrl = raw.baseUrl.trim()
+        if (typeof raw.apiKey === 'string' && raw.apiKey.trim()) patch.apiKey = raw.apiKey.trim()
+        if (typeof raw.protocol === 'string' && raw.protocol.trim()) patch.protocol = raw.protocol.trim()
+      }
+      return listAgentProviderModels(agent === 'mcode' ? 'mcode' : 'kimi', providerId, patch)
+    },
+  )
+
+  // One minimal live request through a configured model. Deliberately a
+  // separate channel from the read path: it costs tokens, so it only ever runs
+  // when the user clicks test.
+  ipcMain.handle(
+    'agentConfig:testModel',
+    async (
+      _event,
+      agent: unknown,
+      providerId: unknown,
+      modelId: unknown,
+    ): Promise<AgentModelTestResult> => {
+      if (typeof providerId !== 'string' || providerId.length === 0) {
+        return { ok: false, message: 'invalid provider id' }
+      }
+      if (typeof modelId !== 'string' || modelId.length === 0) {
+        return { ok: false, message: 'invalid model id' }
+      }
+      return testAgentModel(agent === 'mcode' ? 'mcode' : 'kimi', providerId, modelId)
+    },
+  )
 }
 
 // ===== auto-update =====
