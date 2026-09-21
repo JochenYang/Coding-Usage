@@ -11,6 +11,7 @@ import { StackedBarLineChart } from '@/components/charts/StackedBarLineChart'
 import { MultiSeriesChart } from '@/components/charts/MultiSeriesChart'
 import { ModelCompareChart } from '@/components/charts/ModelCompareChart'
 import { formatCompactValue } from '@/lib/format'
+import { buildTrendPoints } from '@/lib/overview'
 import { cn } from '@/lib/cn'
 import {
   RANGE_DAYS,
@@ -79,8 +80,26 @@ export function TrendsPage() {
         messages: 0,
       }))
     }
+    // Provider snapshots are the only history an account without local agent
+    // logs has, and the previous implementation charted them. Without this the
+    // API-only mode falls through to the normal render with an empty series and
+    // shows "gathering" placeholders permanently. Shaped like the archive
+    // points above: a total only, with the genuinely absent dimensions at zero.
+    const apiFallback = buildTrendPoints(sections)
+    if (apiFallback.length >= 2) {
+      return apiFallback.map((p) => ({
+        label: p.label,
+        value: p.value,
+        input: p.value,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        activeTimeMs: 0,
+        messages: 0,
+      }))
+    }
     return []
-  }, [agentUsage.dailySeries, archived])
+  }, [agentUsage.dailySeries, archived, sections])
 
   /**
    * Model-filtered view. `modelDaily` carries no input/cache split (tokscale

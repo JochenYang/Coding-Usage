@@ -78,9 +78,23 @@ export function loadCachedAgentUsage(): AgentUsageVM | null {
     if (!raw) return null
     const parsed: unknown = JSON.parse(raw)
     if (!isValidUsageVM(parsed)) return null
-    // Normalize the newer field: caches written before the field existed
+    // Normalize the newer fields: caches written before a field existed
     // deserialize without it (undefined), which is not the declared type.
-    return { ...parsed, skippedClients: Array.isArray(parsed.skippedClients) ? parsed.skippedClients : null }
+    //
+    // `modelDaily` must be normalized here rather than trusted, because the
+    // trends page iterates it unconditionally — a cache from a build that
+    // predates it would otherwise throw during render, and with no error
+    // boundary above the page that unmounts the whole tree and blanks the
+    // window for every upgrading user until a scan completes.
+    return {
+      ...parsed,
+      skippedClients: Array.isArray(parsed.skippedClients) ? parsed.skippedClients : null,
+      modelDaily: Array.isArray(parsed.modelDaily) ? parsed.modelDaily : [],
+      activeTimeByClient:
+        parsed.activeTimeByClient !== null && typeof parsed.activeTimeByClient === 'object'
+          ? parsed.activeTimeByClient
+          : {},
+    }
   } catch {
     return null
   }
