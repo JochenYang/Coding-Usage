@@ -90,10 +90,6 @@ export function loadCachedAgentUsage(): AgentUsageVM | null {
       ...parsed,
       skippedClients: Array.isArray(parsed.skippedClients) ? parsed.skippedClients : null,
       modelDaily: Array.isArray(parsed.modelDaily) ? parsed.modelDaily : [],
-      activeTimeByClient:
-        parsed.activeTimeByClient !== null && typeof parsed.activeTimeByClient === 'object'
-          ? parsed.activeTimeByClient
-          : {},
     }
   } catch {
     return null

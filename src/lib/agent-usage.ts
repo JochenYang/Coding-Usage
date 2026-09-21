@@ -134,13 +134,6 @@ export interface AgentUsageVM {
    * the scan carries no model ids. Sorted by total tokens descending.
    */
   modelDaily: ModelDailySeriesVM[]
-  /**
-   * Active time (ms) per client id, summed over the whole span. Only clients
-   * that reported a `client` field appear. Used to split the day-level
-   * `activeTimeMs` (which tokscale reports per day, not per client) so a
-   * model-filtered tok/s stays proportional instead of reusing the full day.
-   */
-  activeTimeByClient: Record<string, number>
   /** Client ids whose scan failed in the degraded per-client fallback; null when clean */
   skippedClients: string[] | null
   /** Per-client failure reason keyed by client id (mirrors skippedClients); absent on old payloads */
@@ -166,8 +159,8 @@ interface GraphContribution {
   /**
    * Session-active milliseconds for the day. tokscale reports this per
    * contribution (day), never per client, so it cannot be attributed to a
-   * single model exactly — see `activeTimeByClient` for the split used when a
-   * model filter is active.
+   * single model exactly; `buildModelRows` splits it pro-rata by call count
+   * when a model filter is active.
    */
   activeTimeMs?: number
   clients?: {
@@ -315,7 +308,6 @@ function emptyVM(
     monthCostByModel: [],
     dailySeries: [],
     modelDaily: [],
-    activeTimeByClient: {},
     skippedClients,
     skippedDetails,
     scannedAt: null,
@@ -482,7 +474,6 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
   // Per-model daily accumulation. Built alongside the day series (not in a
   // second pass) so both stay index-aligned with `contribs` by construction.
   const modelDays = new Map<string, { output: number[]; messages: number[]; total: number[] }>()
-  const activeTimeByClient: Record<string, number> = {}
 
   const dailySeries = contribs.map((c) => {
     const byModel = new Map<string, number>()
@@ -517,7 +508,6 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
   // Fill the per-model matrices now that the day count is known: every model
   // gets a row as long as the whole span, zero-filled on days it was unused
   // (a sparse row would silently shift one model's data onto another's days).
-  const modelIndex = new Map<string, number>()
   for (const [i, c] of contribs.entries()) {
     for (const e of c.clients ?? []) {
       const model = typeof e.modelId === 'string' && e.modelId ? e.modelId : null
@@ -526,7 +516,6 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
       if (!row) {
         row = { output: new Array(contribs.length).fill(0), messages: new Array(contribs.length).fill(0), total: new Array(contribs.length).fill(0) }
         modelDays.set(model, row)
-        modelIndex.set(model, modelIndex.size)
       }
       const t =
         numberOr(e.tokens?.input) +
@@ -536,22 +525,6 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
       row.output[i] += numberOr(e.tokens?.output)
       row.messages[i] += numberOr(e.messages)
       row.total[i] += t
-    }
-    // Day-level active time has no per-client split (tokscale reports one
-    // figure for the day), so each client is credited with its share of that
-    // day's messages — the same apportionment `buildModelRows` applies to a
-    // model. This is an estimate derived from call counts, not a measurement.
-    // A day with no recorded messages contributes nothing, so an untracked day
-    // cannot hand a client time it never showed.
-    const dayActiveMs = numberOr(c.activeTimeMs)
-    const dayMessages = numberOr(c.totals.messages)
-    if (dayActiveMs > 0 && dayMessages > 0) {
-      for (const e of c.clients ?? []) {
-        const owner = typeof e.client === 'string' && e.client ? e.client : null
-        if (!owner) continue
-        activeTimeByClient[owner] =
-          (activeTimeByClient[owner] ?? 0) + dayActiveMs * (numberOr(e.messages) / dayMessages)
-      }
     }
   }
 
@@ -582,7 +555,6 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
     monthCostByModel: sortedByCost([...monthByModel.entries()], monthModelPriced),
     dailySeries,
     modelDaily,
-    activeTimeByClient,
     skippedClients,
     skippedDetails,
     // The real scan time from the main process (kept stable across its
