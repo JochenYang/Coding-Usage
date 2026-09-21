@@ -199,6 +199,25 @@ export function TrendsPage() {
     setPicked((prev) => (prev.includes(model) ? prev.filter((m) => m !== model) : [...prev, model]))
   }
 
+  /**
+   * Footnote for the main chart card, which annotates the chart directly above
+   * it. Each note is therefore gated on the view whose chart it describes:
+   * weekly bucketing and the output-speed series exist only in the aggregate
+   * stack, and the per-model chart plots daily points, so neither is true of it.
+   *
+   * A model filter is the exception — it collapses input and cache for the whole
+   * page, the KPI row included, so that note holds in either view.
+   */
+  const chartNote = isFiltered
+    ? t.trends.filteredSplitNote
+    : view !== 'aggregate'
+      ? ''
+      : windowed.length > 30
+        ? t.trends.weeklyNote
+        : windowed.length > 0
+          ? t.trends.speedHint
+          : ''
+
   return (
     <div className="space-y-4">
       <PageHeader title={t.nav.trends} description={t.trends.pageDesc} />
@@ -397,15 +416,7 @@ export function TrendsPage() {
             <p className="py-10 text-center text-xs text-subtle">{t.trends.gathering}</p>
           )}
         </div>
-        <p className="mt-2 text-[11px] text-subtle">
-          {isFiltered
-            ? t.trends.filteredSplitNote
-            : windowed.length > 30
-              ? t.trends.weeklyNote
-              : windowed.length > 0
-                ? t.trends.speedHint
-                : ''}
-        </p>
+        {chartNote !== '' && <p className="mt-2 text-[11px] text-subtle">{chartNote}</p>}
       </section>
 
       {/* Model comparison */}
