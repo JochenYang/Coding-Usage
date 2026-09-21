@@ -10,6 +10,24 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- 智能体配置新增 OpenCode：同时识别两代配置写法（v1 的 `provider` / `npm` / `options` 与 v2 的 `providers` / `package` / `settings`），并把模型的 `variants` 键当作推理档位；本机 v2.0.10 实测仍读 v1 布局，因此按文件已有形态读写而不做迁移
+- 已保存模型的 ID 现在可以修改：ID 就是配置里的键，改动按「移动记录」处理 —— 旧键删除、字段原样带到新键、指向它的默认模型指针一并跟随；kimicode 的上游模型名只在恰好等于旧 ID 时跟随，本来就指向别处的保持不动
+- 补齐三个 Agent 的凭据形态：除明文密钥外，还识别 `{env:NAME}` 引用与 provider 级 `env: [...]` 候选列表，按顺序取第一个已设置的变量；一个都没设置时明确报出变量名，不再笼统地回一句「没有可用的凭据」
+- 新增 Kimi Code 订阅额度卡（套餐计划页）：显示 5 小时 / 每周 / 每月窗口的已用百分比与重置倒计时，凭据不出主进程（PR #2，感谢 @billowliu2）
+- Kimi 适配器把两套计费面分开：Moonshot 平台密钥只能查余额、Kimi Code 令牌只能查订阅额度，任一面被拒时给出该面的可操作提示，而不是一律报「密钥无效」（PR #2，感谢 @billowliu2）
+- 趋势分析页的图表重做：抽出共享的刻度、标签抽稀、单调样条、柱形几何与图例提示层，曲线改用单调三次插值因此不再低于零点，堆叠柱改用同一色相的三级，模型对比改为排行列表（PR #3，感谢 @billowliu2）
+
+### English
+- The agent configuration section gains OpenCode: it reads both config generations (v1 `provider` / `npm` / `options` and v2 `providers` / `package` / `settings`) and treats a model's `variants` keys as its reasoning ladder; the installed v2.0.10 still reads the v1 layout, so the file is written back in whichever shape it already uses rather than migrated
+- A saved model's ID can now be changed: the ID is the record's key, so the edit moves it — the old key is removed, every untouched field lands under the new one, and default-model pointers follow it; kimicode's upstream model name follows only when it was exactly the old ID, and stays put otherwise
+- All three agents' credential forms are understood: besides a literal key, an `{env:NAME}` reference and a provider-level `env: [...]` candidate list are resolved in order, and an unset variable is now named instead of reported as a generic missing credential
+- New Kimi Code subscription quota card on the plans page: the 5-hour / weekly / monthly windows as used percentages with reset countdowns, and the credential never leaves the main process (PR #2, thanks to @billowliu2)
+- The Kimi adapter separates the two billing surfaces: a Moonshot platform key only ever yields the balance and a Kimi Code token only the subscription quota, so a rejection on one is reported in that surface's own terms instead of a blanket "invalid key" (PR #2, thanks to @billowliu2)
+- The trends page's charts are rebuilt around shared primitives (ticks, label thinning, monotone spline, bar geometry, legend and tooltip); the curves use monotone cubic interpolation and no longer dip below zero, stacked bars step through one hue, and the model comparison becomes a ranked list (PR #3, thanks to @billowliu2)
+
 ## [v0.6.0] - 2026-09-21
 
 ### 中文
