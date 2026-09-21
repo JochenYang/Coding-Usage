@@ -429,6 +429,7 @@ export const zhCN: Dict = {
     cancel: '取消',
     confirm: '确定',
     confirmTitle: '请确认',
+    chartKeyboardHint: '用左右方向键逐个查看数据点',
   },
   prefs: {
     appearance: '外观',

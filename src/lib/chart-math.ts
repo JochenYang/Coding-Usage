@@ -30,11 +30,12 @@ export function r2(n: number): number {
 
 /**
  * Build "nice" ticks (steps of 1/2/5 x 10^k) from 0 up to a rounded max covering
- * `max`. A non-positive max falls back to 1 so callers always get a usable axis
- * instead of an empty one.
+ * `max`. A non-positive or non-finite max falls back to 1 so callers always get
+ * a usable axis — `Infinity` and `NaN` both fail the comparison, and an infinite
+ * max would otherwise divide into a zero step, returning no ticks at all.
  */
 export function niceTicks(max: number): number[] {
-  const safeMax = max > 0 ? max : 1
+  const safeMax = Number.isFinite(max) && max > 0 ? max : 1
   const rawStep = safeMax / TICK_COUNT
   const magnitude = 10 ** Math.floor(Math.log10(rawStep))
   const normalized = rawStep / magnitude

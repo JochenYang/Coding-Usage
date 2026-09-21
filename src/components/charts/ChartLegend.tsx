@@ -1,3 +1,4 @@
+import { useReducedMotion } from 'motion/react'
 import { cn } from '@/lib/cn'
 
 /** One legend entry; the swatch shape follows the mark it explains */
@@ -29,17 +30,35 @@ export interface ChartLegendProps {
  * to stay reachable to switch it back on.
  */
 export function ChartLegend({ items, className }: ChartLegendProps) {
+  // Called before the empty-list return: a hook may not sit behind an early
+  // exit. The toggle fades its swatch, and that fade is what reduced motion
+  // suppresses — the dimming itself stays, because it is the only signal that a
+  // series has been switched off.
+  const reduced = useReducedMotion()
   if (items.length === 0) return null
 
   return (
-    <ul className={cn('flex flex-wrap items-center justify-center gap-x-4 gap-y-1', className)}>
+    <ul
+      // Test hook: scopes a check to the legend of the chart on screen, which is
+      // the only place the "no two drawn series share a colour" invariant can be
+      // asserted (the model list below may repeat entries by design).
+      data-chart-legend=""
+      className={cn('flex flex-wrap items-center justify-center gap-x-4 gap-y-1', className)}
+    >
       {items.map((item) => {
         const off = item.onClick != null && item.active === false
         const swatch = (
           <span
             aria-hidden="true"
+            // Test hook: the swatch is aria-hidden and its label is a sibling, so
+            // this is the only way to tie a rendered colour back to the entry it
+            // belongs to. The value is the legend item's own id — a model name in
+            // the model lists, a stack tier ('input', 'speed', …) in the
+            // aggregate legend — so a check must scope itself to one of those.
+            data-swatch={item.id}
             className={cn(
-              'shrink-0 transition-opacity',
+              'shrink-0',
+              !reduced && 'transition-opacity',
               item.shape === 'square' ? 'h-2.5 w-2.5 rounded-[3px]' : 'h-2 w-2 rounded-full',
             )}
             style={{ backgroundColor: item.color, opacity: off ? 0.3 : 1 }}

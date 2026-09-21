@@ -47,14 +47,20 @@ export function ChartTooltip({ title, rows, note, className, style }: ChartToolt
           {rows.map((row) => (
             <div key={row.label} className="flex items-center justify-between gap-3 tabular-nums">
               <span className="flex min-w-0 items-center gap-1.5">
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    'shrink-0',
-                    row.shape === 'square' ? 'h-2 w-2 rounded-[3px]' : 'h-2 w-2 rounded-full',
-                  )}
-                  style={{ backgroundColor: row.color }}
-                />
+                {/* The swatch is only drawn for rows tied to a plotted series.
+                    Rendering it unconditionally left a colourless 8px box plus
+                    its gap on rows that have no colour, which read as an
+                    unexplained indent. */}
+                {row.color !== undefined && (
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      'shrink-0',
+                      row.shape === 'square' ? 'h-2 w-2 rounded-[3px]' : 'h-2 w-2 rounded-full',
+                    )}
+                    style={{ backgroundColor: row.color }}
+                  />
+                )}
                 <span className="truncate">{row.label}</span>
               </span>
               <span className="text-foreground/90">{row.value}</span>

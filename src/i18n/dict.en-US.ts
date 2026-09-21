@@ -441,6 +441,7 @@ export const enUS: Dict = {
     cancel: 'Cancel',
     confirm: 'Confirm',
     confirmTitle: 'Please confirm',
+    chartKeyboardHint: 'Use the left and right arrow keys to step through the points',
   },
   prefs: {
     appearance: 'Appearance',

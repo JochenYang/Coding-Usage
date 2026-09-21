@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import { cn } from '@/lib/cn'
 import { formatCompactValue } from '@/lib/format'
 import { CHART_W, labelIndexes, niceTicks, r2, smoothPath } from '@/lib/chart-math'
+import { useChartKeyboard } from '@/lib/hooks/use-chart-keyboard'
 import { ChartTooltip } from './ChartTooltip'
 
 export interface LineChartPoint {
@@ -20,6 +21,8 @@ export interface LineChartProps {
   formatValue?: (n: number) => string
   /** Accessible description announced for the chart image role */
   ariaLabel?: string
+  /** Appended to the accessible name; see MultiSeriesChart for why it exists */
+  keyboardHint?: string
   /** Extra classes appended to the wrapper div */
   className?: string
 }
@@ -39,6 +42,7 @@ export function LineChart({
   height = 220,
   formatValue,
   ariaLabel,
+  keyboardHint,
   className,
 }: LineChartProps) {
   // Hooks must run before the early empty-state return
@@ -47,6 +51,8 @@ export function LineChart({
   const gradientId = `line-grad-${rawId.replace(/[^a-zA-Z0-9_-]/g, '')}`
   const fmt = formatValue ?? formatCompactValue
   const [hover, setHover] = useState<number | null>(null)
+  // Also before the early return: hooks may not sit behind an early exit
+  const { keyboard, frameProps } = useChartKeyboard(points.length, hover, setHover)
   // Same stale-hover hazard as Heatmap: the auto-refresh swaps svg nodes
   // mid-hover and mouseleave never fires on the detached tree
   useEffect(() => {
@@ -101,9 +107,25 @@ export function LineChart({
   }
 
   const active = hover != null ? coords[hover]! : null
+  const activeDetail = (active?.point.detail ?? []).slice(0, 5)
+  // One title, so the bubble and its spoken form cannot drift apart.
+  const activeTitle = active ? `${active.point.label} · ${fmt(active.point.value)}` : ''
+
+  // Read out through a live region inside the frame: `role="group"` leaves the
+  // subtree exposed (an `img` frame would have made it presentational). The
+  // separator is the typographic one the bubble's title already uses.
+  const announcement =
+    keyboard && active
+      ? [activeTitle, ...activeDetail.map((d) => `${d.label} ${fmt(d.value)}`)].join(' · ')
+      : ''
 
   return (
-    <div role="img" aria-label={ariaLabel} className={cn('relative w-full', className)}>
+    <div
+      role="group"
+      aria-label={[ariaLabel, keyboardHint].filter(Boolean).join(' · ') || undefined}
+      {...frameProps}
+      className={cn('relative w-full outline-none focus-visible:ring-2 focus-visible:ring-accent/60', className)}
+    >
       <svg
         viewBox={`0 0 ${W} ${H}`}
         width="100%"
@@ -213,7 +235,7 @@ export function LineChart({
           otherwise bleed past the card top). */}
       {active &&
         (() => {
-          const detail = active.point.detail ?? []
+          const detail = activeDetail
           // Headroom the bubble needs, as a fraction of chart height: a tall
           // detail bubble near a peak has nowhere to go above the point
           const needRoom = detail.length > 0 ? 0.34 : 0.14
@@ -221,8 +243,8 @@ export function LineChart({
           const edge = active.x / W < 0.15 || active.x / W > 0.85
           return (
             <ChartTooltip
-              title={`${active.point.label} · ${fmt(active.point.value)}`}
-              rows={detail.slice(0, 5).map((d) => ({ label: d.label, value: fmt(d.value) }))}
+              title={activeTitle}
+              rows={activeDetail.map((d) => ({ label: d.label, value: fmt(d.value) }))}
               className={edge ? (active.x / W < 0.15 ? 'left-0' : 'right-0') : ''}
               style={{
                 top: `${(active.y / H) * 100}%`,
@@ -238,6 +260,13 @@ export function LineChart({
             />
           )
         })()}
+
+      {/* Inside the frame rather than beside it: `role="group"` leaves its
+          subtree exposed, so this is announced, while an `img` frame would have
+          made it presentational. */}
+      <div aria-live="polite" className="sr-only">
+        {announcement}
+      </div>
     </div>
   )
 }

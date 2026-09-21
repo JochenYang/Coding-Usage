@@ -50,7 +50,13 @@ export function TrendCard({ points, className }: TrendCardProps) {
 
       {points.length >= 2 ? (
         <div className="mt-3 flex-1">
-          <LineChart points={points} height={200} className="w-full" />
+          <LineChart
+            points={points}
+            height={200}
+            className="w-full"
+            ariaLabel={t.overview.trendTitle}
+            keyboardHint={t.common.chartKeyboardHint}
+          />
         </div>
       ) : (
         // Centered placeholder until at least two days of data exist

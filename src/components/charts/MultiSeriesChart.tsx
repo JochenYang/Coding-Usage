@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/cn'
 import { formatCompactValue } from '@/lib/format'
 import { CHART_W, labelIndexes, niceTicks, r2, smoothPath } from '@/lib/chart-math'
+import { useChartKeyboard } from '@/lib/hooks/use-chart-keyboard'
 import { ChartLegend, type LegendItem } from './ChartLegend'
 import { ChartTooltip, tooltipAnchor, type TooltipRow } from './ChartTooltip'
 
@@ -42,6 +43,12 @@ export interface MultiSeriesChartProps {
   /** Makes the legend entries toggle their series (the caller owns the state) */
   onToggleSeries?: (id: string) => void
   ariaLabel?: string
+  /**
+   * Appended to the accessible name. The frame is focusable so the arrow keys
+   * can drive the readout, and a focusable element has to say what it responds
+   * to — otherwise the capability is invisible to the users who need it.
+   */
+  keyboardHint?: string
   className?: string
 }
 
@@ -56,10 +63,13 @@ export function MultiSeriesChart({
   valueLabel,
   onToggleSeries,
   ariaLabel,
+  keyboardHint,
   className,
 }: MultiSeriesChartProps) {
   const fmt = formatValue ?? formatCompactValue
   const [hover, setHover] = useState<number | null>(null)
+  // Before the empty-state return below: hooks may not sit behind an early exit
+  const { keyboard, frameProps } = useChartKeyboard(labels.length, hover, setHover)
   // Keyed on a content signature rather than on the array identities: callers
   // rebuild `labels` on every render, and depending on it cleared the hover each
   // time — the tooltip never survived a frame. The intent is only to drop a
@@ -118,23 +128,64 @@ export function MultiSeriesChart({
     setHover(best)
   }
 
-  // Rank rows for the tooltip at the hovered index (largest first), skipping
-  // series that were idle that day — a wall of zeros hides the real mix.
-  const activeRows: TooltipRow[] =
+  // Rank rows at the hovered index (largest first), skipping series that were
+  // idle that day — a wall of zeros hides the real mix. Ranked once and rendered
+  // twice: the bubble needs the short name, which fits its width, while the
+  // announcement needs the full id, since a screen reader has no width to fit
+  // and an ellipsis is all a listener would hear.
+  const activeRanked =
     hover == null
       ? []
       : series
-          .map((s) => ({ label: s.name, color: s.color, value: s.values[hover] ?? 0 }))
+          .map((s) => ({ id: s.id, name: s.name, color: s.color, value: s.values[hover] ?? 0 }))
           .filter((r) => r.value > 0)
           .sort((a, b) => b.value - a.value)
           .slice(0, 8)
-          .map((r) => ({ label: r.label, color: r.color, value: fmt(r.value), shape: 'dot' as const }))
+
+  const activeRows: TooltipRow[] = activeRanked.map((r) => ({
+    label: r.name,
+    color: r.color,
+    value: fmt(r.value),
+    shape: 'dot' as const,
+  }))
+
+  // The crosshair marks the point a bubble describes. With nothing to show —
+  // every series idle that day — it would point at empty space, so it follows
+  // the bubble rather than the raw hover index.
+  const shown = hover != null && activeRows.length > 0 ? hover : null
+
+  // Read out through a live region beside the plot rather than inside it: the
+  // announcement is then one stable node whose text changes, instead of a node
+  // that appears and disappears with the hovered point. The unit travels with
+  // the numbers (the bubble shows it only as a footnote) and the separator is
+  // the typographic one the KPI rows already use, so nothing needs translating.
+  //
+  // A day with no usage announces its position with a zero rather than going
+  // silent: the bubble is suppressed there too, and silence would leave a
+  // keyboard user unable to tell a working arrow key from a lost one.
+  const announcement =
+    keyboard && hover != null
+      ? [
+          labels[hover],
+          valueLabel,
+          ...(activeRanked.length > 0
+            ? activeRanked.map((r) => `${r.id} ${fmt(r.value)}`)
+            : ['0']),
+        ]
+          .filter(Boolean)
+          .join(' · ')
+      : ''
 
   return (
     <div className={cn('w-full', className)}>
       <ChartLegend items={legendItems} className="mb-1" />
 
-      <div role="img" aria-label={ariaLabel} className="relative w-full">
+      <div
+        role="group"
+        aria-label={[ariaLabel, keyboardHint].filter(Boolean).join(' · ') || undefined}
+        {...frameProps}
+        className="relative w-full outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+      >
         <svg
           viewBox={`0 0 ${W} ${H}`}
           width="100%"
@@ -180,11 +231,11 @@ export function MultiSeriesChart({
             )
           })}
 
-          {hover != null && (
+          {shown != null && (
             <>
               <line
-                x1={r2(xAt(hover))}
-                x2={r2(xAt(hover))}
+                x1={r2(xAt(shown))}
+                x2={r2(xAt(shown))}
                 y1={PAD.top}
                 y2={baselineY}
                 stroke="var(--color-foreground)"
@@ -194,8 +245,8 @@ export function MultiSeriesChart({
               {series.map((s) => (
                 <circle
                   key={`d-${s.id}`}
-                  cx={r2(xAt(hover))}
-                  cy={r2(yAt(s.values[hover] ?? 0))}
+                  cx={r2(xAt(shown))}
+                  cy={r2(yAt(s.values[shown] ?? 0))}
                   r={3.5}
                   fill={s.color}
                   stroke="var(--color-card)"
@@ -220,14 +271,18 @@ export function MultiSeriesChart({
           ))}
         </svg>
 
-        {hover != null && activeRows.length > 0 && (
+        {shown != null && (
           <ChartTooltip
-            title={labels[hover]!}
+            title={labels[shown]!}
             rows={activeRows}
             note={activeRows.length === 1 ? valueLabel : undefined}
-            {...tooltipAnchor(xAt(hover) / W, '6px')}
+            {...tooltipAnchor(xAt(shown) / W, '6px')}
           />
         )}
+      </div>
+
+      <div aria-live="polite" className="sr-only">
+        {announcement}
       </div>
     </div>
   )

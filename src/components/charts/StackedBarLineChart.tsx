@@ -1,8 +1,8 @@
 import { useEffect, useId, useState } from 'react'
-import { useReducedMotion } from 'motion/react'
 import { cn } from '@/lib/cn'
 import { formatCompactValue } from '@/lib/format'
 import { CHART_W, barPath, labelIndexes, niceTicks, r2, smoothPath } from '@/lib/chart-math'
+import { useChartKeyboard } from '@/lib/hooks/use-chart-keyboard'
 import { ChartLegend, type LegendItem } from './ChartLegend'
 import { ChartTooltip, tooltipAnchor, type TooltipRow } from './ChartTooltip'
 import type { TrendBucket } from '@/lib/trend-analysis'
@@ -41,6 +41,8 @@ export interface StackedBarLineChartProps {
   /** Legend / tooltip labels for the three stack segments */
   labels: { cacheRead: string; input: string; output: string; speed: string }
   ariaLabel?: string
+  /** Appended to the accessible name; see MultiSeriesChart for why it exists */
+  keyboardHint?: string
   className?: string
 }
 
@@ -61,13 +63,15 @@ export function StackedBarLineChart({
   formatTokens,
   labels,
   ariaLabel,
+  keyboardHint,
   className,
 }: StackedBarLineChartProps) {
   const rawId = useId()
   const speedGradient = `speed-grad-${rawId.replace(/[^a-zA-Z0-9_-]/g, '')}`
   const fmt = formatTokens ?? formatCompactValue
-  const reduced = useReducedMotion()
   const [hover, setHover] = useState<number | null>(null)
+  // Before the empty-state return below: hooks may not sit behind an early exit
+  const { keyboard, frameProps } = useChartKeyboard(buckets.length, hover, setHover)
   // Same stale-hover hazard as LineChart: an auto-refresh swaps the svg subtree
   // mid-hover and mouseleave never fires on the detached node.
   useEffect(() => {
@@ -133,7 +137,10 @@ export function StackedBarLineChart({
     setHover(idx >= 0 && idx < buckets.length ? idx : null)
   }
 
-  const active = hover != null ? buckets[hover]! : null
+  const active = hover != null && hover < buckets.length ? buckets[hover]! : null
+  // The dimming follows the same guard: a hover index left over from a longer
+  // dataset would otherwise match no bar and dim every one of them.
+  const dimmed = hover != null && hover < buckets.length ? hover : null
   const activeX = hover != null ? centerAt(hover) : 0
   const activeSpeed = hover != null ? speedCoords[hover] : undefined
 
@@ -148,11 +155,26 @@ export function StackedBarLineChart({
       ]
     : []
 
+  // Read out through a live region beside the plot rather than inside it: the
+  // announcement is then one stable node whose text changes, instead of a node
+  // that appears and disappears with the hovered bucket. Every part here is
+  // already localised (the caller supplies the row labels), and the separator is
+  // the typographic one the KPI rows use, so nothing needs translating.
+  const announcement =
+    keyboard && active
+      ? [active.rangeLabel, ...tooltipRows.map((r) => `${r.label} ${r.value}`)].join(' · ')
+      : ''
+
   return (
     <div className={cn('w-full', className)}>
       <ChartLegend items={legendItems} className="mb-1" />
 
-      <div role="img" aria-label={ariaLabel} className="relative w-full">
+      <div
+        role="group"
+        aria-label={[ariaLabel, keyboardHint].filter(Boolean).join(' · ') || undefined}
+        {...frameProps}
+        className="relative w-full outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+      >
         <svg
           viewBox={`0 0 ${W} ${H}`}
           width="100%"
@@ -219,13 +241,19 @@ export function StackedBarLineChart({
 
           {/* Stacked bars. Segments butt directly against each other — the
               lightness steps already separate them, and a gap would break the
-              column into floating pieces. Only the value end is rounded. */}
+              column into floating pieces. Only the value end is rounded.
+
+              The hover dimming is deliberately instantaneous rather than
+              transitioned: the index changes on every mouse move, so a fade
+              would restart continuously under the cursor and trail the pointer.
+              Nothing in this chart animates, which is also why it carries no
+              reduced-motion branch. */}
           {buckets.map((b, i) => {
             const segs = segmentsOf(b)
             const topIndex = segs.length - 1
             let cursor = baselineY
             return (
-              <g key={`b-${i}`} opacity={hover == null || hover === i ? 1 : 0.4}>
+              <g key={`b-${i}`} opacity={dimmed == null || dimmed === i ? 1 : 0.4}>
                 {segs.map((s, si) => {
                   const h = (s.v / maxTokenTick) * innerH
                   cursor -= h
@@ -252,7 +280,6 @@ export function StackedBarLineChart({
                 stroke={SPEED_COLOR}
                 strokeWidth={2}
                 strokeLinejoin="round"
-                className={reduced ? undefined : 'transition-opacity'}
               />
               {activeSpeed && (
                 <circle
@@ -303,6 +330,10 @@ export function StackedBarLineChart({
             {...tooltipAnchor(activeX / W, `${(PAD.top / H) * 100}%`)}
           />
         )}
+      </div>
+
+      <div aria-live="polite" className="sr-only">
+        {announcement}
       </div>
     </div>
   )

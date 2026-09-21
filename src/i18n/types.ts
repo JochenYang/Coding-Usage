@@ -437,6 +437,7 @@ export interface Dict {
     cancel: string
     confirm: string
     confirmTitle: string
+    chartKeyboardHint: string
   }
   prefs: {
     appearance: string
