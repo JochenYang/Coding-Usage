@@ -39,8 +39,12 @@ if (!section) {
 }
 
 const body = changelog.slice(section.start, section.end)
+// Tolerate CRLF: the blobs are LF, but on Windows a checkout rewrites them to
+// CRLF (`core.autocrlf=true`, no .gitattributes), and the header advertises
+// this script as the way to preview notes locally. Matching a bare `\n` made
+// that preview fail on the very platform it is most often run from.
 const grab = (heading) => {
-  const re = new RegExp(`### ${heading}\\n([\\s\\S]*?)(?=\\n### |\\n## |$)`)
+  const re = new RegExp(`### ${heading}\\r?\\n([\\s\\S]*?)(?=\\r?\\n### |\\r?\\n## |$)`)
   return re.exec(body)?.[1].trim() ?? ''
 }
 const zh = grab('中文')
