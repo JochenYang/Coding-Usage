@@ -10,7 +10,7 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
-## [Unreleased]
+## [v0.6.1] - 2026-09-21
 
 ### 中文
 - 智能体配置新增 OpenCode：同时识别两代配置写法（v1 的 `provider` / `npm` / `options` 与 v2 的 `providers` / `package` / `settings`），并把模型的 `variants` 键当作推理档位；本机 v2.0.10 实测仍读 v1 布局，因此按文件已有形态读写而不做迁移
