@@ -3,6 +3,18 @@
 /* Make Tailwind's `dark:` variant use the `.dark` class strategy, synced with document.documentElement */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Tell the UA which palette the page is in. Without this the compositor draws
+   native chrome — scrollbars above all, on every `overflow-auto` panel — with
+   the default light palette even while the dark theme is active, so a dark page
+   got a bright scrollbar. `color-scheme` is the standard switch for that, and it
+   covers form controls and the default canvas colour too. */
+:root {
+  color-scheme: light;
+}
+:root.dark {
+  color-scheme: dark;
+}
+
 @theme {
   /* Light theme — indigo-accent design system (desktop shell) */
   --color-background: #eef0f5;
