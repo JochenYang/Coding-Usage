@@ -156,6 +156,14 @@ declare global {
       providerId: string,
       modelId: string,
     ): Promise<AgentModelTestResult>
+    /**
+     * Kimi Code subscription quota (5-hour / weekly / month windows, as
+     * percentages of the plan allowance). `apiKey` is the account's pasted Kimi
+     * Code key and takes precedence over the local OAuth token; the body is a
+     * normalized `{source, windows:[{id,percent,resetsAt}], wallet}` JSON string
+     * where `id` is the canonical window identity.
+     */
+    kimiUsage(apiKey?: string): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Mirror the encrypted v3 settings document to a userData file */
     settingsBackupWrite(payload: string): Promise<void>
     /** Read the mirrored settings document, or null when none exists */

@@ -95,6 +95,11 @@ export const zhCN: Dict = {
   provider: {
     balanceLabel: (currency: string) => `账户余额（${currency}）`,
     balanceLabelFallback: '账户余额',
+    // Moonshot names its paid and granted pools cash and vouchers, so its card
+    // keeps this provider's own wording rather than the top-up/granted pair.
+    availableBalance: '可用余额',
+    cashBalance: '现金余额',
+    voucherBalance: '代金券',
     totalBalanceLabel: (currency: string) => `总余额（${currency}）`,
     topUpBalance: '充值余额',
     grantBalance: '赠送余额',
@@ -425,6 +430,22 @@ export const zhCN: Dict = {
       via: (mirror: string) => `经 ${mirror} 镜像`,
     },
   },
+  kimiQuota: {
+    title: 'Kimi Code 额度',
+    subtitle: '订阅额度 · 5 小时 / 周窗口',
+    windowWeekly: '周窗口',
+    windowFiveHour: '5 小时窗口',
+    windowMonthTotal: '月度总额度',
+    windowMonthCode: '月度代码额度',
+    windowOther: '其他窗口',
+    noLocalLogin:
+      '未检测到本机 Kimi Code 登录，或本地服务未运行。请先运行 Kimi Code CLI 完成登录，或在下方填写 Kimi Code API Key。',
+    staleLogin: 'Kimi Code 登录态已失效，请在终端重新运行 Kimi Code CLI 完成登录。',
+    percentNote: '额度以计划占比显示（百分比），Kimi 未提供绝对 token 数。',
+    walletTitle: '加力钱包',
+    walletRemaining: '余额',
+    walletUsed: '本月已用',
+  },
   providerErrors: {
     keyInvalid: 'Key 无效或请求被拒绝',
     badResponse: '响应格式变化：缺少 available_balance',
@@ -433,6 +454,10 @@ export const zhCN: Dict = {
     volcNoWindows: '火山响应中没有任何额度窗口',
     networkFailed: '网络请求失败（跨域或网络不可达）',
     noWindows: '响应中没有任何额度窗口',
+    kimiWrongSurface:
+      '该 Key 无法查询余额：Kimi Code 订阅额度与 Moonshot 平台余额是两套独立体系。订阅额度请在「概览」的 Kimi Code 卡片查看；余额查询需要 Moonshot 平台 API Key。',
+    kimiQuotaUnavailable: '未能读取 Kimi Code 订阅额度（本地服务未运行或 Key 无权限）。',
+    kimiQuotaNoServer: '未检测到本机 Kimi Code 服务或登录态，未能读取订阅额度。',
   },
   updater: {
     readyTitle: '更新已就绪',

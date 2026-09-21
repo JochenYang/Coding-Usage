@@ -21,6 +21,7 @@ Supported Providers: OpenCode Zen Go, Zhipu GLM (Z.ai), Kimi / Moonshot, DeepSee
 electron/
   main.ts                # Electron main: windows, tray, IPC (net:fetch / safe:* / app:set-login-item / tokscale:scan), auto-update
   preload.ts             # contextBridge exposing window.desktopBridge (typed in src/globals.d.ts)
+  kimi-usage.ts          # Kimi Code quota probe: local CLI state + loopback / remote usage endpoints; the token stays in main
 src/
   App.tsx                # Shell host: view router (hash) + account editor session
   main.tsx               # ReactDOM entry
@@ -29,7 +30,7 @@ src/
     layout/              # AppShell / Sidebar (nav + status card) / TopBar (agent filter / auto-refresh / bell / settings)
     common/              # ProgressBar / StatusDot / Badge / SearchInput / PageHeader / StatCard / EmptyState / Tooltip
     charts/              # Self-built SVG: LineChart (trend) / DonutChart (distribution)
-    overview/            # KpiRow / TrendCard / DistributionCard / AttentionList / AlertsPanel / PlanCardsRow / LocalUsageCard
+    overview/            # KpiRow / TrendCard / DistributionCard / AttentionList / AlertsPanel / PlanCardsRow / LocalUsageCard / KimiQuotaCard
     account/             # AccountDrawer (single-account editor: alias / key / region / enable / test)
     beui/                # Self-built components: drawer / loader / switch / select / popover / confirm-dialog
     ProviderLogo.tsx     # Brand logo via bundled @lobehub/icons (offline) + letter fallback
@@ -54,6 +55,7 @@ src/
     alerts.ts            # Alert derivation engine (window reset / high usage / low balance)
     rates.ts             # Static FX rates for cross-currency totals
     agent-usage.ts       # Local AI agent scanner: validates + aggregates tokscale output
+    kimi-quota.ts        # Kimi Code quota view-model: percent windows fed by the kimi:usage IPC
   i18n/                  # Locale dictionaries (zh-CN, en-US) + LocaleProvider + useT
 ```
 
