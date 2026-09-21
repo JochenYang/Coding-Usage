@@ -175,14 +175,19 @@ function toModel(key: string, raw: KimiModelRecord, providerId: string): AgentMo
 /** Map a provider record plus its models onto the shared shape */
 function toProvider(id: string, raw: KimiProviderRecord, models: AgentModel[]): AgentProvider {
   const inlineKey = str(raw.api_key)
-  const envKey = str(raw.api_key_env)
-  const masked = inlineKey ? maskKey(inlineKey) : envKey ? `env:${envKey}` : undefined
+  const envName = str(raw.api_key_env)
+  // A credential named by environment variable only counts as present when the
+  // variable is actually set: the UI uses this to decide whether the provider
+  // can be queried at all, and a declared-but-unset variable would otherwise
+  // look ready right up until the request fails.
+  const envValue = envName ? process.env[envName]?.trim() : undefined
+  const masked = inlineKey ? maskKey(inlineKey) : envName ? `env:${envName}` : undefined
   return {
     id,
     name: id,
     protocol: str(raw.type) ?? '',
     baseUrl: str(raw.base_url),
-    hasKey: Boolean(inlineKey) || Boolean(envKey),
+    hasKey: Boolean(inlineKey) || Boolean(envValue),
     maskedKey: masked,
     models,
   }
@@ -273,13 +278,19 @@ export function revealKimiKey(text: string, providerId: string): string | null {
 export function readKimiProviderEndpoint(
   text: string,
   providerId: string,
-): { baseUrl?: string; protocol: string; apiKey?: string } | null {
+): { baseUrl?: string; protocol: string; apiKey?: string; credentialEnv?: string[] } | null {
   const doc = parseKimiDocument(text)
   const record = asRecord(asRecord(doc.providers)?.[providerId])
   if (!record) return null
   const envName = str(record.api_key_env)
   const apiKey = str(record.api_key) ?? (envName ? process.env[envName]?.trim() : undefined)
-  return { baseUrl: str(record.base_url), protocol: str(record.type) ?? '', apiKey }
+  return {
+    baseUrl: str(record.base_url),
+    protocol: str(record.type) ?? '',
+    apiKey,
+    // Surfaced so a missing credential can name the variable it looked for.
+    credentialEnv: envName ? [envName] : undefined,
+  }
 }
 
 /**
@@ -319,8 +330,13 @@ export function applyKimiProviderEdit(doc: KimiDocument, input: AgentProviderInp
 
   // Reconcile the model list. A field the caller left undefined keeps its
   // stored value, which is what lets the editor send only what the user
-  // actually changed; ids no longer listed are removed.
-  const keep = new Set(input.models.map((m) => `${input.id}/${m.id}`))
+  // actually changed; ids no longer listed are removed — except the ones a
+  // rename is about to move, which are held until the move has happened.
+  const keep = new Set<string>()
+  for (const model of input.models) {
+    keep.add(`${input.id}/${model.id}`)
+    if (model.originalId && model.originalId !== model.id) keep.add(`${input.id}/${model.originalId}`)
+  }
   for (const key of Object.keys(models)) {
     const record = asRecord(models[key])
     if (!record) continue
@@ -330,10 +346,21 @@ export function applyKimiProviderEdit(doc: KimiDocument, input: AgentProviderInp
 
   for (const model of input.models) {
     const key = `${input.id}/${model.id}`
-    const existing = asRecord(models[key])
+    const previousKey =
+      model.originalId && model.originalId !== model.id ? `${input.id}/${model.originalId}` : null
+    const existing = asRecord(previousKey ? models[previousKey] : models[key])
     const next: KimiModelRecord = existing
       ? { ...existing }
       : { model: model.model ?? model.id, provider: input.id }
+
+    // A bare alias whose wire name was simply the old id follows the rename; one
+    // that points at a different upstream name is left as it was.
+    if (previousKey && str(next.model) === model.originalId) next.model = model.id
+    if (previousKey) {
+      delete models[previousKey]
+      // A default-model pointer must follow the record rather than dangle.
+      if (str(doc.default_model) === previousKey) doc.default_model = key
+    }
 
     if (model.model !== undefined) next.model = model.model
     if (model.displayName !== undefined) {

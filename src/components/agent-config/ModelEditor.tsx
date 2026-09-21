@@ -6,6 +6,12 @@ import { EFFORT_LEVELS, MODEL_MODALITIES } from '@/lib/agent-config'
 /** Editable draft of one model; numeric fields are strings so typing is free-form */
 export interface ModelDraft {
   id: string
+  /**
+   * The id this model was loaded under. Differs from `id` once the user renames
+   * it, which the write path needs in order to move the record rather than
+   * delete one and create another.
+   */
+  originalId: string
   displayName: string
   /** Kept as text: empty means "leave the stored value alone" */
   contextLimit: string
@@ -112,6 +118,8 @@ export function ModelEditor({ draft, onChange, onRemove }: ModelEditorProps) {
     on ? [...list, value] : list.filter((v) => v !== value)
 
   const limits = [draft.contextLimit || '—', draft.outputLimit || '—'].join(' / ')
+  /** True once the user has typed a different id than the record was loaded under */
+  const renamed = draft.persisted && draft.originalId !== '' && draft.originalId !== draft.id
 
   return (
     <div className="rounded-lg border border-border bg-background">
@@ -126,20 +134,22 @@ export function ModelEditor({ draft, onChange, onRemove }: ModelEditorProps) {
           <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', expanded && 'rotate-90')} />
         </button>
 
-        {draft.persisted ? (
-          <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground" title={draft.id}>
-            {draft.id}
-          </span>
-        ) : (
-          <input
-            type="text"
-            value={draft.id}
-            onChange={(e) => onChange({ id: e.target.value })}
-            placeholder={t.agentConfig.modelIdPlaceholder}
-            spellCheck={false}
-            className="min-w-0 flex-1 rounded border border-border bg-card px-1.5 py-0.5 font-mono text-xs text-foreground outline-none placeholder:text-subtle focus:border-accent"
-          />
-        )}
+        <input
+          type="text"
+          value={draft.id}
+          onChange={(e) => onChange({ id: e.target.value })}
+          placeholder={t.agentConfig.modelIdPlaceholder}
+          spellCheck={false}
+          title={renamed ? `${t.agentConfig.modelRenamed}: ${draft.originalId}` : undefined}
+          // The id is the record's key, so changing it moves the entry. The
+          // accent border marks a pending move before it is saved. It gets a
+          // little more room than the display name because ids are usually the
+          // longer of the two.
+          className={cn(
+            'min-w-0 flex-[1.4] rounded border bg-card px-1.5 py-0.5 font-mono text-xs text-foreground outline-none placeholder:text-subtle focus:border-accent',
+            renamed ? 'border-accent' : 'border-border',
+          )}
+        />
 
         <input
           type="text"

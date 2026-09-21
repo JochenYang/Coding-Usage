@@ -537,5 +537,6 @@ export const zhCN: Dict = {
     testHint: '发送一次最小请求，验证这个模型能否调用（会消耗少量 token）',
     testTimeout: '超时',
     testSuccess: '成功',
+    modelRenamed: '已重命名，原 ID',
   },
 }

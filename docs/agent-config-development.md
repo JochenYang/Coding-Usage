@@ -149,6 +149,16 @@
 | T8.3 | UI：模型行的测试按钮与结果图标 | `ProviderCard.tsx` | 已完成 · 已审查 |
 | T8.4 | 端到端验证（可达与不可达各一条路径） | `.tmp/e2e-model-test.mjs` | 已完成 · 已审查 |
 
+### 第四轮：opencode 支持（T9）
+
+| ID | 任务 | 产出 | 状态 |
+| --- | --- | --- | --- |
+| T9.1 | opencode 解析与写入（两代格式、变体即档位） | `electron/opencode-config.ts` | 已完成 · 已审查 |
+| T9.2 | service 改为表驱动，容纳第三个 Agent | `agent-config-service.ts` | 已完成 · 已审查 |
+| T9.3 | 路径探测（XDG 目录、PATH 上的 CLI） | `agent-config-paths.ts` | 已完成 · 已审查 |
+| T9.4 | IPC 与界面接入 | `main.ts` / `AgentConfigSection.tsx` | 已完成 · 已审查 |
+| T9.5 | 沙箱验证与截图 | `.tmp/verify-opencode.mjs` | 已完成 · 已审查 |
+
 ---
 
 ## 5. 回归验证清单
@@ -287,6 +297,9 @@
 | 10 | 编辑已有模型时会主动补 `thinking_config.default_value`，向文件引入用户没动过的字段 | 中 | 对比本功能自己产生的备份与当前文件 | 已修（只有新记录才补默认值）+ 回归断言 |
 | 11 | 按声明协议推断鉴权风格：stepfun 声明 `anthropic` 协议，但它的 models 端点只认 `Bearer`，导致密钥正确却返回 401 | 中 | 用户报告后实测定位 | 已修（两种鉴权依次尝试，按协议排序）+ 实测复验 |
 | 12 | 推理档位列的语义不一致：有默认档时只显示默认档，把其余档位吞掉（`high/max` 显示成 `high`） | 中 | 用户报告 | 已修（始终显示完整档位，默认档加粗）+ 回归断言 |
+| 13 | opencode 只读 `options.apiKey`，漏掉 provider 级的 `env: […]` 候选列表 —— 声明该字段的 provider 一律被判为无凭据，获取模型直接失败 | 高 | 用户报告 | 已修（两种凭据形态都读）+ 8 项回归断言 |
+| 14 | kimicode 的「是否有凭据」只看是否声明了 `api_key_env`，不看变量是否真的设置，导致声明了却没有值的 provider 显示成可用 | 低 | 补测 `api_key_env` 时发现 | 已修（与 opencode 统一：变量设置了才算）+ 7 项回归断言 |
+| 15 | 已保存模型的 ID 是只读的，用户无法更正或改别名；而 ID 是记录的键，改动本质是一次「移动」 | 中 | 用户报告 | 已修（ID 可编辑，写入按移动处理并跟随默认指针）+ 27 项回归断言 |
 
 **关于缺陷 7 的说明**：它的表面症状与缺陷 1 相同（编辑后大量行差异），但根因完全不同 —— 1 是模型被删了重建，7 是插入一行导致后续行位置错位。诊断方式是打印「构造的 key」与「文件里真实的 key」做逐一比对，而不是继续猜；确认 key 全部匹配后才转向下一层。
 
@@ -336,6 +349,75 @@
 **回退策略**与模型拉取一致：路径候选（带不带 `/v1`）与鉴权风格（`Bearer` / `x-api-key`）两个维度依次尝试，404 换路径、401/403 换鉴权、400/422 直接停（请求体被拒时换头部没有意义）。
 
 **验证**：用真实配置跑通两条路径 —— `Little Jochen` 的模型显示成功图标，`workbuddy` 的模型显示失败图标，同时断言页面在整个过程中没有出现明文凭据。
+
+### 6.6e opencode 支持（T9）
+
+**两代配置格式并存**
+
+| 代 | provider 段 | 协议字段 | 端点与凭据 |
+| --- | --- | --- | --- |
+| v1 | `provider` | `npm` | `options.{apiKey, baseURL}` |
+| v2 | `providers` | `package` | `settings.{apiKey, baseURL}` |
+
+本机装的是 opencode **v2.0.10**，但 `~/.config/opencode/opencode.json` 仍是 v1 形态。实测 `opencode models` 会列出 `provider` 段里的全部 provider（`mmx-cn/`、`agnes/`、`agentrouter/`、`sensenova/`），说明 v2 仍读 v1 布局 —— 因此**按文件已有的形态读写，不做迁移**，这也是官方文档之外的实测结论。
+
+**字段映射**
+
+| 概念 | 共享字段 | opencode 落点 |
+| --- | --- | --- |
+| 输入模态 | `inputModalities` | `modalities.input`，或新式 `capabilities.input` —— 两种写法都读，写回时保持记录原本用的那种 |
+| 能力 | `capabilities` | `tool_call` / `reasoning` 布尔 |
+| 上下文 / 输出 | `contextLimit` / `outputLimit` | `limit.context` / `limit.output` |
+| 推理档位 | `supportEfforts` | **`variants` 的键** —— opencode 把每个档位写成一个请求体补丁，所以档位列表就是 variant 名列表；写入时按选中的档位重建 variants |
+
+**凭据**：`{env:NAME}` 是运行时解析的引用而不是密钥，读取时显示成 `env:NAME`（不做掩码处理，因为它不是秘密），写回时原样保留。
+
+**格式**：整份 JSON 解析后重新序列化。实测对 485 行的真实文件，一次"改一个 baseURL + 重写一个模型的 variants"产生 `-2 +5` 行的内容变化；行数会减少，因为 `JSON.stringify` 把文件里手写的紧凑数组展开成多行、并去掉末尾空行。度量用 `git diff`，不是行位置比较（那会因一处展开而误报 91% 的差异）。
+
+**架构调整**：三个 Agent 的差异被收敛成 service 里的 `AgentOps` 表（解析、读取、序列化、编辑、删除、取密钥、取端点、协议列表），其余逻辑不再出现 `if (agent === …)` 分支。
+
+**验证**：39 项断言（沙箱内），覆盖读取四个 provider、两种模态写法、variants 转档位、编辑/创建/删除、三类非法输入（含斜杠的 id、未知包名、负数限额），以及两类环境变量凭据（`{env:NAME}` 引用与 provider 级 `env` 列表，各测已设置与未设置两种状态）。
+
+### 6.6f 模型重命名（缺陷 15）
+
+第一版把已保存模型的 ID 做成只读，理由是"ID 是配置文件的键，改它等于删一个再建一个"。这个担心是对的，但结论错了：**删+建正是重命名该有的语义**，只要顺手把指向它的指针一起改掉。
+
+现在的处理：
+
+| 环节 | 做法 |
+| --- | --- |
+| 输入 | `AgentModelInput.originalId` 携带旧 ID —— 没有它，写入侧看到"一个不认识的 ID"根本无法区分「改名」与「删一个建一个」 |
+| 搬移 | 旧键的记录先取出（`keep` 集合临时保留它，避免被常规清理删掉），字段原样带过去，再写进新键 |
+| 指针 | kimi 的 `default_model`、mcode 的 `defaultModel`、opencode 的顶层 `model` 若指向旧键，一并改写；不指向则不动 |
+| 线名 | kimi 的 `model` 字段（上游真实模型名）只有在**恰好等于旧 ID** 时才跟随改名 —— 它本来就指向别处的话保持原样 |
+| 界面 | ID 输入框可编辑，改过之后边框变强调色，悬停显示「已重命名，原 ID: xxx」 |
+
+**验证**：独立脚本 `.tmp/verify-rename.mjs`，三个 Agent 各做一次改名，断言旧键消失、新键存在、未触碰字段完整带过、默认指针跟随、同级模型数量不变；最后再核对文件里的模型总数与改动前一致 —— 这正是「移动」与「删除+新增」的区别所在。
+
+**凭据的三种形态**（缺陷 13）—— opencode 的 provider 拿凭据有两条路，一开始只实现了第一条：
+
+| 形态 | 例子 | 读取时的呈现 |
+| --- | --- | --- |
+| 字面量 `options.apiKey` | `agentrouter` | 掩码（`sk-3****iDE6`） |
+| `options.apiKey` 是 `{env:NAME}` 引用 | `mmx-cn` | `env:MINIMAX_API_KEY` |
+| provider 级 `env: [NAME, …]` 列表 | `sensenova`、`agnes` | `env:<第一个已设置的变量名>`；一个都没设置时仍显示第一个候选名 |
+
+第三种是遗漏的那种：`sensenova` 声明 `env: ["SENSENOVA_CPA_API_KEY"]` 而不写 `apiKey`，于是被判为"没有凭据"，获取模型在发请求之前就失败了。现在按顺序解析列表里第一个已设置的变量，与 opencode 运行时的行为一致。
+
+顺带把失败信息也改具体了：过去一律回「没有可用的凭据」，现在会说「环境变量 SENSENOVA_CPA_API_KEY 未设置」—— 用户配置里同时有 `{env:…}` 和 `env` 列表两种写法，不指名的话很难知道该去设哪一个。界面上未设置时也不再只显示"未设置"，而是保留变量名。
+
+**覆盖到的凭据形态**（全部有回归断言）：
+
+| 形态 | 出现在 | 是否可获取 |
+| --- | --- | --- |
+| `options.apiKey` 明文 | opencode `agentrouter` | ✅ |
+| `options.apiKey` = `{env:NAME}` | opencode `mmx-cn` | ✅ 从进程环境解析 |
+| provider 级 `env: [NAME, …]` | opencode `sensenova`、`agnes` | ✅ 按顺序取第一个已设置的 |
+| `api_key = "…"` | kimicode 全部 provider | ✅ |
+| `api_key_env = "NAME"` | kimicode（当前配置未使用） | ✅ 从进程环境解析 |
+| `options.apiKey` 明文 | mcode 全部 provider | ✅ |
+
+**一个统一的语义**：环境变量只算「已提供凭据」当且仅当**该变量在运行进程中确实有值**。kimicode 原本只要声明了 `api_key_env` 就报"有密钥"（缺陷 14），与 opencode 的处理相矛盾，现在两边一致 —— 声明了但没设置会显示变量名并标记未设置，而不是假装可用。
 
 ### 6.7 已知限制与未覆盖项
 
@@ -411,7 +493,8 @@
 | — | 修复 4 个缺陷（全选文案与行为不符、推测显示名写回、数组无谓重排、electron 顶层导入） | 见 6.6b |
 | — | 第三轮：新增单模型连接测试（T8） | 见 6.6d |
 | — | 修复 stepfun 鉴权推断错误（按协议推断鉴权风格） | 见 6.6b 第 11 条 |
-| — | **等待用户测试，未提交 git** | 交付状态 |
+| — | 第四轮：新增 opencode 支持（T9），service 改为表驱动 | 见 6.6e |
+| — | **未提交，等待确认** | 交付状态 |
 
 ### 7.1 回归验证清单执行结果
 
@@ -434,18 +517,22 @@
 | --- | --- |
 | `.tmp/verify-roundtrip.mjs` | 序列化安全性与格式漂移度量 |
 | `.tmp/verify-yaml-options.mjs` | YAML 序列化选项对比 |
-| `.tmp/run-verify.mjs` + `.tmp/bundle.mjs` | 读取、编辑、删除、key 派生、路径探测（38 项） |
-| `.tmp/verify-write.mjs` | 沙箱内的完整写入路径、非法输入、模型参数映射（61 项） |
+| `.tmp/run-verify.mjs` + `.tmp/bundle.mjs` | 读取、编辑、删除、key 派生、路径探测（39 项） |
+| `.tmp/verify-write.mjs` | 沙箱内的完整写入路径、非法输入、模型参数映射、kimi 的环境变量凭据、mcode 凭据只可能是明文（76 项） |
+| `.tmp/verify-opencode.mjs` | opencode 读取、编辑、创建、删除、环境变量凭据与校验（39 项） |
+| `.tmp/verify-rename.mjs` | 三个 Agent 的模型重命名与默认指针跟随（27 项） |
 | `.tmp/e2e-agents.mjs` | Electron 界面端到端（18 项） |
 | `.tmp/e2e-write.mjs` | UI → IPC → 文件的完整写入链路（14 项） |
 | `.tmp/e2e-fetch.mjs` | 拉取模型：本地替身网关、凭据传递、重复过滤（13 项） |
-| `.tmp/e2e-model-test.mjs` | 单模型连接测试：可达与不可达两条路径（8 项） |
+| `.tmp/e2e-model-test.mjs` | 单模型连接测试：可达与不可达两条路径（10 项） |
+| `.tmp/e2e-opencode-fetch.mjs` | opencode 环境变量凭据的真实获取模型（5 项） |
 | `.tmp/e2e-live.mjs` | 真实 provider 连接测试（只读，打印可达情况） |
+| `.tmp/verify-opencode-json.mjs` | opencode.json 重序列化的格式漂移度量 |
 | `.tmp/diag.mjs` / `.tmp/diag2.mjs` | 诊断用：key 匹配排查、thinking_config 结构普查 |
-| `.tmp/diag-stepfun.mjs` | 诊断用：stepfun 端点的路径 × 鉴权矩阵 |
-| `.tmp/shot-params.mjs` | 截图用：模型参数面板 |
+| `.tmp/diag-stepfun*.mjs` | 诊断用：stepfun 端点的路径 × 鉴权矩阵 |
+| `.tmp/shot-params.mjs` / `.tmp/shot-opencode.mjs` | 截图用 |
 
-合计 **159 项断言**。所有涉及写入的套件都在一次性副本上运行，并在结尾断言真实配置文件未被改动。
+合计 **241 项断言**。所有涉及写入的套件都在一次性副本上运行，并在结尾断言真实配置文件未被改动。
 
 > 注意：连续跑多个 Electron 套件时要留几秒间隔 —— Electron 的单实例锁基于 userData 目录，上一个实例尚未完全退出时下一个会拿不到窗口（本轮踩过一次，表现为某个套件无输出即失败）。
 

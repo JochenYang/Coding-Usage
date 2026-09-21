@@ -48,7 +48,7 @@ import {
   saveAgentProvider,
   testAgentModel,
 } from './agent-config-service'
-import { parseProviderInput } from '../src/lib/agent-config'
+import { parseProviderInput, toAgentId } from '../src/lib/agent-config'
 import type {
   AgentConfigPayload,
   AgentKeyReveal,
@@ -1085,7 +1085,7 @@ function registerIpc(): void {
   // through `agentConfig:reveal`, and only for the one provider the user asked
   // to see.
   ipcMain.handle('agentConfig:read', async (_event, agent: unknown): Promise<AgentConfigPayload> => {
-    return readAgentConfig(agent === 'mcode' ? 'mcode' : 'kimi')
+    return readAgentConfig(toAgentId(agent))
   })
 
   ipcMain.handle(
@@ -1094,7 +1094,7 @@ function registerIpc(): void {
       if (typeof providerId !== 'string' || providerId.length === 0) {
         return { ok: false, message: 'invalid-provider' }
       }
-      return revealAgentKey(agent === 'mcode' ? 'mcode' : 'kimi', providerId)
+      return revealAgentKey(toAgentId(agent), providerId)
     },
   )
 
@@ -1103,7 +1103,7 @@ function registerIpc(): void {
     async (_event, agent: unknown, revision: unknown, input: unknown): Promise<AgentWriteResult> => {
       const parsed = parseProviderInput(input)
       if (!parsed) return { ok: false, reason: 'invalid', message: 'invalid provider payload' }
-      return saveAgentProvider(agent === 'mcode' ? 'mcode' : 'kimi', typeof revision === 'string' ? revision : '', parsed)
+      return saveAgentProvider(toAgentId(agent), typeof revision === 'string' ? revision : '', parsed)
     },
   )
 
@@ -1113,7 +1113,7 @@ function registerIpc(): void {
       if (typeof providerId !== 'string' || providerId.length === 0) {
         return { ok: false, reason: 'invalid', message: 'invalid provider id' }
       }
-      return removeAgentProvider(agent === 'mcode' ? 'mcode' : 'kimi', typeof revision === 'string' ? revision : '', providerId)
+      return removeAgentProvider(toAgentId(agent), typeof revision === 'string' ? revision : '', providerId)
     },
   )
 
@@ -1135,7 +1135,7 @@ function registerIpc(): void {
         if (typeof raw.apiKey === 'string' && raw.apiKey.trim()) patch.apiKey = raw.apiKey.trim()
         if (typeof raw.protocol === 'string' && raw.protocol.trim()) patch.protocol = raw.protocol.trim()
       }
-      return listAgentProviderModels(agent === 'mcode' ? 'mcode' : 'kimi', providerId, patch)
+      return listAgentProviderModels(toAgentId(agent), providerId, patch)
     },
   )
 
@@ -1156,7 +1156,7 @@ function registerIpc(): void {
       if (typeof modelId !== 'string' || modelId.length === 0) {
         return { ok: false, message: 'invalid model id' }
       }
-      return testAgentModel(agent === 'mcode' ? 'mcode' : 'kimi', providerId, modelId)
+      return testAgentModel(toAgentId(agent), providerId, modelId)
     },
   )
 }

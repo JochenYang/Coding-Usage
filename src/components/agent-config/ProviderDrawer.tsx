@@ -32,6 +32,7 @@ export interface ProviderDrawerProps {
 function emptyDraft(): ModelDraft {
   return {
     id: '',
+    originalId: '',
     displayName: '',
     contextLimit: '',
     outputLimit: '',
@@ -49,6 +50,7 @@ function toDrafts(provider: AgentProvider | undefined): ModelDraft[] {
   if (!provider) return []
   return provider.models.map((model) => ({
     id: model.id,
+    originalId: model.id,
     displayName: model.displayName,
     contextLimit: model.contextLimit ? String(model.contextLimit) : '',
     outputLimit: model.outputLimit ? String(model.outputLimit) : '',
@@ -70,13 +72,21 @@ function toDrafts(provider: AgentProvider | undefined): ModelDraft[] {
  *     actually changed it — `AgentModel.displayName` falls back to the wire
  *     name for rendering, and writing that fallback back would add a field the
  *     record never had.
+ *
+ * A changed id travels with its old value so the write path can move the
+ * record: without it, "an id I have not seen before" is indistinguishable from
+ * "one model deleted and another added".
  */
 function toModelInput(draft: ModelDraft, provider: AgentProvider | undefined): AgentModelInput {
-  const original = provider?.models.find((m) => m.id === draft.id)
+  const id = draft.id.trim()
+  // A renamed model is still looked up under the id it was loaded with, so its
+  // untouched fields keep coming from the stored record.
+  const original = provider?.models.find((m) => m.id === (draft.originalId || id))
   const displayName = draft.displayName.trim()
   const renameNeeded = original === undefined || displayName !== original.displayName
   return {
-    id: draft.id.trim(),
+    id,
+    originalId: draft.originalId && draft.originalId !== id ? draft.originalId : undefined,
     displayName: original?.displayNameExplicit || renameNeeded ? displayName : undefined,
     contextLimit: draft.contextLimit ? Number(draft.contextLimit) : undefined,
     outputLimit: draft.outputLimit ? Number(draft.outputLimit) : undefined,
@@ -468,7 +478,7 @@ export function ProviderDrawer({
               <div className="space-y-1.5">
                 {models.map((draft, index) => (
                   <ModelEditor
-                    key={`${index}-${draft.persisted ? draft.id : 'new'}`}
+                    key={`${index}-${draft.persisted ? draft.originalId || draft.id : 'new'}`}
                     draft={draft}
                     onChange={(patch) => patchModel(index, patch)}
                     onRemove={() => setModels((prev) => prev.filter((_, i) => i !== index))}

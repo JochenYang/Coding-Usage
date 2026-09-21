@@ -435,12 +435,29 @@ export function applyMcodeProviderEdit(doc: McodeDocument, input: AgentProviderI
   next.options = options as McodeProviderRecord['options']
 
   const models = { ...(asRecord(existing.models) ?? {}) }
-  const keep = new Set(input.models.map((m) => m.id))
+  // Ids being moved by a rename are held back until the move itself runs.
+  const keep = new Set<string>()
+  for (const model of input.models) {
+    keep.add(model.id)
+    if (model.originalId && model.originalId !== model.id) keep.add(model.originalId)
+  }
   for (const key of Object.keys(models)) if (!keep.has(key)) delete models[key]
   for (const model of input.models) {
-    const current = asRecord(models[model.id])
+    const from = model.originalId && model.originalId !== model.id ? model.originalId : null
+    const current = asRecord(from ? models[from] : models[model.id])
     const entry: McodeModelRecord = current ? { ...current } : {}
     applyModelFields(entry, model)
+    if (from) {
+      delete models[from]
+      // mcode names a default model as `custom_provider:<provider>/<id>`.
+      const pointer = str(doc.defaultModel)
+      if (pointer) {
+        const split = splitDefaultModel(pointer)
+        if (split && split.providerKey === input.id && split.modelId === from) {
+          doc.defaultModel = `custom_provider:${input.id}/${model.id}`
+        }
+      }
+    }
     models[model.id] = entry
   }
   next.models = models as Record<string, McodeModelRecord>

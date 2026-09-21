@@ -19,7 +19,11 @@ import { join } from 'node:path'
  * covers both generations.
  */
 
-export type AgentId = 'kimi' | 'mcode'
+import type { AgentId } from '../src/lib/agent-config'
+
+// One definition of the agent ids lives in the shared contract; this module
+// re-exports it so existing importers keep working.
+export type { AgentId }
 
 export interface AgentLocation {
   id: AgentId
@@ -112,6 +116,50 @@ function kimiCliPaths(): string[] {
   return out
 }
 
+/**
+ * Every directory opencode might keep its config in, most specific first.
+ *
+ * opencode follows the XDG convention, so the global config lives under
+ * `~/.config/opencode` on every platform (not `%APPDATA%` on Windows).
+ */
+function opencodeDataDirs(): string[] {
+  const home = homedir()
+  const out: string[] = []
+  const explicit = env('OPENCODE_CONFIG_DIR')
+  if (explicit) out.push(explicit)
+  out.push(join(home, '.config', 'opencode'))
+  return out
+}
+
+/**
+ * Locate an executable on PATH.
+ *
+ * opencode installs through several package managers (bun, npm, a standalone
+ * installer), so it has no fixed location next to its config directory — the
+ * only reliable probe is the PATH itself.
+ */
+function findOnPath(names: string[]): string[] {
+  const separator = process.platform === 'win32' ? ';' : ':'
+  const dirs = (process.env.PATH ?? '').split(separator).filter(Boolean)
+  const found: string[] = []
+  for (const name of names) {
+    for (const dir of dirs) {
+      const candidate = join(dir, name)
+      if (existsSync(candidate)) {
+        found.push(candidate)
+        break
+      }
+    }
+  }
+  return found
+}
+
+function opencodeCliPaths(): string[] {
+  return process.platform === 'win32'
+    ? findOnPath(['opencode.exe', 'opencode.cmd', 'opencode.bat'])
+    : findOnPath(['opencode'])
+}
+
 /** Resolve one agent's config location and CLI entry points */
 export function resolveAgentLocation(id: AgentId): AgentLocation {
   if (id === 'kimi') {
@@ -123,6 +171,22 @@ export function resolveAgentLocation(id: AgentId): AgentLocation {
       dataDir: configPath ? dirnameOf(configPath) : null,
       candidates,
       cliPaths: kimiCliPaths().filter(existsSync),
+    }
+  }
+  if (id === 'opencode') {
+    const candidates = opencodeDataDirs()
+    // opencode accepts both spellings; the JSONC variant is only probed when
+    // the plain one is absent, so the file the app actually reads wins.
+    const configPath = firstFile([
+      ...candidates.map((d) => join(d, 'opencode.json')),
+      ...candidates.map((d) => join(d, 'opencode.jsonc')),
+    ])
+    return {
+      id,
+      configPath,
+      dataDir: configPath ? dirnameOf(configPath) : null,
+      candidates,
+      cliPaths: opencodeCliPaths(),
     }
   }
   const candidates = mcodeDataDirs()
@@ -142,7 +206,11 @@ function dirnameOf(filePath: string): string {
   return idx > 0 ? filePath.slice(0, idx) : filePath
 }
 
-/** Both agents' locations keyed by id */
+/** Every agent's location keyed by id */
 export function resolveAllAgentLocations(): Record<AgentId, AgentLocation> {
-  return { kimi: resolveAgentLocation('kimi'), mcode: resolveAgentLocation('mcode') }
+  return {
+    kimi: resolveAgentLocation('kimi'),
+    mcode: resolveAgentLocation('mcode'),
+    opencode: resolveAgentLocation('opencode'),
+  }
 }

@@ -5,25 +5,44 @@
  * sends over IPC) and the renderer (to validate what it receives and to build
  * view models). It must therefore stay free of Node and Electron imports.
  *
- * The shapes below are deliberately a common denominator of two agents whose
+ * The shapes below are deliberately a common denominator of three agents whose
  * config files share a vocabulary but not a spelling: kimicode writes
- * `type = "openai_responses"` where mcode writes `api = "openai-responses"`,
- * and kimicode's model key is `<provider>/<model>` where mcode's is a bare
- * model id nested under its provider. Normalising happens in the main process
- * so the UI never has to branch on the agent — except where the value is shown
- * or edited, and there the per-agent enums below apply.
+ * `type = "openai_responses"` where mcode writes `api = "openai-responses"` and
+ * opencode writes an npm package name; reasoning levels are `support_efforts`
+ * in one, `thinking.effortOptions` in another, and named `variants` in the
+ * third. Normalising happens in the main process so the UI never has to branch
+ * on the agent — except where the value is shown or edited, and there the
+ * per-agent enums below apply.
  */
 
-export type AgentId = 'kimi' | 'mcode'
+export type AgentId = 'kimi' | 'mcode' | 'opencode'
 
-/** Display order and identity of the two agents the feature covers */
-export const AGENT_IDS: readonly AgentId[] = ['kimi', 'mcode'] as const
+/** Display order and identity of the agents the feature covers */
+export const AGENT_IDS: readonly AgentId[] = ['kimi', 'mcode', 'opencode'] as const
+
+/** Narrow an IPC-supplied agent id to a known one */
+export function toAgentId(value: unknown): AgentId {
+  return value === 'mcode' || value === 'opencode' ? value : 'kimi'
+}
 
 /** Protocol values accepted by kimicode's `[providers.<name>].type` */
 export const KIMI_PROTOCOLS = ['openai', 'anthropic', 'openai_responses', 'google-genai', 'kimi'] as const
 
 /** Protocol values accepted by mcode's `custom_provider.<id>.api` */
 export const MCODE_PROTOCOLS = ['openai-completions', 'openai-responses', 'anthropic-messages'] as const
+
+/**
+ * Runtime packages accepted by opencode's `provider.<id>.npm`.
+ *
+ * opencode does not name a protocol — the package *is* the protocol — so this
+ * list doubles as its protocol picker.
+ */
+export const OPENCODE_PACKAGES = [
+  '@ai-sdk/openai-compatible',
+  '@ai-sdk/anthropic',
+  '@ai-sdk/openai',
+  '@ai-sdk/google',
+] as const
 
 /** Capability flags both agents use (kimicode's `capabilities` array) */
 export const MODEL_CAPABILITIES = [
@@ -232,6 +251,15 @@ export interface AgentModelInput {
    * clears the stored one.
    */
   displayName?: string
+  /**
+   * The id this model is stored under today, present only when the user renamed
+   * it. A model id is the record's key in the config file, so renaming is a
+   * move — the old key is removed, the record is written under the new one, and
+   * every pointer into it is rewritten. Without this the write path could only
+   * see "an id it did not recognise" and would have to guess whether that meant
+   * rename or delete.
+   */
+  originalId?: string
   model?: string
   contextLimit?: number
   outputLimit?: number
@@ -391,6 +419,7 @@ export function parseProviderInput(raw: unknown): AgentProviderInput | null {
       if (!modelId) continue
       models.push({
         id: modelId,
+        originalId: optionalString(entry.originalId),
         displayName: optionalString(entry.displayName),
         model: optionalString(entry.model),
         contextLimit: optionalNumber(entry.contextLimit),

@@ -21,7 +21,20 @@ import {
   revealMcodeKey,
   serializeMcodeDocument,
 } from './mcode-config'
-import { KIMI_PROTOCOLS, MCODE_PROTOCOLS } from '../src/lib/agent-config'
+import {
+  applyOpencodeProviderEdit,
+  parseOpencodeDocument,
+  readOpencodePayload,
+  readOpencodeProviderEndpoint,
+  removeOpencodeProvider,
+  revealOpencodeKey,
+  serializeOpencodeDocument,
+} from './opencode-config'
+import {
+  KIMI_PROTOCOLS,
+  MCODE_PROTOCOLS,
+  OPENCODE_PACKAGES,
+} from '../src/lib/agent-config'
 import type {
   AgentConfigPayload,
   AgentKeyReveal,
@@ -35,9 +48,10 @@ import type {
  * Orchestration for the Agent configuration feature.
  *
  * Every operation follows the same path — locate the file, read a snapshot,
- * parse, transform, serialise, write with compare-and-swap — so the two agents
- * differ only in their parser/writer pair. Nothing here knows about IPC; the
- * handlers in main.ts stay thin.
+ * parse, transform, serialise, write with compare-and-swap — so the agents
+ * differ only in their parser/writer pair. That pair is the `AgentOps` table
+ * below; nothing else in this module branches on which agent it is talking to,
+ * and nothing here knows about IPC.
  */
 
 /** Files larger than this are almost certainly not a config we should edit */
@@ -51,10 +65,97 @@ const DRIFT_MESSAGE = '配置文件在本次编辑期间被外部修改，请刷
  *
  * kimicode stores a provider under its own name as a TOML table header
  * (`[providers."Little Jochen"]`), so a quote, bracket or newline in that name
- * would produce a document the agent cannot parse. mcode derives its key from a
- * fixed kebab-case alphabet instead, so the check only applies to kimicode.
+ * would produce a document the agent cannot parse. The others have their own
+ * constraints; this set is the intersection that is safe everywhere.
  */
 const FORBIDDEN_KEY_CHARS = /["'\\[\]{}\r\n\t]/
+
+/** Endpoint and credential of one provider, as the request builders need it */
+interface ProviderEndpoint {
+  baseUrl?: string
+  protocol: string
+  apiKey?: string
+  /**
+   * Environment variable names the provider's credential may come from.
+   * Present when the config names variables rather than holding a value, so a
+   * missing credential can say which name was looked for.
+   */
+  credentialEnv?: string[]
+}
+
+/** Everything that differs between the agents, in one place */
+interface AgentOps {
+  /** Parse the file; throws with the parser's own message when malformed */
+  parse(text: string): unknown
+  /** Project the document into the shape the UI consumes */
+  read(text: string, configPath: string, cliAvailable: boolean): AgentConfigPayload
+  /** Serialise the document back to file text */
+  serialize(doc: unknown): string
+  /** Apply a provider create/update, in place */
+  applyEdit(doc: unknown, input: AgentProviderInput): void
+  /** Remove a provider and clear the pointers into it, in place */
+  removeProvider(doc: unknown, providerId: string): void
+  /** Plaintext credential, or null when there is none to reveal */
+  revealKey(text: string, providerId: string): string | null
+  /** Credential and endpoint for the outbound requests */
+  endpoint(text: string, providerId: string): ProviderEndpoint | null
+  /** Protocol values this agent accepts */
+  protocols: readonly string[]
+  /**
+   * True when the stored key is derived from the display name rather than
+   * taken from the caller (mcode's immutable kebab-case id).
+   */
+  derivesKey?: boolean
+}
+
+const OPS: Record<AgentId, AgentOps> = {
+  kimi: {
+    parse: parseKimiDocument,
+    read: readKimiPayload,
+    serialize: (doc) => serializeKimiDocument(doc as Parameters<typeof serializeKimiDocument>[0]),
+    applyEdit: (doc, input) =>
+      applyKimiProviderEdit(doc as Parameters<typeof applyKimiProviderEdit>[0], input),
+    removeProvider: (doc, id) =>
+      removeKimiProvider(doc as Parameters<typeof removeKimiProvider>[0], id),
+    revealKey: revealKimiKey,
+    endpoint: readKimiProviderEndpoint,
+    protocols: KIMI_PROTOCOLS,
+  },
+  mcode: {
+    parse: parseMcodeDocument,
+    read: readMcodePayload,
+    serialize: (doc) => serializeMcodeDocument(doc as Parameters<typeof serializeMcodeDocument>[0]),
+    applyEdit: (doc, input) => {
+      const document = doc as Parameters<typeof applyMcodeProviderEdit>[0]
+      // Creating a provider means choosing its key here: the UI supplies the
+      // display name only, and the key is derived once and then immutable.
+      const taken = new Set(Object.keys(document.custom_provider ?? {}))
+      const resolved = input.originalId
+        ? input
+        : { ...input, id: deriveProviderKey(input.name || input.id, taken) }
+      applyMcodeProviderEdit(document, resolved)
+    },
+    removeProvider: (doc, id) =>
+      removeMcodeProvider(doc as Parameters<typeof removeMcodeProvider>[0], id),
+    revealKey: revealMcodeKey,
+    endpoint: readMcodeProviderEndpoint,
+    protocols: MCODE_PROTOCOLS,
+    derivesKey: true,
+  },
+  opencode: {
+    parse: parseOpencodeDocument,
+    read: readOpencodePayload,
+    serialize: (doc) =>
+      serializeOpencodeDocument(doc as Parameters<typeof serializeOpencodeDocument>[0]),
+    applyEdit: (doc, input) =>
+      applyOpencodeProviderEdit(doc as Parameters<typeof applyOpencodeProviderEdit>[0], input),
+    removeProvider: (doc, id) =>
+      removeOpencodeProvider(doc as Parameters<typeof removeOpencodeProvider>[0], id),
+    revealKey: revealOpencodeKey,
+    endpoint: readOpencodeProviderEndpoint,
+    protocols: OPENCODE_PACKAGES,
+  },
+}
 
 /** Empty payload for an agent with no readable config file */
 function notInstalled(agent: AgentId, note: string, configPath: string | null): AgentConfigPayload {
@@ -76,11 +177,7 @@ export async function readAgentConfig(agent: AgentId): Promise<AgentConfigPayloa
   const cliAvailable = location.cliPaths.length > 0
 
   if (!location.configPath) {
-    return notInstalled(
-      agent,
-      'not-found',
-      null,
-    )
+    return notInstalled(agent, 'not-found', null)
   }
 
   const snapshot = await readSnapshot(location.configPath)
@@ -90,10 +187,7 @@ export async function readAgentConfig(agent: AgentId): Promise<AgentConfigPayloa
   }
 
   try {
-    const payload =
-      agent === 'kimi'
-        ? readKimiPayload(snapshot.text, location.configPath, cliAvailable)
-        : readMcodePayload(snapshot.text, location.configPath, cliAvailable)
+    const payload = OPS[agent].read(snapshot.text, location.configPath, cliAvailable)
     // The CAS token is the hash of the exact text this payload was built from.
     payload.revision = snapshot.hash
     return payload
@@ -121,10 +215,7 @@ export async function revealAgentKey(agent: AgentId, providerId: string): Promis
   if (!snapshot) return { ok: false, message: 'unreadable' }
 
   try {
-    const key =
-      agent === 'kimi'
-        ? revealKimiKey(snapshot.text, providerId)
-        : revealMcodeKey(snapshot.text, providerId)
+    const key = OPS[agent].revealKey(snapshot.text, providerId)
     if (!key) return { ok: false, message: 'no-key' }
     return { ok: true, key }
   } catch (e) {
@@ -149,6 +240,7 @@ export async function listAgentProviderModels(
   let baseUrl = override?.baseUrl?.trim()
   let apiKey = override?.apiKey?.trim()
   let protocol = override?.protocol ?? ''
+  let credentialEnv: string[] | undefined
 
   if (!baseUrl || !apiKey) {
     const location = resolveAgentLocation(agent)
@@ -156,14 +248,12 @@ export async function listAgentProviderModels(
       const snapshot = await readSnapshot(location.configPath)
       if (snapshot) {
         try {
-          const endpoint =
-            agent === 'kimi'
-              ? readKimiProviderEndpoint(snapshot.text, providerId)
-              : readMcodeProviderEndpoint(snapshot.text, providerId)
+          const endpoint = OPS[agent].endpoint(snapshot.text, providerId)
           if (endpoint) {
             baseUrl = baseUrl || endpoint.baseUrl
             apiKey = apiKey || endpoint.apiKey
             protocol = protocol || endpoint.protocol
+            credentialEnv = endpoint.credentialEnv
           }
         } catch {
           // an unreadable file just means the override has to carry everything
@@ -172,8 +262,18 @@ export async function listAgentProviderModels(
     }
   }
 
-  if (!baseUrl) return { ok: false, message: 'provider has no base url' }
-  if (!apiKey) return { ok: false, message: 'provider has no stored credential' }
+  if (!baseUrl) return { ok: false, message: '这个 Provider 没有可用的 Base URL' }
+  if (!apiKey) {
+    // Naming the variable is the difference between a user knowing what to set
+    // and a user being told only that something is missing.
+    return {
+      ok: false,
+      message:
+        credentialEnv && credentialEnv.length > 0
+          ? `环境变量 ${credentialEnv.join(' / ')} 未设置`
+          : '这个 Provider 没有可用的凭据',
+    }
+  }
 
   try {
     return await fetchProviderModels(baseUrl, apiKey, protocol)
@@ -204,15 +304,21 @@ export async function testAgentModel(
   if (!snapshot) return { ok: false, message: 'unreadable' }
 
   try {
-    const endpoint =
-      agent === 'kimi'
-        ? readKimiProviderEndpoint(snapshot.text, providerId)
-        : readMcodeProviderEndpoint(snapshot.text, providerId)
-    if (!endpoint) return { ok: false, message: 'provider not found' }
-    if (!endpoint.baseUrl) return { ok: false, message: 'provider has no base url' }
+    const endpoint = OPS[agent].endpoint(snapshot.text, providerId)
+    if (!endpoint) return { ok: false, message: '没有找到这个 Provider' }
+    if (!endpoint.baseUrl) return { ok: false, message: '这个 Provider 没有可用的 Base URL' }
+    if (!endpoint.apiKey) {
+      return {
+        ok: false,
+        message:
+          endpoint.credentialEnv && endpoint.credentialEnv.length > 0
+            ? `环境变量 ${endpoint.credentialEnv.join(' / ')} 未设置`
+            : '这个 Provider 没有可用的凭据',
+      }
+    }
     return await testProviderModel(
       endpoint.baseUrl,
-      endpoint.apiKey ?? '',
+      endpoint.apiKey,
       endpoint.protocol,
       wireName,
     )
@@ -222,12 +328,18 @@ export async function testAgentModel(
 }
 
 /** Reject input that would produce a config the agent cannot load */
-function validateProviderInput(agent: AgentId, input: AgentProviderInput): string | null {  if (!input.id.trim()) return 'provider id is empty'
-  if (agent === 'kimi' && FORBIDDEN_KEY_CHARS.test(input.id)) {
-    return 'provider name contains a character that cannot appear in a config table header'
+function validateProviderInput(agent: AgentId, input: AgentProviderInput): string | null {
+  if (!input.id.trim()) return 'provider id is empty'
+  if (FORBIDDEN_KEY_CHARS.test(input.id)) {
+    return 'provider name contains a character that cannot appear in a config key'
+  }
+  // opencode references a model as `<provider>/<model>`, so a slash inside the
+  // provider id would make the reference ambiguous.
+  if (agent === 'opencode' && /[/\s]/.test(input.id)) {
+    return 'provider id cannot contain a slash or whitespace'
   }
   if (input.protocol) {
-    const allowed: readonly string[] = agent === 'kimi' ? KIMI_PROTOCOLS : MCODE_PROTOCOLS
+    const allowed: readonly string[] = OPS[agent].protocols
     if (!allowed.includes(input.protocol)) return `unsupported protocol: ${input.protocol}`
   }
   if (input.baseUrl) {
@@ -280,21 +392,9 @@ export async function saveAgentProvider(
 
   let nextText: string
   try {
-    if (agent === 'kimi') {
-      const doc = parseKimiDocument(snapshot.text)
-      applyKimiProviderEdit(doc, input)
-      nextText = serializeKimiDocument(doc)
-    } else {
-      const doc = parseMcodeDocument(snapshot.text)
-      const tree = doc.custom_provider ?? {}
-      // Creating a provider means choosing its key here: the UI supplies the
-      // display name only, and the key is derived once and then immutable.
-      const resolved: AgentProviderInput = input.originalId
-        ? input
-        : { ...input, id: deriveProviderKey(input.name || input.id, new Set(Object.keys(tree))) }
-      applyMcodeProviderEdit(doc, resolved)
-      nextText = serializeMcodeDocument(doc)
-    }
+    const doc = OPS[agent].parse(snapshot.text)
+    OPS[agent].applyEdit(doc, input)
+    nextText = OPS[agent].serialize(doc)
   } catch (e) {
     return { ok: false, reason: 'failed', message: e instanceof Error ? e.message : String(e) }
   }
@@ -332,15 +432,9 @@ export async function removeAgentProvider(
 
   let nextText: string
   try {
-    if (agent === 'kimi') {
-      const doc = parseKimiDocument(snapshot.text)
-      removeKimiProvider(doc, providerId)
-      nextText = serializeKimiDocument(doc)
-    } else {
-      const doc = parseMcodeDocument(snapshot.text)
-      removeMcodeProvider(doc, providerId)
-      nextText = serializeMcodeDocument(doc)
-    }
+    const doc = OPS[agent].parse(snapshot.text)
+    OPS[agent].removeProvider(doc, providerId)
+    nextText = OPS[agent].serialize(doc)
   } catch (e) {
     return { ok: false, reason: 'failed', message: e instanceof Error ? e.message : String(e) }
   }

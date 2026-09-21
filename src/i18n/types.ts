@@ -537,5 +537,6 @@ export interface Dict {
     testHint: string
     testTimeout: string
     testSuccess: string
+    modelRenamed: string
   }
 }

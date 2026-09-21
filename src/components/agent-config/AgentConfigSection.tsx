@@ -11,6 +11,7 @@ import {
   AGENT_IDS,
   KIMI_PROTOCOLS,
   MCODE_PROTOCOLS,
+  OPENCODE_PACKAGES,
   filterProviders,
   parseAgentConfigPayload,
   type AgentConfigPayload,
@@ -23,6 +24,14 @@ import {
 const AGENT_LABELS: Record<AgentId, string> = {
   kimi: 'Kimi Code',
   mcode: 'MiniMax Code',
+  opencode: 'OpenCode',
+}
+
+/** Protocol choices per agent; opencode's are runtime package names */
+const AGENT_PROTOCOLS: Record<AgentId, readonly string[]> = {
+  kimi: KIMI_PROTOCOLS,
+  mcode: MCODE_PROTOCOLS,
+  opencode: OPENCODE_PACKAGES,
 }
 
 /**
@@ -111,7 +120,7 @@ export function AgentConfigSection({ className }: { className?: string }) {
     await reload(agent)
   }
 
-  const protocols = agent === 'kimi' ? KIMI_PROTOCOLS : MCODE_PROTOCOLS
+  const protocols = AGENT_PROTOCOLS[agent]
   const totalModels = payload?.providers.reduce((n, p) => n + p.models.length, 0) ?? 0
 
   return (

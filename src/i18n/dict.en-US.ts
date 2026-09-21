@@ -557,5 +557,6 @@ export const enUS: Dict = {
       'Sends one minimal request to check the model answers (costs a few tokens)',
     testTimeout: 'timeout',
     testSuccess: 'OK',
+    modelRenamed: 'Renamed, was',
   },
 }

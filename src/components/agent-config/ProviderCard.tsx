@@ -229,6 +229,15 @@ export function ProviderCard({
                       </button>
                     ) : null}
                   </div>
+                ) : provider.maskedKey ? (
+                  // A credential the config names but that is not set (an
+                  // environment variable the runtime would look up) is still
+                  // worth showing by name — "not set" alone would hide which
+                  // variable is missing.
+                  <span className="font-mono text-muted-foreground">
+                    {provider.maskedKey}
+                    <span className="ml-1.5 text-subtle">{t.agentConfig.keyUnset}</span>
+                  </span>
                 ) : (
                   <span className="text-subtle">{t.agentConfig.keyUnset}</span>
                 )}
