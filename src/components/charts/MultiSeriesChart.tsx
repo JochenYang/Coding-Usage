@@ -279,10 +279,14 @@ export function MultiSeriesChart({
             {...tooltipAnchor(xAt(shown) / W, '6px')}
           />
         )}
-      </div>
 
-      <div aria-live="polite" className="sr-only">
-        {announcement}
+        {/* Inside the frame on purpose. `sr-only` is absolutely positioned, so
+            outside a positioned ancestor it resolves against the document and
+            escapes the scrolling <main> — which stretched the page into a
+            second scrollbar. */}
+        <div aria-live="polite" className="sr-only">
+          {announcement}
+        </div>
       </div>
     </div>
   )

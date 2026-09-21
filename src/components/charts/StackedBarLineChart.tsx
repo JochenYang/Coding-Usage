@@ -330,10 +330,12 @@ export function StackedBarLineChart({
             {...tooltipAnchor(activeX / W, `${(PAD.top / H) * 100}%`)}
           />
         )}
-      </div>
 
-      <div aria-live="polite" className="sr-only">
-        {announcement}
+        {/* Inside the frame on purpose; see MultiSeriesChart — an `sr-only` node
+            outside a positioned ancestor escapes the scrolling <main>. */}
+        <div aria-live="polite" className="sr-only">
+          {announcement}
+        </div>
       </div>
     </div>
   )
