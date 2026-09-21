@@ -10,6 +10,24 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.6.2] - 2026-09-21
+
+### 中文
+- 趋势分析页的模型配色改为一张统一的槽位表，并按「这张图实际画了哪些模型」优先分配：此前三处列表各自按自己的顺序取色，同一个模型在筛选标签、曲线图例与对比列表里颜色各不相同，切换「Token / 调用次数」还会让整排柱子重新上色；现在同一张图上的曲线颜色两两不同
+- 图表的悬停读数可以用键盘取了：Tab 聚焦图表后用左右方向键逐点查看、Home / End 跳到首尾、Esc 清除，当前数值通过辅助朗读播报，并带上度量单位与完整模型名
+- 修复趋势分析页多出一条外层滚动条：辅助朗读区域原本放在图表框架之外，绝对定位让它逃出了主内容区的裁剪，把页面撑高约 294px
+- 修复深色模式下滚动条仍是浅色：改为按主题声明 `color-scheme`，滚动条等原生部件跟随主题
+- 三处图表细节：气泡不再为没有颜色的行画一个看不见的色块；全零的日期不再只画一条没有气泡可解释的十字线；刻度计算遇到非有限值时回退到可用坐标轴，而不是给出一条空轴
+- 清理没有读取方的字段与函数，其中「每客户端活跃时间」在每次扫描时都会计算并写进启动缓存，却从来没有人读它
+
+### English
+- Model colours on the trends page now come from one slot table, assigned by the models a chart actually draws: the three lists used to take their colour from their own order, so one model appeared in three colours across the filter chips, the legend and the comparison rows, and switching between tokens and calls recoloured every bar. Curves on a single chart are now always distinct
+- The charts' hover readouts are reachable by keyboard: tab to a chart, step through the points with the arrow keys, jump to either end with Home and End, clear with Escape, and the value is announced with its measure and the full model name
+- Fix an extra outer scrollbar on the trends page: the announcement region sat outside the chart frame, where its absolute positioning escaped the main area's clipping and stretched the page by about 294px
+- Fix the scrollbar staying light in the dark theme: `color-scheme` is now declared per theme, so native chrome follows it
+- Three chart details: the bubble no longer draws an invisible swatch on rows that carry no colour, an all-zero day no longer shows a crosshair with no bubble to explain it, and the tick calculation falls back to a usable axis for a non-finite maximum instead of returning an empty one
+- Removed fields and functions that nothing read, including a per-client active-time map that every scan computed and wrote to the startup cache with no reader
+
 ## [v0.6.1] - 2026-09-21
 
 ### 中文
