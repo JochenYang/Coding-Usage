@@ -84,6 +84,38 @@ export interface CostSliceVM {
   priced: boolean
 }
 
+/** One day in the aggregate daily series (powers the trend / stacked charts) */
+export interface DayPointVM {
+  /** Local calendar day key, YYYY-MM-DD — absent on legacy archived points */
+  day?: string
+  label: string
+  /** input + output + cacheRead + cacheWrite */
+  value: number
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+  /** Session-active milliseconds attributed to this day (tok/s denominator) */
+  activeTimeMs: number
+  /** Message (call) count recorded for this day */
+  messages: number
+  /** Top models of that day (trend tooltip detail) */
+  models?: DayModelSlice[]
+}
+
+/** One model's own daily output series, for the per-model split view */
+export interface ModelDailySeriesVM {
+  model: string
+  /** Total tokens across the whole span, used for ranking */
+  tokens: number
+  /** Output tokens per day, aligned index-by-index with `dailySeries` */
+  output: number[]
+  /** Message count per day, aligned with `dailySeries` */
+  messages: number[]
+  /** Tokens per day (all kinds), aligned with `dailySeries` */
+  total: number[]
+}
+
 export interface AgentUsageVM {
   clients: AgentClientVM[]
   /** Unclassified contributions (missing/synthetic client ids) — keeps the
@@ -96,7 +128,19 @@ export interface AgentUsageVM {
   monthCostByProvider: CostSliceVM[]
   monthCostByModel: CostSliceVM[]
   /** per-day total tokens (oldest first) — powers the trend chart */
-  dailySeries: { day?: string; label: string; value: number; input: number; output: number; cacheRead: number; cacheWrite: number; models?: DayModelSlice[] }[]
+  dailySeries: DayPointVM[]
+  /**
+   * Per-model daily breakdown, aligned to `dailySeries` by index. Empty when
+   * the scan carries no model ids. Sorted by total tokens descending.
+   */
+  modelDaily: ModelDailySeriesVM[]
+  /**
+   * Active time (ms) per client id, summed over the whole span. Only clients
+   * that reported a `client` field appear. Used to split the day-level
+   * `activeTimeMs` (which tokscale reports per day, not per client) so a
+   * model-filtered tok/s stays proportional instead of reusing the full day.
+   */
+  activeTimeByClient: Record<string, number>
   /** Client ids whose scan failed in the degraded per-client fallback; null when clean */
   skippedClients: string[] | null
   /** Per-client failure reason keyed by client id (mirrors skippedClients); absent on old payloads */
@@ -119,6 +163,13 @@ interface GraphContribution {
   date: string
   totals: { tokens?: number; cost?: number; messages?: number }
   tokenBreakdown?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
+  /**
+   * Session-active milliseconds for the day. tokscale reports this per
+   * contribution (day), never per client, so it cannot be attributed to a
+   * single model exactly — see `activeTimeByClient` for the split used when a
+   * model filter is active.
+   */
+  activeTimeMs?: number
   clients?: {
     client?: string
     modelId?: string
@@ -263,6 +314,8 @@ function emptyVM(
     monthCostByProvider: [],
     monthCostByModel: [],
     dailySeries: [],
+    modelDaily: [],
+    activeTimeByClient: {},
     skippedClients,
     skippedDetails,
     scannedAt: null,
@@ -426,6 +479,11 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
     }
   })
 
+  // Per-model daily accumulation. Built alongside the day series (not in a
+  // second pass) so both stay index-aligned with `contribs` by construction.
+  const modelDays = new Map<string, { output: number[]; messages: number[]; total: number[] }>()
+  const activeTimeByClient: Record<string, number> = {}
+
   const dailySeries = contribs.map((c) => {
     const byModel = new Map<string, number>()
     for (const e of c.clients ?? []) {
@@ -450,9 +508,62 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
       output: numberOr(c.tokenBreakdown?.output),
       cacheRead: numberOr(c.tokenBreakdown?.cacheRead),
       cacheWrite: numberOr(c.tokenBreakdown?.cacheWrite),
+      activeTimeMs: numberOr(c.activeTimeMs),
+      messages: numberOr(c.totals.messages),
       models,
     }
   })
+
+  // Fill the per-model matrices now that the day count is known: every model
+  // gets a row as long as the whole span, zero-filled on days it was unused
+  // (a sparse row would silently shift one model's data onto another's days).
+  const modelIndex = new Map<string, number>()
+  for (const [i, c] of contribs.entries()) {
+    for (const e of c.clients ?? []) {
+      const model = typeof e.modelId === 'string' && e.modelId ? e.modelId : null
+      if (!model) continue
+      let row = modelDays.get(model)
+      if (!row) {
+        row = { output: new Array(contribs.length).fill(0), messages: new Array(contribs.length).fill(0), total: new Array(contribs.length).fill(0) }
+        modelDays.set(model, row)
+        modelIndex.set(model, modelIndex.size)
+      }
+      const t =
+        numberOr(e.tokens?.input) +
+        numberOr(e.tokens?.output) +
+        numberOr(e.tokens?.cacheRead) +
+        numberOr(e.tokens?.cacheWrite)
+      row.output[i] += numberOr(e.tokens?.output)
+      row.messages[i] += numberOr(e.messages)
+      row.total[i] += t
+    }
+    // Day-level active time has no per-client split (tokscale reports one
+    // figure for the day), so each client is credited with its share of that
+    // day's messages — the same apportionment `buildModelRows` applies to a
+    // model. This is an estimate derived from call counts, not a measurement.
+    // A day with no recorded messages contributes nothing, so an untracked day
+    // cannot hand a client time it never showed.
+    const dayActiveMs = numberOr(c.activeTimeMs)
+    const dayMessages = numberOr(c.totals.messages)
+    if (dayActiveMs > 0 && dayMessages > 0) {
+      for (const e of c.clients ?? []) {
+        const owner = typeof e.client === 'string' && e.client ? e.client : null
+        if (!owner) continue
+        activeTimeByClient[owner] =
+          (activeTimeByClient[owner] ?? 0) + dayActiveMs * (numberOr(e.messages) / dayMessages)
+      }
+    }
+  }
+
+  const modelDaily: ModelDailySeriesVM[] = [...modelDays.entries()]
+    .map(([model, row]) => ({
+      model,
+      tokens: row.total.reduce((s, v) => s + v, 0),
+      output: row.output,
+      messages: row.messages,
+      total: row.total,
+    }))
+    .sort((a, b) => b.tokens - a.tokens)
 
   return {
     clients,
@@ -470,6 +581,8 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
     // full with the unpriced label instead of being cut off.
     monthCostByModel: sortedByCost([...monthByModel.entries()], monthModelPriced),
     dailySeries,
+    modelDaily,
+    activeTimeByClient,
     skippedClients,
     skippedDetails,
     // The real scan time from the main process (kept stable across its

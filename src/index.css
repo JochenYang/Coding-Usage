@@ -33,6 +33,27 @@
 
   --color-destructive: #ef4444;
   --color-destructive-foreground: #ffffff;
+
+  /* Categorical chart series (per-model curves / stacked segments). Distinct in
+     hue AND lightness so adjacent series stay separable in both themes, and in
+     greyscale for colour-blind readers. Keep in sync with the dark block. */
+  --color-chart-1: #6366f1;
+  --color-chart-2: #14b8a6;
+  --color-chart-3: #f59e0b;
+  --color-chart-4: #ec4899;
+  --color-chart-5: #8b5cf6;
+  --color-chart-6: #0ea5e9;
+  --color-chart-7: #84cc16;
+  --color-chart-8: #f97316;
+
+  /* Stacked-composition ramp: ONE hue in three steps. A stack is a whole with a
+     breakdown, not three categories, so the segments step in lightness instead
+     of competing in hue — leaving the speed curve as the only other hue on the
+     chart. Output (the expensive part) is the most prominent step in both
+     themes; cache read, which carries most of the volume, is the calmest. */
+  --color-stack-cache: #a5a9f0;
+  --color-stack-input: #6f73e6;
+  --color-stack-output: #4346d8;
 }
 
 body {
@@ -62,4 +83,20 @@ body {
   --color-popover-foreground: #f4f4f8;
   --color-accent-soft: rgba(99, 102, 241, 0.16);
   --color-offline: #4b4b63;
+  /* Categorical chart series, brightened for the dark card background so the
+     same index stays legible without per-component theme branching. */
+  --color-chart-1: #818cf8;
+  --color-chart-2: #2dd4bf;
+  --color-chart-3: #fbbf24;
+  --color-chart-4: #f472b6;
+  --color-chart-5: #a78bfa;
+  --color-chart-6: #38bdf8;
+  --color-chart-7: #a3e635;
+  --color-chart-8: #fb923c;
+  /* Same ramp, re-stepped for the dark card: the direction of emphasis flips
+     with the background (brighter = more prominent), so output stays the step
+     that reads first. Keep in sync with the light block. */
+  --color-stack-cache: #3d4189;
+  --color-stack-input: #767ae4;
+  --color-stack-output: #b0b3ff;
 }
