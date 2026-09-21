@@ -10,7 +10,7 @@
  * inventing data — the range selector therefore only ever narrows the day
  * window, it never subdivides it.
  */
-import type { AgentUsageVM, DayPointVM, ModelDailySeriesVM } from './agent-usage'
+import type { DayPointVM, ModelDailySeriesVM } from './agent-usage'
 
 /** Selectable look-back windows, in days (null = the entire scanned span) */
 export const RANGE_DAYS = [7, 14, 30, 90, null] as const
@@ -138,6 +138,8 @@ export function computeTotals(buckets: TrendBucket[], mode: 'all' | 'no-cache'):
 /** One model row of the comparison chart */
 export interface ModelCompareRow {
   model: string
+  /** Palette entry for this model's canonical rank, so it matches the chart above */
+  color: string
   /** Total tokens (all kinds) over the selected window */
   tokens: number
   /** Output tokens over the window */
@@ -205,6 +207,7 @@ export function buildModelRows(
   dayCount: number,
   activeTimePerDay: number[],
   dayMessages: number[],
+  slots: Map<string, number>,
 ): ModelCompareRow[] {
   const from = Math.max(0, activeTimePerDay.length - dayCount)
   return models
@@ -231,6 +234,7 @@ export function buildModelRows(
       }
       return {
         model: m.model,
+        color: modelColor(slots.get(m.model) ?? 0),
         tokens,
         output,
         messages,
@@ -243,9 +247,13 @@ export function buildModelRows(
 }
 
 /**
- * Fixed categorical palette for model series. Index-based so a model keeps its
- * colour while the filter changes the visible set (a "first N" assignment
- * would recolour everything on each toggle).
+ * Fixed categorical palette for model series.
+ *
+ * The slot comes from `modelSlots`, never from a model's position in the list
+ * currently being rendered: the filter chips, the split legend and the
+ * comparison rows order models differently, so a positional slot gave one model
+ * several colours on one screen and repainted every bar when the comparison
+ * metric changed.
  */
 const MODEL_PALETTE = [
   'var(--color-chart-1)',
@@ -258,29 +266,65 @@ const MODEL_PALETTE = [
   'var(--color-chart-8)',
 ] as const
 
-/** Stable colour for a model, hashed so the same name always maps the same way */
-export function modelColor(model: string, index: number): string {
-  // Prefer the ordinal when the caller already sorted by size (the common
-  // case: the biggest model gets the accent colour); fall back to a hash so an
-  // arbitrary ordering still stays stable for a given name.
-  const slot = index >= 0 && index < MODEL_PALETTE.length ? index : hashName(model) % MODEL_PALETTE.length
-  return MODEL_PALETTE[slot]!
+/**
+ * Palette slot per model, for every list on the page.
+ *
+ * One slot per model, so a model wears one colour in the filter chips, the split
+ * legend and the comparison rows alike — a colour taken from a list's own order
+ * gave one model several colours at once, and repainted the comparison whenever
+ * its metric changed.
+ *
+ * The models the plot actually draws are placed first, in canonical order, so
+ * the at-most-eight curves on that chart are eight different colours. That
+ * ordering matters because the palette has exactly eight entries: the split
+ * chart picks its series by OUTPUT while ranks come from total tokens, so a
+ * drawn model ranked ninth would otherwise wrap onto a colour another drawn
+ * curve already holds. Everyone else keeps their canonical rank modulo the
+ * palette, where a repeat is unavoidable — the page lists far more models than
+ * the palette has entries — and harmless, since those models are not plotted
+ * together.
+ */
+export function modelSlots(
+  ranked: readonly { model: string }[],
+  drawn: readonly { model: string }[],
+  paletteSize = MODEL_PALETTE.length,
+): Map<string, number> {
+  const canonical = new Map<string, number>()
+  for (const m of ranked) if (!canonical.has(m.model)) canonical.set(m.model, canonical.size)
+
+  const slots = new Map<string, number>()
+  const drawnOrdered = [...new Set(drawn.map((m) => m.model))].sort(
+    (a, b) => (canonical.get(a) ?? 0) - (canonical.get(b) ?? 0),
+  )
+  for (const model of drawnOrdered) {
+    if (slots.size >= paletteSize) break
+    slots.set(model, slots.size)
+  }
+  for (const [model, rank] of canonical) {
+    if (!slots.has(model)) slots.set(model, rank % paletteSize)
+  }
+  return slots
 }
 
-function hashName(s: string): number {
-  let h = 0
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
-  return Math.abs(h)
+/**
+ * Palette entry for a slot.
+ *
+ * Wraps past the end: `modelSlots` hands the drawn models distinct slots, but a
+ * list longer than the palette still repeats entries, which is unavoidable.
+ */
+export function modelColor(slot: number): string {
+  const size = MODEL_PALETTE.length
+  return MODEL_PALETTE[((slot % size) + size) % size]!
 }
 
 /**
  * Human-readable model label.
  *
  * tokscale emits some model ids percent-encoded (non-ASCII provider names are
- * URL-escaped in its `models` list), which render as an unreadable
- * `%e6%96%b0...` in the UI — decode those. The provider prefix is dropped
- * because every entry already sits in a model list, and the fallback keeps the
- * tail when decoding fails.
+ * URL-escaped in its `models` list), which would render as an unreadable
+ * `%e6%96%b0...` in the UI — decode those, keeping the tail when decoding
+ * fails. The provider prefix is deliberately left in place here; dropping it is
+ * {@link modelBasename}'s job, and callers that want the short form use that.
  */
 export function modelLabel(model: string): string {
   let decoded = model
@@ -316,16 +360,4 @@ export function modelBasename(model: string): string {
 export function shortModelName(model: string, max = 18): string {
   const tail = modelBasename(model)
   return tail.length > max ? `${tail.slice(0, max - 1)}…` : tail
-}
-
-/** Provider portion of a model id, or null when it has no prefix */
-export function modelProvider(model: string): string | null {
-  const full = modelLabel(model)
-  const i = full.lastIndexOf('/')
-  return i > 0 ? full.slice(0, i) : null
-}
-
-/** Convenience: how many days the aggregate series covers for a usage VM */
-export function spanDays(usage: AgentUsageVM): number {
-  return usage.dailySeries.length
 }

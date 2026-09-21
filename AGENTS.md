@@ -58,6 +58,7 @@ src/
     trend-analysis.ts    # Trend bucketing + per-model daily series for the trends page (pure, DOM-free)
     agent-usage.ts       # Local AI agent scanner: validates + aggregates tokscale output
     kimi-quota.ts        # Kimi Code quota view-model: percent windows fed by the kimi:usage IPC
+    hooks/               # Shared React hooks (keyboard chart navigation, dismiss gestures, gestures)
   i18n/                  # Locale dictionaries (zh-CN, en-US) + LocaleProvider + useT
 ```
 
@@ -110,7 +111,7 @@ Packaging config lives in `electron-builder.yml` (appId, win targets, GitHub pub
 - All colors use `var(--color-*)` CSS variables, injected by Tailwind via `@theme`. Add new tokens in `src/index.css` first, then use utility classes.
 - Theme switching is done via `:root.dark` (or `html.dark`) redefining the same CSS variables. Do not hardcode hex values in components with `dark:`.
 - Provider brand gradients: keep the `accent: 'from-xxx to-xxx'` Tailwind class fragment; no need to parse into CSS variables.
-- Chart colours are tokens too: `--color-chart-1..8` is the series palette (`modelColor()` in `src/lib/trend-analysis.ts` picks by ordinal, falling back to a name hash), and `--color-stack-cache` / `-input` / `-output` are the three tiers of a single hue used by the stacked bars.
+- Chart colours are tokens too: `--color-chart-1..8` is the series palette, and `--color-stack-cache` / `-input` / `-output` are the three tiers of a single hue used by the stacked bars. Palette slots come from `modelSlots()` in `src/lib/trend-analysis.ts`: one slot per model, so the filter chips, the split legend and the comparison rows all agree, with the models a chart actually draws placed first so the at-most-eight curves on one plot never share a colour.
 - `cn()` (`src/lib/cn.ts:5`) merges classes and resolves conflicts. Use clsx syntax for conditional classes.
 
 ## Animation Conventions

@@ -1,7 +1,7 @@
 import { useReducedMotion } from 'motion/react'
 import { cn } from '@/lib/cn'
 import { formatCompactValue } from '@/lib/format'
-import { modelColor, modelLabel, type ModelCompareRow } from '@/lib/trend-analysis'
+import { modelLabel, type ModelCompareRow } from '@/lib/trend-analysis'
 
 /**
  * Per-model comparison as a ranked list of horizontal bars.
@@ -81,12 +81,15 @@ export function ModelCompareChart({
       </div>
 
       <ul aria-label={ariaLabel} className="space-y-0.5">
-        {rows.map((row, i) => {
+        {rows.map((row) => {
           const value = isTokens ? row.tokens : row.messages
           // An empty filter means "everything shown"; a non-empty one recedes
           // everything outside it without removing it from the ranking.
           const on = selected.length === 0 || selected.includes(row.model)
-          const color = modelColor(row.model, i)
+          // Carried on the row rather than derived from its position: these rows
+          // re-sort when the metric changes, and a positional colour would
+          // repaint every bar on a toggle and disagree with the chart above.
+          const color = row.color
           return (
             <li key={row.model}>
               <button
@@ -100,6 +103,7 @@ export function ModelCompareChart({
               >
                 <span
                   aria-hidden="true"
+                  data-swatch={row.model}
                   className="h-2.5 w-2.5 shrink-0 rounded-[3px]"
                   style={{ backgroundColor: color }}
                 />

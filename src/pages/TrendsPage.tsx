@@ -20,6 +20,7 @@ import {
   computeTotals,
   groupModelDaily,
   modelColor,
+  modelSlots,
   shortModelName,
   sliceRange,
   type ModelCompareRow,
@@ -134,19 +135,10 @@ export function TrendsPage() {
   const buckets = useMemo(() => bucketize(windowed), [windowed])
   const totals = useMemo(() => computeTotals(buckets, mode), [buckets, mode])
 
-  const modelRows = useMemo(
-    () =>
-      buildModelRows(
-        modelDaily.filter((m) => picked.length === 0 || picked.includes(m.model)),
-        windowed.length,
-        windowed.map((d) => d.activeTimeMs),
-        windowed.map((d) => d.messages),
-      ),
-    [modelDaily, picked, windowed],
-  )
-
   // Split view: the largest models by output over the window, in a stable
-  // order so colours do not reshuffle as the range changes.
+  // order so the ranking does not reshuffle as the range changes. Computed
+  // before the comparison rows because the palette slots depend on which models
+  // are actually drawn (see `modelSlots`).
   const topModels = useMemo(() => {
     const windowSize = windowed.length
     const sumOverWindow = (values: number[]): number => {
@@ -163,21 +155,39 @@ export function TrendsPage() {
       .map((x) => x.m)
   }, [modelDaily, picked, windowed.length])
 
+  // One slot per model, shared by the chips, the split legend and the comparison
+  // rows, so a model wears one colour everywhere. The drawn models are placed
+  // first and therefore never share a colour with each other — see `modelSlots`
+  // for why that ordering is load-bearing.
+  const slots = useMemo(() => modelSlots(modelDaily, topModels), [modelDaily, topModels])
+
+  const modelRows = useMemo(
+    () =>
+      buildModelRows(
+        modelDaily.filter((m) => picked.length === 0 || picked.includes(m.model)),
+        windowed.length,
+        windowed.map((d) => d.activeTimeMs),
+        windowed.map((d) => d.messages),
+        slots,
+      ),
+    [modelDaily, picked, windowed, slots],
+  )
+
   const splitSeries = useMemo(() => {
     const offset = Math.max(0, agentUsage.dailySeries.length - windowed.length)
     const pickedSet = new Set(picked)
-    return topModels.map((m, i) => ({
+    return topModels.map((m) => ({
       // Identity stays the raw id (unique); the label is display-only and can
       // collide after truncation, so it must never key a React list.
       id: m.model,
       name: shortModelName(m.model),
-      color: modelColor(m.model, i),
+      color: modelColor(slots.get(m.model) ?? 0),
       values: m.output.slice(offset, offset + windowed.length),
       // An empty filter means "everything shown"; the chart's legend uses this
       // to dim the curves a filter has switched off.
       active: picked.length === 0 || pickedSet.has(m.model),
     }))
-  }, [topModels, agentUsage.dailySeries.length, windowed.length, picked])
+  }, [topModels, slots, agentUsage.dailySeries.length, windowed.length, picked])
 
   const hasLocal = agentUsage.allTimeTotal.tokens > 0 || source.length > 0
   const apiFallbackOnly = !hasLocal && sections.length > 0
@@ -324,7 +334,7 @@ export function TrendsPage() {
             </div>
           </div>
           <div className="mt-2.5 flex flex-wrap gap-1.5">
-            {modelDaily.slice(0, 24).map((m, i) => {
+            {modelDaily.slice(0, 24).map((m) => {
               const on = picked.includes(m.model)
               return (
                 <button
@@ -340,7 +350,7 @@ export function TrendsPage() {
                     on ? 'border-transparent bg-muted font-medium text-foreground' : 'border-border text-muted-foreground hover:text-foreground',
                   )}
                 >
-                  <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: modelColor(m.model, i) }} />
+                  <span data-swatch={m.model} className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: modelColor(slots.get(m.model) ?? 0) }} />
                   {shortModelName(m.model, 22)}
                 </button>
               )
@@ -400,6 +410,7 @@ export function TrendsPage() {
                   speed: t.trends.seriesSpeed,
                 }}
                 ariaLabel={t.trends.chartTrend}
+                keyboardHint={t.common.chartKeyboardHint}
               />
             ) : (
               <p className="py-10 text-center text-xs text-subtle">{t.trends.gathering}</p>
@@ -411,6 +422,7 @@ export function TrendsPage() {
               valueLabel={t.trends.seriesOutput}
               onToggleSeries={toggleModel}
               ariaLabel={t.trends.chartSplit}
+              keyboardHint={t.common.chartKeyboardHint}
             />
           ) : (
             <p className="py-10 text-center text-xs text-subtle">{t.trends.gathering}</p>
