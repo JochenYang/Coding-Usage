@@ -41,6 +41,41 @@ export function normalizeModelId(id: string): string {
   return tail.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
+/**
+ * Codenames that price as a catalogue entry under a different id.
+ *
+ * Antigravity's SQLite stores carry a product display name for recent turns but
+ * only the internal codename for older ones, and the catalogue lists no bare
+ * `gemini-3-flash` — `gemini-3-flash-a`/`-b` are the same model it sells as
+ * `gemini-3-flash-preview` (the mapping tokscale's own Antigravity parser uses).
+ * Keys are normalized ids; an unmapped codename simply stays unpriced.
+ */
+const MODEL_ALIASES: Record<string, string> = {
+  gemini3flasha: 'gemini3flashpreview',
+  gemini3flashb: 'gemini3flashpreview',
+}
+
+/**
+ * Reasoning-tier words the catalogue never carries in an id
+ * (`claude-opus-4-6-thinking`, `gemini-3-pro-high`). Only applied when the
+ * trimmed key actually exists, so a genuine trailing word is never lost.
+ */
+const TIER_SUFFIXES = ['thinking', 'high', 'low', 'medium'] as const
+
+/** Candidate keys for a normalized id, in the order they should be tried */
+function pricingCandidates(key: string): string[] {
+  const alias = MODEL_ALIASES[key]
+  const out = alias ? [alias] : []
+  for (const suffix of TIER_SUFFIXES) {
+    if (key.length > suffix.length && key.endsWith(suffix)) {
+      const trimmed = key.slice(0, -suffix.length)
+      const trimmedAlias = MODEL_ALIASES[trimmed]
+      out.push(trimmedAlias ?? trimmed)
+    }
+  }
+  return out
+}
+
 function buildModels(
   entries: Array<{ id: string; i: number; o: number; r: number; w: number }>,
 ): Map<string, PricingEntry> {
@@ -147,7 +182,13 @@ export function priceTokens(
   const key = normalizeModelId(modelId)
   // "-free" variants are free tiers by definition (kimi-k2.5-free, glm-4.7-free, …)
   if (key.endsWith('free')) return 0
-  const entry = table.models.get(key)
+  let entry = table.models.get(key)
+  if (!entry) {
+    for (const candidate of pricingCandidates(key)) {
+      entry = table.models.get(candidate)
+      if (entry) break
+    }
+  }
   if (!entry) return null
   const n = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
   return (

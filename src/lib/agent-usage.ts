@@ -19,10 +19,15 @@ import { displayProviderName } from './provider-labels'
  * `tokscale graph --client` values; keep electron/main.ts TOKSCALE_CLIENTS in
  * sync (the same list is passed to the CLI). Order = display order.
  *
- * `mcode` (MiniMax Code) is the deliberate exception: tokscale only supports
- * that agent through headless capture, so TOKSCALE_CLIENTS omits it and the main
- * process collects its usage itself (electron/minimax-code-usage.ts). The id
- * lives here to drive the renderer's row, label and icon.
+ * Two clients are deliberate exceptions, read by the main process itself and
+ * therefore absent from TOKSCALE_CLIENTS (the CLI would only add an empty
+ * payload, and a client with no entries is filtered out of the card anyway):
+ *   - `mcode` (MiniMax Code): tokscale covers it through headless capture only
+ *     → electron/minimax-code-usage.ts
+ *   - `antigravity`: tokscale reads the terminal agent's databases
+ *     (`~/.gemini/antigravity-cli`), not the IDE's
+ *     → electron/antigravity-usage.ts
+ * The ids live here to drive the renderer's rows, labels and icons.
  */
 export const AGENT_CLIENTS = [
   'codex',
@@ -30,6 +35,7 @@ export const AGENT_CLIENTS = [
   'kimi',
   'opencode',
   'gemini',
+  'antigravity',
   'cursor',
   'copilot',
   'qwen',

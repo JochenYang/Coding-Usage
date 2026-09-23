@@ -23,6 +23,7 @@ import { fetchKimiUsage } from './kimi-usage'
 import { getPricingTable, priceTokens } from './model-pricing'
 import { hasClientEntries, mergeGraphPayloads } from './tokscale-merge'
 import { readMiniMaxCodeUsage } from './minimax-code-usage'
+import { readAntigravityUsage } from './antigravity-usage'
 import { reconcileProviderAttribution } from './provider-reconcile'
 import { ensureDshSessionAliases } from './dsh-aliases'
 import { ensureWorkbuddyAliases } from './workbuddy-aliases'
@@ -231,10 +232,12 @@ function createTray(): void {
 
 // Scanned through `graph --client`. Mostly mirrors AGENT_CLIENTS in
 // src/lib/agent-usage.ts (which also drives the renderer's labels/icons), with
-// one deliberate difference: `mcode` (MiniMax Code) is absent here because
-// tokscale's reader for it only covers headless capture — the main process
-// collects that agent itself (electron/minimax-code-usage.ts) and merges the
-// result, so asking the CLI for it would only add an empty payload.
+// two deliberate differences: `mcode` (MiniMax Code) is absent here because
+// tokscale's reader for it only covers headless capture, and `antigravity` is
+// absent because tokscale reads the terminal agent's databases rather than the
+// IDE's. The main process collects both itself
+// (electron/minimax-code-usage.ts, electron/antigravity-usage.ts) and merges the
+// results, so asking the CLI for them would only add an empty payload.
 // Clients without local session dirs are skipped by the CLI.
 const TOKSCALE_CLIENTS = [
   'codex',
@@ -263,6 +266,13 @@ const TOKSCALE_CLIENTS = [
 ]
 const TOKSCALE_CACHE_MS = 5 * 60_000
 
+/** One locally read agent whose payload the main process merges into the scan */
+interface LocalAgentPayload {
+  /** tokscale client id this payload accounts for */
+  client: string
+  payload: unknown
+}
+
 interface TokScanResult {
   /** Daily contributions from `tokscale graph` (per-day totals + client/model detail) */
   daily?: unknown
@@ -270,8 +280,7 @@ interface TokScanResult {
   /** Client ids whose per-client scan failed in the degraded fallback path */
   skippedClients?: string[]
   /** Per-client failure reason, keyed by client id (mirrors skippedClients) */
-  skippedDetails?: Record<string, string>
-  /** Epoch ms when the scan was requested — kept stable across cache hits so
+  skippedDetails?: Record<string, string>  /** Epoch ms when the scan was requested — kept stable across cache hits so
    *  the renderer can show an honest as-of time instead of re-stamping "now" */
   scannedAt?: number
 }
@@ -545,13 +554,25 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
     [join(homedir(), '.kimi-code', 'sessions'), join(homedir(), '.kimi', 'sessions')],
     join(app.getPath('userData'), 'model-id-sanitize.json'),
   )
-  // MiniMax Code keeps its usage where tokscale never looks — that client only
-  // supports headless capture — so read its session store here and merge it in.
-  // Skipped when tokscale already reports the client itself, which it would
-  // once upstream support lands and double counting becomes possible.
-  const minimax = await readMiniMaxCodeUsage(homedir())
-  const withMiniMax = (payload: unknown): unknown =>
-    minimax == null || hasClientEntries(payload, 'mcode') ? payload : mergeGraphPayloads([payload, minimax])
+  // Two agents keep their usage where tokscale never looks, so the main process
+  // reads them here and merges the result: MiniMax Code (tokscale covers it
+  // through headless capture only) and Antigravity on an IDE install (tokscale
+  // reads the terminal agent's databases). Each is skipped when tokscale already
+  // reports that client, which it would once upstream support lands — merging
+  // both would double count the same generations.
+  const reads: Array<Promise<LocalAgentPayload | null>> = [
+    readMiniMaxCodeUsage(homedir()).then((payload) => (payload == null ? null : { client: 'mcode', payload })),
+    readAntigravityUsage(homedir()).then((payload) =>
+      payload == null ? null : { client: 'antigravity', payload },
+    ),
+  ]
+  const localAgents = (await Promise.all(reads)).filter(
+    (entry): entry is LocalAgentPayload => entry !== null,
+  )
+  const withLocalAgents = (payload: unknown): unknown => {
+    const missing = localAgents.filter((entry) => !hasClientEntries(payload, entry.client))
+    return missing.length === 0 ? payload : mergeGraphPayloads([payload, ...missing.map((e) => e.payload)])
+  }
   await ensurePricingCache()
   // --no-spinner: the interactive progress renderer is both the source of
   // ANSI/CR garbage in captured stderr and the prime suspect for the
@@ -573,7 +594,7 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
     }
   }
   if (daily != null) {
-    const costs = await overrideCosts(withMiniMax(daily))
+    const costs = await overrideCosts(withLocalAgents(daily))
     // Decode last: the cost override and the provider attribution read the
     // encoded ids, whose router prefix is ASCII either way.
     return { daily: decodeNonAsciiIds(reconcileProviderAttribution(costs)) }
@@ -584,15 +605,15 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
   // caching them, so a manual refresh always re-attempts the scan instead of
   // replaying a stale error for the cache window.
   if (merged == null) {
-    // Every tokscale client failed; MiniMax Code's own numbers still beat a
-    // blank card, so serve those rather than surfacing nothing at all.
-    if (minimax != null) {
-      const costs = await overrideCosts(minimax)
+    // Every tokscale client failed; the locally read agents still beat a blank
+    // card, so serve those rather than surfacing nothing at all.
+    if (localAgents.length > 0) {
+      const costs = await overrideCosts(mergeGraphPayloads(localAgents.map((entry) => entry.payload)))
       return { daily: decodeNonAsciiIds(reconcileProviderAttribution(costs)) }
     }
     throw new Error('tokscale scan failed for every client')
   }
-  const costs = await overrideCosts(withMiniMax(merged.daily))
+  const costs = await overrideCosts(withLocalAgents(merged.daily))
   return {
     daily: decodeNonAsciiIds(reconcileProviderAttribution(costs)),
     skippedClients: merged.skippedClients,

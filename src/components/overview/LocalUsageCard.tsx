@@ -2,6 +2,7 @@ import { RefreshCw } from 'lucide-react'
 import type { ReactNode } from 'react'
 import {
   Amp,
+  Antigravity,
   Claude,
   Codex,
   Copilot,
@@ -60,6 +61,7 @@ const AGENT_ICONS: Partial<Record<AgentClientId, ReactNode>> = {
   // XiaomiMiMo ships no Color variant — its Avatar tile fills the slot
   micode: <XiaomiMiMo.Avatar size={16} />,
   mcode: <Minimax.Color />,
+  antigravity: <Antigravity.Color />,
 }
 
 /** Proper nouns — brand names, not translated. Ids = tokscale client ids. */
@@ -88,6 +90,7 @@ const AGENT_LABELS: Record<AgentClientId, string> = {
   zcode: 'ZCode',
   micode: 'MiMo',
   mcode: 'MiniMax Code',
+  antigravity: 'Antigravity',
 }
 
 interface PeriodColumnProps {
