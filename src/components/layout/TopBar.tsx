@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { EASE_OUT } from '@/lib/ease'
 import { Bell, Copy, Minus, Monitor, Moon, RefreshCw, Settings, Square, Sun, X } from 'lucide-react'
 import { useTheme, type ThemeMode } from '../ThemeProvider'
+import { useThemeTransition } from '@/lib/hooks/use-theme-transition'
 import { LocaleSwitcher } from '../LocaleSwitcher'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../beui/select'
 import { Switch } from '../beui/switch'
@@ -37,6 +38,9 @@ export function TopBar({ onNavigate }: { onNavigate: (v: View) => void }) {
   const t = useT()
   const reduceMotion = useReducedMotion()
   const { theme, setTheme } = useTheme()
+  // Theme switches repaint through a view transition; the button that starts it
+  // sits in this bar's right cluster, so the reveal opens from that corner.
+  const { runTransition } = useThemeTransition({ variant: 'circle-blur', origin: 'top-right' })
   const [maximized, setMaximized] = useState(false)
   const {
     settings,
@@ -160,7 +164,7 @@ export function TopBar({ onNavigate }: { onNavigate: (v: View) => void }) {
             settings page when the management phase lands */}
         <button
           type="button"
-          onClick={() => setTheme(nextTheme(theme))}
+          onClick={() => runTransition(() => setTheme(nextTheme(theme)))}
           aria-label={t.header.theme[theme]}
           className={GHOST_BTN}
         >

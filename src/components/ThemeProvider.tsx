@@ -107,6 +107,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const setTheme = useCallback((t: ThemeMode) => {
+    // Flip <html class="dark"> synchronously, on top of the effect below: a view
+    // transition snapshots the incoming frame the moment its callback returns,
+    // so a class applied later (after the next commit) would land outside the
+    // animation and the reveal would show the old theme on both sides. Applying
+    // it here is idempotent with the effect.
+    applyResolvedToDom(t === 'system' ? getSystemPref() : t)
     setThemeState(t)
     try {
       window.localStorage.setItem(STORAGE_KEY, t)
