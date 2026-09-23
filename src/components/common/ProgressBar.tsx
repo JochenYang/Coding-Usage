@@ -4,21 +4,38 @@ export interface ProgressBarProps {
   /** Raw percentage value; values outside 0-100 are clamped before rendering */
   percent: number
   size?: 'sm' | 'md'
+  /**
+   * Which direction the ladder reads.
+   *
+   * `usage` (default) fills as capacity is consumed, so a HIGH value is the
+   * alarming one. `remaining` is its mirror for the meters that report what is
+   * LEFT — Antigravity's quota does — where a full bar is the healthy state and
+   * a low value is the warning.
+   */
+  metric?: 'usage' | 'remaining'
   className?: string
 }
 
 /**
  * Color ladder mirrors the design baseline screenshots: accent while usage
  * feels safe (<70), warning as the window fills up, danger once capacity is
- * reached. Kept next to the component so future thresholds have one home.
+ * reached. Mirrored for `remaining` meters, where the same boundaries mean the
+ * opposite (warning below 30% left, danger at none) and a healthy bar takes the
+ * design system's "online" green — the same tone the unlimited plan rows use.
+ * Kept next to the component so future thresholds have one home.
  */
-function fillColor(percent: number): string {
+function fillColor(percent: number, metric: 'usage' | 'remaining'): string {
+  if (metric === 'remaining') {
+    if (percent <= 0) return 'bg-danger'
+    if (percent <= 30) return 'bg-warning'
+    return 'bg-online'
+  }
   if (percent >= 100) return 'bg-danger'
   if (percent >= 70) return 'bg-warning'
   return 'bg-accent'
 }
 
-export function ProgressBar({ percent, size = 'md', className }: ProgressBarProps) {
+export function ProgressBar({ percent, size = 'md', metric = 'usage', className }: ProgressBarProps) {
   // Clamp here rather than trusting every caller: raw API ratios can be
   // negative or exceed 100 and would otherwise break the fill geometry.
   const clamped = Math.min(100, Math.max(0, percent))
@@ -37,7 +54,7 @@ export function ProgressBar({ percent, size = 'md', className }: ProgressBarProp
         <div
           className={cn(
             'h-full rounded-full transition-[width] duration-500',
-            fillColor(clamped),
+            fillColor(clamped, metric),
           )}
           style={{ width: `${clamped}%` }}
         />
