@@ -10,6 +10,28 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.6.3] - 2026-09-23
+
+### 中文
+- 概览页的服务商分布改为按用量排序：原来按成本排序，而价格未收录的服务商成本同为 0 而并列，图例看起来像随机排列（环形图的弧长本来就是按 token 画的）
+- 套餐计划页的官方订阅额度跟上自动刷新：六张额度卡原先只在挂载时取一次，自动刷新期间进度条一直是旧的，必须离开页面再回来才更新；现在跟随刷新周期
+- 修复微信 iLink 机器人重启后发送必失败：会话就绪判定改为依赖 getupdates 轮询（原用 getconfig 探活，而它对着未就绪的会话也会正常应答），recover 也把「被服务端 hold 住」判为成功而非失败；同时移除只会误报的「验证连接」按钮
+- 主题切换改为带模糊的擦除过渡：改用 beui 的 theme-toggle（View Transition API），新主题从右上角以圆形展开并带 8px 模糊渐入，不再是一帧硬切；减少动效模式与不支持该 API 的环境自动退回瞬时切换
+- 本地扫描不再因模型或供应商名含中文等非 ASCII 字符而丢失整个客户端：tokscale 的字节切片会 panic（exit 101、stdout 为空），客户端因此从面板消失；现在扫描前把 id 百分号编码、结果回传前解码，界面仍显示原始中文且不丢 token
+- 本地 Agent 用量新增 MiniMax Code：tokscale 不读取它的会话存储，改由主进程直接解析；并计入 v2 会话存储建立之前的旧用量（那时记在 sqlite），两代数据按世代时间窗隔离、sqlite 内的重复行折叠，避免重复计数
+- 本地 Agent 用量新增 Antigravity：tokscale 只认终端版的数据目录，IDE 版存在 `~/.gemini/antigravity-ide`，此前读数一直为 0；现在直接读它的会话库，每行都用存盘量自检、跨库按响应 id 去重，价格未收录的内部代号也按别名定价
+- 套餐计划页新增 Antigravity 官方额度卡：显示 Gemini 与 Claude/GPT 两组的周 / 5 小时剩余额度与重置倒计时。数值是「剩余」而非「已用」，因此进度条按剩余方向配色（充足为绿、低于 30% 转黄、归零转红）
+
+### English
+- Provider distribution on the overview is ordered by usage: it was ordered by cost, and providers missing from the pricing catalogue all tied at zero, so the legend read as a shuffled list (the ring's arc length is token-based to begin with)
+- The plans page's official subscription quotas now follow auto refresh: all six cards fetched on mount only, so their bars stayed stale while the cycle ran and needed a page change to update
+- Fix WeChat iLink sends failing after every restart: session readiness now follows the getupdates poll instead of a getconfig ping (which answers happily against a session the platform has not prepared), and recovery counts a server-held poll as success rather than failure; the "verify connection" button, which could only report the wrong signal, is gone
+- Theme switching is now a blurred wipe: beui's theme-toggle (View Transition API) opens the incoming theme as a circle from the top-right that resolves out of an 8px blur instead of cutting over in a single frame, with reduced motion and older engines falling back to an instant switch
+- The local scan no longer loses an entire client when a model or provider id contains non-ASCII text: tokscale panics on its byte slice (exit 101, empty stdout) and the client disappeared from the panel; ids are now percent-encoded before the scan and decoded again for display, keeping the original text and every token
+- Local agent usage counts MiniMax Code, whose session store tokscale never reads, by parsing it in the main process; usage recorded before the v2 session store existed (kept in sqlite back then) is included too, with the two generations separated by era and duplicate rows collapsed so nothing is counted twice
+- Local agent usage counts Antigravity: tokscale only knows the terminal agent's data directory, so an IDE install under `~/.gemini/antigravity-ide` always read zero. Its conversation stores are now read directly, each row verified against the stored output total, generations deduplicated by response id across stores, and internal codenames priced through an alias map
+- The plans page gains an Antigravity quota card: the weekly and five-hour allowance remaining for the Gemini and Claude/GPT pools, with reset countdowns. The values are REMAINING rather than used, so the bars are coloured by how much is left (green while comfortable, amber under 30%, red at zero)
+
 ## [v0.6.2] - 2026-09-21
 
 ### 中文
