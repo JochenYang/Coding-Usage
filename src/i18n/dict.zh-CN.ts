@@ -483,6 +483,23 @@ export const zhCN: Dict = {
     walletRemaining: '余额',
     walletUsed: '本月已用',
   },
+  antigravityQuota: {
+    subtitle: '订阅额度 · 剩余额度',
+    groupGemini: 'Gemini 模型',
+    groupThirdParty: 'Claude 与 GPT 模型',
+    groupOther: '其他模型',
+    // These rows are REMAINING, unlike the used-percentage rows on the other
+    // subscription cards, so the wording says so explicitly.
+    windowWeekly: '周额度剩余',
+    windowFiveHour: '5 小时额度剩余',
+    windowOther: '额度剩余',
+    remainingNote:
+      '数值为「剩余额度」，与 Antigravity 面板一致；通过官方 Cloud Code 接口实时获取，不消耗额度。',
+    needsIde:
+      '未检测到本机 Antigravity 登录。请先在 IDE 中登录一次（之后即可关闭 IDE，本卡片仍能刷新）。',
+    staleHandshake: '登录凭据已失效或被拒绝。请在 Antigravity 中重新登录一次后重试。',
+    unavailable: '暂时无法读取 Antigravity 额度，请确认 IDE 正在运行且已登录。',
+  },
   providerErrors: {
     keyInvalid: 'Key 无效或请求被拒绝',
     badResponse: '响应格式变化：缺少 available_balance',

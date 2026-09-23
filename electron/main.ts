@@ -20,6 +20,7 @@ import { autoUpdater } from 'electron-updater'
 import { fetchClaudeUsage, fetchGeminiUsage, type QuotaOutcome } from './subscription-quotas'
 import { fetchGrokUsage } from './grok-usage'
 import { fetchKimiUsage } from './kimi-usage'
+import { fetchAntigravityUsage } from './antigravity-quota'
 import { getPricingTable, priceTokens } from './model-pricing'
 import { hasClientEntries, mergeGraphPayloads } from './tokscale-merge'
 import { readMiniMaxCodeUsage } from './minimax-code-usage'
@@ -1095,6 +1096,14 @@ function registerIpc(): void {
     // The credential is part of the cache identity: a second account's key must
     // not read the first account's cached windows.
     return cachedQuotaOutcome(quotaCacheKey('kimi', key), () => fetchKimiUsage(net.fetch, homedir(), key))
+  })
+
+  // Antigravity subscription quota. Unlike every other subscription this one is
+  // read from the IDE's own language server over loopback (see
+  // antigravity-quota.ts), so it needs the IDE running; the probe reports
+  // `no-server` when it is not, and the card says so.
+  ipcMain.handle('antigravity:usage', async (): Promise<QuotaOutcome> => {
+    return cachedQuotaOutcome('antigravity', () => fetchAntigravityUsage())
   })
 
   // Local agent usage scan. Cached in the main process: a full three-period

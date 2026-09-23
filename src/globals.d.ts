@@ -164,6 +164,12 @@ declare global {
      * where `id` is the canonical window identity.
      */
     kimiUsage(apiKey?: string): Promise<{ available: boolean; body?: string; reason?: string }>
+    /**
+     * Antigravity subscription quota, read from the IDE's own language server
+     * over loopback (the IDE must be running). The body is the service's JSON
+     * (`{response:{groups:[…]}}`); no credential crosses this boundary.
+     */
+    antigravityUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Mirror the encrypted v3 settings document to a userData file */
     settingsBackupWrite(payload: string): Promise<void>
     /** Read the mirrored settings document, or null when none exists */

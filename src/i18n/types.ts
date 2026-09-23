@@ -491,6 +491,19 @@ export interface Dict {
     walletRemaining: string
     walletUsed: string
   }
+  antigravityQuota: {
+    subtitle: string
+    groupGemini: string
+    groupThirdParty: string
+    groupOther: string
+    windowWeekly: string
+    windowFiveHour: string
+    windowOther: string
+    remainingNote: string
+    needsIde: string
+    staleHandshake: string
+    unavailable: string
+  }
   providerErrors: {
     keyInvalid: string
     badResponse: string

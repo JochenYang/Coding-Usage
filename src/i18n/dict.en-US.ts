@@ -496,6 +496,23 @@ export const enUS: Dict = {
     walletRemaining: 'Remaining',
     walletUsed: 'Used this month',
   },
+  antigravityQuota: {
+    subtitle: 'Subscription quota · remaining',
+    groupGemini: 'Gemini models',
+    groupThirdParty: 'Claude and GPT models',
+    groupOther: 'Other models',
+    // These rows are REMAINING, unlike the used-percentage rows on the other
+    // subscription cards, so the wording says so explicitly.
+    windowWeekly: 'Weekly limit remaining',
+    windowFiveHour: 'Five hour limit remaining',
+    windowOther: 'Limit remaining',
+    remainingNote:
+      'Values are REMAINING allowance, matching the Antigravity panel; read live from the official Cloud Code API, which does not consume quota.',
+    needsIde:
+      'No Antigravity login found on this machine. Sign in once in the IDE — afterwards the IDE can stay closed and this card keeps refreshing.',
+    staleHandshake: 'The stored login was rejected. Sign in again in Antigravity and retry.',
+    unavailable: 'Antigravity quota is unavailable right now — check that the IDE is running and signed in.',
+  },
   providerErrors: {
     keyInvalid: 'Invalid key or the request was rejected',
     badResponse: 'Response format changed: available_balance missing',
