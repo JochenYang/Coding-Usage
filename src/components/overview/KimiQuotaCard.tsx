@@ -6,6 +6,7 @@ import type { Dict } from '@/i18n/types'
 import { currencySymbol, formatAmount, formatCountdown } from '@/lib/format'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
 import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
+import { useData } from '@/lib/data-context'
 import { summarizeKimiQuota, type KimiQuotaVM, type KimiWindowId } from '@/lib/kimi-quota'
 import { useTheme } from '@/components/ThemeProvider'
 import { ProgressBar } from '@/components/common/ProgressBar'
@@ -61,6 +62,11 @@ export function KimiQuotaCard({ className }: { className?: string }) {
   const { locale } = useLocale()
   const [vm, setVm] = useState<KimiQuotaVM | null>(null)
   const [loading, setLoading] = useState(false)
+  // Official quota hits the vendor's own usage endpoint, so it follows the
+  // refresh cycle instead of fetching on mount only (which froze the progress
+  // bars until the page was remounted). The tick moves when a cycle finishes,
+  // whatever the provider fetches did.
+  const { refreshTick } = useData()
   // lobehub's kimi-color.svg draws the "K" in white; on the light theme it would
   // vanish into the muted chip, so it gets the same invert-on-light treatment as
   // ProviderLogo does for this brand.
@@ -85,7 +91,7 @@ export function KimiQuotaCard({ className }: { className?: string }) {
       .catch(() => setVm(summarizeKimiQuota({ available: false, reason: 'timeout' })))
       .finally(() => setLoading(false))
     return () => clearTimeout(timer)
-  }, [])
+  }, [refreshTick])
 
   // Minute-resolution clock so reset countdowns stay live on this card alone
   const now = useNowTick()

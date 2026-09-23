@@ -131,6 +131,13 @@ interface DataContextValue {
   refreshingAll: boolean
   /** Completion time of the last full refresh cycle (epoch ms), null before the first one */
   lastUpdated: number | null
+  /**
+   * Increments whenever a refresh cycle finishes — auto or manual, whatever the
+   * per-account outcomes. Cards outside the provider pipeline (the subscription
+   * quota probes) follow this rather than `lastUpdated`, which only moves once a
+   * fetch has actually succeeded.
+   */
+  refreshTick: number
   sections: Section[]
   configuredCount: number
   okCount: number
@@ -175,6 +182,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [results, setResults] = useState<Record<string, ProviderResult>>(loadCachedResults)
   const [refreshingAll, setRefreshingAll] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<number | null>(null)
+  // Bumped once per finished cycle; see DataContextValue.refreshTick
+  const [refreshTick, setRefreshTick] = useState(0)
   const [alerts, setAlerts] = useState<AlertItem[]>(loadAlerts)
   // Local agent (tokscale) usage view — replayed from the startup cache, then
   // corrected by the first scan (whose full run can take tens of seconds)
@@ -456,6 +465,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       } finally {
         // Always clear the spinner, even if a single account refresh throws
         if (!silent) setRefreshingAll(false)
+        // The cycle is over whether or not every fetch landed; cards outside
+        // this pipeline re-read on the tick (see DataContextValue.refreshTick)
+        setRefreshTick((n) => n + 1)
       }
     },
     [refreshOne, refreshAgentUsage],
@@ -656,6 +668,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       results,
       refreshingAll,
       lastUpdated,
+      refreshTick,
       sections,
       configuredCount,
       okCount,
@@ -682,6 +695,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       results,
       refreshingAll,
       lastUpdated,
+      refreshTick,
       sections,
       configuredCount,
       okCount,

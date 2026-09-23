@@ -4,6 +4,7 @@ import { useT } from '@/i18n/useT'
 import { formatCountdown } from '@/lib/format'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
 import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
+import { useData } from '@/lib/data-context'
 import { summarizeClaudeQuota, type ClaudeQuotaVM } from '@/lib/claude-quota'
 import { ProgressBar } from '@/components/common/ProgressBar'
 import { cn } from '@/lib/cn'
@@ -18,6 +19,11 @@ export function ClaudeQuotaCard({ className }: { className?: string }) {
   const t = useT()
   const [vm, setVm] = useState<ClaudeQuotaVM | null>(null)
   const [loading, setLoading] = useState(false)
+  // Official quota hits the vendor's own usage endpoint, so it follows the
+  // refresh cycle instead of fetching on mount only (which froze the progress
+  // bars until the page was remounted). The tick moves when a cycle finishes,
+  // whatever the provider fetches did.
+  const { refreshTick } = useData()
   // Wrapper catches the brand mark's own <title> before it can pop a native
   // hover tooltip (see useStripSvgTitle)
   const brandRef = useStripSvgTitle<HTMLSpanElement>()
@@ -35,7 +41,7 @@ export function ClaudeQuotaCard({ className }: { className?: string }) {
       .then((raw) => setVm(summarizeClaudeQuota(raw)))
       .catch(() => setVm(summarizeClaudeQuota({ available: false, reason: 'timeout' })))
       .finally(() => setLoading(false))
-  }, [])
+  }, [refreshTick])
 
   // Minute-resolution clock so reset countdowns stay live on this card alone
   const now = useNowTick()
