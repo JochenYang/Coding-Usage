@@ -10,6 +10,16 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.6.4] - 2026-09-23
+
+### 中文
+- 修复 Antigravity 额度卡每次都提示「登录凭据已失效或被拒绝」：刷新令牌要用的 OAuth 客户端原先取自语言服务器的二进制，而它导出的两个客户端 id 里，被选中的那个并不属于唯一的 secret，Google 对这对组合一律回 `invalid_client`；存档里的 access token 早已过期，于是每次取额度都必然走刷新分支、又必然被拒，看起来就像登录反复失效。现在按 IDE 自身 bundle（`app/out/main.js`）里声明的顺序成对读取，实测刷新成功并正常返回 Gemini 与 Claude/GPT 两组额度
+- Antigravity 的客户端查找也更快了：优先读 IDE bundle 里的成对声明（两次小文件读取），仅在都未被接受时才去扫 135 MB 的语言服务器二进制；服务端明确回 `invalid_grant`（令牌真的失效）时立即停止尝试，不再把每个候选都试一遍；被缓存的客户端日后被拒时重新读取，IDE 升级换了客户端也会自愈
+
+### English
+- Fix the Antigravity quota card always asking the user to log in again: the OAuth client used to refresh the token was read from the language server binary, whose two client ids are not both owned by its single secret — the pair that got picked made Google answer `invalid_client` every time. The stored access token was long past its expiry, so every quota read took the refresh branch and every refresh was rejected, which read as a login that kept dying. The client is now read as declared pairs from the IDE's own bundle (`app/out/main.js`), and a live refresh returns both the Gemini and Claude/GPT pools
+- That lookup is also cheaper and self-healing: the bundle's declared pairs are tried first (two small file reads) and the 135 MB language server binary is only scanned when none is accepted; an `invalid_grant` from Google (a genuinely dead token) stops the search instead of trying every candidate, and a cached client that is later rejected is re-resolved so an IDE update replaces the pair on its own
+
 ## [v0.6.3] - 2026-09-23
 
 ### 中文
