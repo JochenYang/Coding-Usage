@@ -3,7 +3,7 @@ import { request as httpsRequest } from 'node:https'
 import { readFile } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 /**
  * Antigravity subscription quota probe (main process).
@@ -52,43 +52,97 @@ import { join } from 'node:path'
  * application's credentials — GitHub's push protection blocks exactly that.
  *
  * Discovery is what makes this work with the IDE closed: `~/.gemini/<flavour>/bin/agentapi.bat`
- * is a launcher that persists on disk and names the language server executable,
- * whose string table carries the client id and secret. Nothing is written and
- * nothing leaves the machine; the values live in memory for this probe.
+ * persists on disk and names the language server executable, and the app
+ * resources above it carry the IDE's own bundle, whose `cloudCode/common/oauthClient.js`
+ * module declares each client id directly followed by that id's secret. The
+ * pairs are therefore read *positionally* — a build ships more than one client,
+ * and the first id does not necessarily own the first secret. Nothing is written
+ * and nothing leaves the machine; the values live in memory for this probe.
  *
- * A wrong pair cannot corrupt anything: the refresh simply fails and the probe
- * falls through to the loopback route (or reports `refresh-failed`), so the
- * lookup is verified by its own success rather than by trusting the parse.
+ * A wrong pair cannot corrupt anything: the refresh simply fails with
+ * `invalid_client` and the probe moves to the next candidate, falling through to
+ * the loopback route (or reporting `refresh-failed`) when none is accepted, so
+ * the lookup is verified by its own success rather than by trusting the parse.
  */
 const TOKEN_URL = 'https://oauth2.googleapis.com/token'
 
 /** Flavours that keep a launcher naming the language server executable */
 const LAUNCHER_DIRS = ['antigravity-ide', 'antigravity', 'antigravity-cli'] as const
 
-/** Bounded read: the binary is ~135 MB; the credentials sit well inside */
+/** Bounded read: the bundle is ~15 MB and the language server ~135 MB */
+const BUNDLE_SCAN_BYTES = 40 * 1024 * 1024
 const BINARY_SCAN_BYTES = 140 * 1024 * 1024
+
+/** How far a secret may sit from the id it belongs to (measured: ~80 chars) */
+const MAX_PAIR_GAP = 400
 
 interface OAuthClient {
   id: string
   secret: string
 }
 
-let cachedClient: OAuthClient | null | undefined
+let cachedClient: OAuthClient | undefined
 
-/** Pull the client pair out of one binary's string table */
-async function readClientFromBinary(path: string): Promise<OAuthClient | null> {
+const ID_PATTERN = /[0-9]{6,}-[a-z0-9]{6,}\.apps\.googleusercontent\.com/g
+const SECRET_PATTERN = /GOCSPX-[A-Za-z0-9_-]{10,}/g
+
+/**
+ * Client ids paired with the secret that follows each one in the same text.
+ *
+ * Minified declarations read `<id>="…",<secret>="GOCSPX-…"`, so the literal that
+ * comes next after an id is that id's secret; a second id before any secret ends
+ * the search for the first. Positional pairing is the whole point of the
+ * function — mixing up the two clients makes Google answer `invalid_client`,
+ * which the card would then report as an expired login.
+ */
+function declaredPairs(text: string): OAuthClient[] {
+  const marks: Array<{ kind: 'id' | 'secret'; value: string; at: number }> = []
+  for (const m of text.matchAll(ID_PATTERN)) marks.push({ kind: 'id', value: m[0], at: m.index ?? 0 })
+  for (const m of text.matchAll(SECRET_PATTERN)) marks.push({ kind: 'secret', value: m[0], at: m.index ?? 0 })
+  marks.sort((a, b) => a.at - b.at)
+
+  const pairs: OAuthClient[] = []
+  const paired = new Set<string>()
+  for (let i = 0; i < marks.length; i++) {
+    if (marks[i].kind !== 'id' || paired.has(marks[i].value)) continue
+    for (let j = i + 1; j < marks.length; j++) {
+      if (marks[j].kind === 'id') break
+      if (marks[j].at - marks[i].at > MAX_PAIR_GAP) break
+      paired.add(marks[i].value)
+      pairs.push({ id: marks[i].value, secret: marks[j].value })
+      break
+    }
+  }
+  return pairs
+}
+
+/**
+ * Read the launcher that names the language server executable.
+ *
+ * It persists on disk with the IDE closed, which is what lets the client be
+ * found without the IDE running.
+ */
+async function readLauncher(flavour: string): Promise<{ exe: string | null; text: string } | null> {
+  const launcher = join(homedir(), '.gemini', flavour, 'bin', 'agentapi.bat')
+  try {
+    const text = await readFile(launcher, 'utf8')
+    return { exe: text.match(/"([^"]+\.exe)"/)?.[1] ?? null, text }
+  } catch {
+    return null // flavour not installed
+  }
+}
+
+/** First `limit` bytes of a file, as latin1 (byte-preserving) text */
+async function readTextBytes(path: string, limit: number): Promise<string | null> {
   try {
     const { open } = await import('node:fs/promises')
     const handle = await open(path, 'r')
     try {
       const size = (await handle.stat()).size
-      const length = Math.min(size, BINARY_SCAN_BYTES)
+      const length = Math.min(size, limit)
       const buf = Buffer.alloc(length)
       await handle.read(buf, 0, length, 0)
-      const text = buf.toString('latin1')
-      const id = text.match(/[0-9]{6,}-[a-z0-9]{6,}\.apps\.googleusercontent\.com/)?.[0]
-      const secret = text.match(/GOCSPX-[A-Za-z0-9_-]{10,}/)?.[0]
-      return id && secret ? { id, secret } : null
+      return buf.toString('latin1')
     } finally {
       await handle.close()
     }
@@ -97,27 +151,143 @@ async function readClientFromBinary(path: string): Promise<OAuthClient | null> {
   }
 }
 
-/** Locate the Antigravity install and read its OAuth client (cached per run) */
-async function resolveClient(): Promise<OAuthClient | null> {
-  if (cachedClient !== undefined) return cachedClient
-  cachedClient = null
-  const home = homedir()
+/**
+ * The IDE's Electron bundle, found by walking up from the language server.
+ *
+ * The executable sits at `…/resources/app/extensions/<ext>/bin/`, so the app
+ * resources are a few levels above it — but how many depends on the install, and
+ * the walk is bounded rather than assumed.
+ */
+async function readIdeBundle(exe: string): Promise<string | null> {
+  let dir = dirname(exe)
+  for (let up = 0; up < 8; up++) {
+    const found = await readTextBytes(join(dir, 'resources', 'app', 'out', 'main.js'), BUNDLE_SCAN_BYTES)
+    if (found) return found
+    const parent = dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  return null
+}
+
+/**
+ * Every OAuth client worth trying, best candidate first.
+ *
+ * The IDE bundle is the authoritative source and is read first: it declares the
+ * real pairs, and trying them costs two small file reads. Only when none is
+ * accepted does the search fall back to the language server's string table,
+ * where ids and a stray secret are mixed into unrelated API strings — a 135 MB
+ * read, so it is kept last and the pairs are tried as a cross-product because
+ * nothing there states which secret belongs to which id.
+ */
+async function* clientCandidates(): AsyncGenerator<OAuthClient> {
+  const tried = new Set<string>()
+  const fresh = (list: OAuthClient[]): OAuthClient[] =>
+    list.filter((client) => {
+      const key = `${client.id}\u0000${client.secret}`
+      if (tried.has(key)) return false
+      tried.add(key)
+      return true
+    })
+
+  const exePaths: string[] = []
   for (const flavour of LAUNCHER_DIRS) {
-    const launcher = join(home, '.gemini', flavour, 'bin', 'agentapi.bat')
-    try {
-      const text = await readFile(launcher, 'utf8')
-      const exe = text.match(/"([^"]+\.exe)"/)?.[1]
-      if (!exe) continue
-      const client = await readClientFromBinary(exe)
-      if (client) {
-        cachedClient = client
-        return client
-      }
-    } catch {
-      // flavour not installed: try the next one
+    const launcher = await readLauncher(flavour)
+    if (!launcher) continue
+    if (launcher.exe) exePaths.push(launcher.exe)
+
+    const sources = [launcher.text]
+    if (launcher.exe) {
+      const bundle = await readIdeBundle(launcher.exe)
+      if (bundle) sources.push(bundle)
+    }
+    for (const text of sources) {
+      for (const client of fresh(declaredPairs(text))) yield client
     }
   }
-  return cachedClient
+
+  const ids: string[] = []
+  const secrets: string[] = []
+  for (const exe of exePaths) {
+    const binary = await readTextBytes(exe, BINARY_SCAN_BYTES)
+    if (!binary) continue
+    for (const match of binary.matchAll(ID_PATTERN)) if (!ids.includes(match[0])) ids.push(match[0])
+    for (const match of binary.matchAll(SECRET_PATTERN)) if (!secrets.includes(match[0])) secrets.push(match[0])
+  }
+  for (const id of ids) {
+    for (const secret of secrets) {
+      for (const client of fresh([{ id, secret }])) yield client
+    }
+  }
+}
+
+/**
+ * One refresh attempt.
+ *
+ * The response is read even on failure: Google distinguishes a wrong client
+ * (`invalid_client`) from a dead token (`invalid_grant`), and the caller needs
+ * the difference to decide whether to try another pair or give up.
+ */
+async function fetchToken(
+  client: OAuthClient,
+  refreshToken: string,
+): Promise<{ ok: boolean; accessToken: string | null; status: number; error: string | null }> {
+  try {
+    const res = await fetch(TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: client.id,
+        client_secret: client.secret,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      }).toString(),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+    const text = await res.text()
+    let error: string | null = null
+    let token: string | null = null
+    try {
+      const json = JSON.parse(text) as { access_token?: unknown; error?: unknown }
+      if (typeof json.access_token === 'string' && json.access_token) token = json.access_token
+      if (typeof json.error === 'string') error = json.error
+    } catch {
+      error = 'unparseable'
+    }
+    return { ok: token !== null, accessToken: token, status: res.status, error }
+  } catch (e) {
+    return { ok: false, accessToken: null, status: 0, error: e instanceof Error ? e.name : 'network' }
+  }
+}
+
+/**
+ * Resolve the OAuth client for one refresh token and refresh with it.
+ *
+ * Verification happens against the token at hand, which is the only thing that
+ * can tell the right pair from the wrong one — a parse that merely looks
+ * plausible is not evidence. The pair that works is remembered, and re-resolved
+ * from disk if a later refresh is rejected (the IDE may have been updated since).
+ */
+async function refreshAccessToken(refreshToken: string): Promise<string | null> {
+  if (!refreshToken) return null
+
+  const cached = cachedClient
+  if (cached) {
+    const res = await fetchToken(cached, refreshToken)
+    if (res.ok) return res.accessToken
+    cachedClient = undefined // stale guess: re-resolve below
+  }
+
+  for await (const client of clientCandidates()) {
+    const res = await fetchToken(client, refreshToken)
+    if (res.ok) {
+      cachedClient = client
+      return res.accessToken
+    }
+    // A token Google calls dead will not be revived by another client id
+    if (res.error === 'invalid_grant') return null
+  }
+  return null
 }
 
 /** Cloud Code hosts, daily first: that is the channel the IDE itself uses */
@@ -284,31 +454,6 @@ const pickMessage = (fields: WireField[], n: number): Buffer | null =>
 const pickString = (fields: WireField[], n: number): string => {
   const bytes = pickMessage(fields, n)
   return bytes ? bytes.toString('utf8').trim() : ''
-}
-
-/** Exchange the stored refresh token for a fresh access token */
-async function refreshAccessToken(refreshToken: string): Promise<string | null> {
-  if (!refreshToken) return null
-  const client = await resolveClient()
-  if (!client) return null
-  try {
-    const res = await fetch(TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: client.id,
-        client_secret: client.secret,
-        refresh_token: refreshToken,
-        grant_type: 'refresh_token',
-      }).toString(),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    })
-    if (!res.ok) return null
-    const json = (await res.json()) as { access_token?: unknown }
-    return typeof json.access_token === 'string' && json.access_token ? json.access_token : null
-  } catch {
-    return null
-  }
 }
 
 /** Ask Cloud Code for the quota summary with one access token */
