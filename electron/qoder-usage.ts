@@ -99,12 +99,39 @@ function lineTsMs(line: Record<string, unknown>): number {
 }
 
 /**
+ * Identity of one generation inside a transcript, or null when the line carries
+ * no stable id.
+ *
+ * A Claude-Code-shaped transcript appends the SAME assistant message several
+ * times while it streams, and each line reports a larger `usage` than the one
+ * before it. Summing those lines multiplies the real usage; the id is what lets
+ * the caller keep only the final, complete report for that generation.
+ */
+function lineIdentity(line: Record<string, unknown>, message: Record<string, unknown> | null): string {
+  const candidates = [
+    message?.id,
+    line.messageId,
+    line.message_id,
+    line.requestId,
+    line.request_id,
+    line.uuid,
+    line.id,
+  ]
+  for (const candidate of candidates) {
+    const value = str(candidate)
+    if (value) return value
+  }
+  return ''
+}
+
+/**
  * Usage of one assistant transcript line, or null. Accepts the nested
  * Claude-Code message shape and a flat usage sibling.
  */
 function readLineUsage(line: Record<string, unknown>): {
   model: string
   tsMs: number
+  identity: string
   input: number
   output: number
   cacheRead: number
@@ -128,6 +155,7 @@ function readLineUsage(line: Record<string, unknown>): {
   return {
     model: str(message?.model) || str(line.model) || 'unknown',
     tsMs: lineTsMs(line),
+    identity: lineIdentity(line, message),
     input,
     output,
     cacheRead,
@@ -145,6 +173,9 @@ async function readTranscript(path: string, key: string, out: UsageRecord[], see
   } catch {
     return
   }
+  // Keyed by generation identity so a streamed message keeps only its final
+  // report; the index is the fallback for lines that carry no id at all.
+  const byIdentity = new Map<string, number>()
   let index = 0
   for (const line of text.split('\n')) {
     const trimmed = line.trim()
@@ -162,11 +193,22 @@ async function readTranscript(path: string, key: string, out: UsageRecord[], see
     const record = asRecord(parsed)
     const usage = record ? readLineUsage(record) : null
     if (usage && usage.tsMs > 0) {
-      const dedupe = `${key}:${index}`
-      if (!seen.has(dedupe)) {
-        seen.add(dedupe)
-        const { model, tsMs, ...counters } = usage
-        out.push({ tsMs, modelId: model, ...counters })
+      const { model, tsMs, identity, ...counters } = usage
+      const entry: UsageRecord = { tsMs, modelId: model, ...counters }
+      const dedupeKey = identity
+        ? `${key}:id:${identity}`
+        : `${key}:${index}`
+      const previous = identity ? byIdentity.get(identity) : undefined
+      if (previous === undefined) {
+        if (identity) byIdentity.set(identity, out.length)
+        if (!seen.has(dedupeKey)) {
+          seen.add(dedupeKey)
+          out.push(entry)
+        }
+      } else {
+        // A later line for the same generation supersedes the earlier one:
+        // the stream reports partial counters first and the total last.
+        out[previous] = entry
       }
     }
     index++

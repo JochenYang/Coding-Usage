@@ -10,6 +10,12 @@ import { ProgressBar } from '@/components/common/ProgressBar'
 import { cn } from '@/lib/cn'
 
 /**
+ * Hard cap on the IPC round-trip. The probe is a local decrypt, but the IDE may
+ * be mid-write, so the card gives up rather than spinning forever.
+ */
+const PROBE_RACE_TIMEOUT_MS = 12_000
+
+/**
  * Trae CN credits usage card. The main process decrypts the IDE's local login
  * via the `trae:usage` IPC (the JWT never leaves the main process) and shows
  * the official credits consumption of the current period. Browser dev mode and
@@ -29,13 +35,18 @@ export function TraeQuotaCard({ className }: { className?: string }) {
     const bridge = window.desktopBridge
     if (!bridge) return
     setLoading(true)
-    const timeout = new Promise<never>((_resolve, reject) =>
-      setTimeout(() => reject(new Error('timeout')), 12_000),
-    )
+    // Race against a hard timeout: the main-process abort is best-effort, and a
+    // hung IPC must not leave the card loading forever. The timer is cleared on
+    // cleanup so each refresh cycle does not leave one pending behind.
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error('timeout')), PROBE_RACE_TIMEOUT_MS)
+    })
     Promise.race([bridge.traeUsage(), timeout])
       .then((raw) => setVm(summarizeTraeQuota(raw)))
       .catch(() => setVm(summarizeTraeQuota({ available: false, reason: 'timeout' })))
       .finally(() => setLoading(false))
+    return () => clearTimeout(timer)
   }, [refreshTick])
 
   const now = useNowTick()

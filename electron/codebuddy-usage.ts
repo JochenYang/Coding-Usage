@@ -11,9 +11,10 @@ import { join } from 'node:path'
  * history/<workspaceHash>/<conversationId>/messages/<messageId>.json`, and that
  * store is what a CN install actually accumulates usage in. This module reads
  * it and emits a payload shaped like a `tokscale graph` result, which the main
- * process merges into the scan — skipped automatically whenever tokscale
- * already reports `codebuddy` entries (a CLI-active install), so the same
- * generations can never be counted twice.
+ * process merges into the scan unconditionally: tokscale's reader covers only
+ * the CLI transcripts under `~/.codebuddy/projects`, so the two stores are
+ * disjoint by origin and a user running both the CLI and the IDE gets both
+ * halves counted (see the `mergeAlways` note in electron/main.ts).
  *
  * Message files carry `{ id, role, message, extra, createdAt }` where `message`
  * and `extra` are themselves JSON strings. Only assistant messages with an
@@ -35,8 +36,39 @@ import { join } from 'node:path'
 /** Client id this module feeds; must exist in AGENT_CLIENTS (src/lib/agent-usage.ts) */
 const CLIENT_ID = 'codebuddy'
 
-/** Every CodeBuddy generation routes through the same Tencent gateway */
+/** Fallback gateway owner, used when a model name identifies no vendor */
 const PROVIDER_ID = 'tencent'
+
+/**
+ * Gateway owner of a bare model name.
+ *
+ * CodeBuddy CN reports the model without a vendor prefix (`MiniMax-M2.5`), so
+ * the provider has to be inferred from the name — the same thing tokscale's own
+ * `inferred_provider_from_model` does. Without it every CN IDE entry lands under
+ * the `tencent` gateway id while the CLI half of the same account lands under
+ * the real vendor, and one account's usage shows up as two providers in the
+ * cost breakdown.
+ */
+function inferProvider(model: string): string {
+  const name = model.toLowerCase()
+  if (name.startsWith('minimax')) return 'minimax'
+  if (name.startsWith('glm') || name.startsWith('zai') || name.startsWith('z-ai')) return 'zhipu'
+  if (name.startsWith('deepseek')) return 'deepseek'
+  if (name.startsWith('kimi') || name.startsWith('moonshot')) return 'moonshot'
+  if (name.startsWith('claude')) return 'anthropic'
+  if (name.startsWith('gpt') || name.startsWith('o1') || name.startsWith('o3')) return 'openai'
+  if (name.startsWith('gemini')) return 'google'
+  if (name.startsWith('qwen')) return 'qwen'
+  if (name.startsWith('grok')) return 'xai'
+  return PROVIDER_ID
+}
+
+/** `vendor/model` → provider + model; a bare id is inferred from its name */
+function splitVendorModel(model: string): { providerId: string; modelId: string } {
+  const slash = model.indexOf('/')
+  if (slash <= 0) return { providerId: inferProvider(model), modelId: model }
+  return { providerId: model.slice(0, slash), modelId: model.slice(slash + 1) }
+}
 
 /** Extension root relative to LOCALAPPDATA (falls back to home/AppData/Local) */
 const EXTENSION_REL = ['CodeBuddyExtension', 'Data'] as const
@@ -170,6 +202,8 @@ async function readMessageFile(path: string): Promise<UsageRecord | null> {
 
 /** Fold the flat records into `tokscale graph`-shaped contributions */
 function buildPayload(records: UsageRecord[]): unknown {
+  // Grouped by provider AND model: two vendors can serve the same model name,
+  // and the cost breakdown attributes by provider.
   const days = new Map<string, Map<string, Slice>>()
   for (const record of records) {
     const day = localDay(record.tsMs)
@@ -178,13 +212,15 @@ function buildPayload(records: UsageRecord[]): unknown {
       slices = new Map()
       days.set(day, slices)
     }
-    const hit = slices.get(record.modelId) ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, messages: 0 }
+    const { providerId, modelId } = splitVendorModel(record.modelId)
+    const key = `${providerId}\u0000${modelId}`
+    const hit = slices.get(key) ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, messages: 0 }
     hit.input += record.input
     hit.output += record.output
     hit.cacheRead += record.cacheRead
     hit.cacheWrite += record.cacheWrite
     hit.messages += 1
-    slices.set(record.modelId, hit)
+    slices.set(key, hit)
   }
 
   const contributions = [...days.entries()]
@@ -192,7 +228,8 @@ function buildPayload(records: UsageRecord[]): unknown {
     .map(([date, slices]) => {
       const totals = { tokens: 0, cost: 0, messages: 0 }
       const tokenBreakdown = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
-      const clients = [...slices.entries()].map(([modelId, slice]) => {
+      const clients = [...slices.entries()].map(([key, slice]) => {
+        const [providerId, modelId] = key.split('\u0000')
         const tokens = {
           input: slice.input,
           output: slice.output,
@@ -208,7 +245,7 @@ function buildPayload(records: UsageRecord[]): unknown {
         tokenBreakdown.cacheWrite += slice.cacheWrite
         // cost 0 on purpose: no local price is recorded, so the main process
         // prices these entries from the OpenRouter catalog like every other one.
-        return { client: CLIENT_ID, modelId, providerId: PROVIDER_ID, tokens, cost: 0, messages: slice.messages }
+        return { client: CLIENT_ID, modelId, providerId, tokens, cost: 0, messages: slice.messages }
       })
       return { date, totals, tokenBreakdown, clients, intensity: 0, activeTimeMs: 0 }
     })

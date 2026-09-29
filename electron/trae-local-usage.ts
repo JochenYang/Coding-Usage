@@ -95,6 +95,10 @@ function num(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
 
+function str(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
+
 /** Local calendar day, matching the renderer's `todayKey()` bucketing */
 function localDay(ms: number): string {
   const d = new Date(ms)
@@ -427,7 +431,8 @@ async function decryptDatabase(encKey: Buffer, dbPath: string, snapshotPath: str
 interface TurnRow {
   turn_id?: unknown
   created_at?: unknown
-  context?: unknown
+  token_usage?: unknown
+  model_id?: unknown
 }
 
 async function readTurns(decryptedPath: string, productKey: string, records: UsageRecord[], seen: Set<string>): Promise<void> {
@@ -435,20 +440,37 @@ async function readTurns(decryptedPath: string, productKey: string, records: Usa
   const { DatabaseSync } = await import('node:sqlite')
   const db = new DatabaseSync(decryptedPath, { readOnly: true })
   try {
+    // Only the two sub-fields are selected, never the `context` column itself:
+    // it also carries `persist_user_message_context`, i.e. the user's message
+    // body, and this module's contract is that no message content is ever read
+    // into the process. `json_extract` does the selection inside SQLite, so the
+    // text never crosses into application memory.
     const rows = db
-      .prepare('SELECT turn_id, created_at, context FROM chat_turn WHERE context IS NOT NULL')
+      .prepare(
+        `SELECT turn_id,
+                created_at,
+                json_extract(context, '$.token_usage') AS token_usage,
+                json_extract(context, '$.persist_user_message_context.model_info.config_name') AS model_id
+           FROM chat_turn
+          WHERE context IS NOT NULL`,
+      )
       .all() as TurnRow[]
     for (const row of rows) {
       const turnId = typeof row.turn_id === 'string' ? row.turn_id : ''
       const createdAt = num(row.created_at)
-      if (!turnId || createdAt <= 0 || typeof row.context !== 'string') continue
-      let ctx: Record<string, unknown> | null = null
-      try {
-        ctx = asRecord(JSON.parse(row.context))
-      } catch {
-        continue // torn row mid-write
+      if (!turnId || createdAt <= 0) continue
+      // json_extract returns a JSON string for an object node; a missing path
+      // comes back as null, which is simply a turn without usage.
+      let usage: Record<string, unknown> | null = null
+      if (typeof row.token_usage === 'string') {
+        try {
+          usage = asRecord(JSON.parse(row.token_usage))
+        } catch {
+          continue // torn row mid-write
+        }
+      } else {
+        usage = asRecord(row.token_usage)
       }
-      const usage = asRecord(ctx?.token_usage)
       if (!usage) continue
       const input = num(usage.prompt_tokens)
       const output = num(usage.completion_tokens)
@@ -458,8 +480,7 @@ async function readTurns(decryptedPath: string, productKey: string, records: Usa
       const dedupe = `${productKey}:${turnId}`
       if (seen.has(dedupe)) continue
       seen.add(dedupe)
-      const modelInfo = asRecord(asRecord(ctx?.persist_user_message_context)?.model_info)
-      const modelId = typeof modelInfo?.config_name === 'string' && modelInfo.config_name ? modelInfo.config_name : 'unknown'
+      const modelId = str(row.model_id) || 'unknown'
       // created_at is epoch seconds on every build verified so far; tolerate ms
       records.push({
         tsMs: createdAt < 1e12 ? createdAt * 1000 : createdAt,

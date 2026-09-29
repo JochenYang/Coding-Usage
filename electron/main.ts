@@ -244,9 +244,9 @@ function createTray(): void {
 // electron/qoder-usage.ts) and merges the results, so asking the CLI for them
 // would only add an empty payload. `codebuddy` is the hybrid: the CLI scans
 // the CodeBuddy CLI transcripts (~/.codebuddy/projects) while the CN IDE's
-// own store is read by electron/codebuddy-usage.ts — the merge skips ours as
-// soon as tokscale reports codebuddy entries, so both worlds never double
-// count. Clients without local session dirs are skipped by the CLI.
+// own store is read by electron/codebuddy-usage.ts. The two stores are
+// disjoint by origin, so the IDE payload is merged unconditionally — a user
+// running both the CLI and the IDE gets both halves.
 const TOKSCALE_CLIENTS = [
   'codex',
   'claude',
@@ -586,7 +586,14 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
     readAntigravityUsage(homedir()).then((payload) =>
       payload == null ? null : { client: 'antigravity', payload },
     ),
-    readCodeBuddyUsage(homedir()).then((payload) => (payload == null ? null : { client: 'codebuddy', payload })),
+    readCodeBuddyUsage(homedir()).then((payload) =>
+      // Merged unconditionally: tokscale's CodeBuddy reader scans the CLI
+      // transcripts under `~/.codebuddy/projects`, while this reader covers the
+      // CN IDE's own store under `%LOCALAPPDATA%/CodeBuddyExtension` — two
+      // disjoint origins, so a user running both the CLI and the IDE was losing
+      // the IDE half entirely under the old "skip when tokscale reports it" rule.
+      payload == null ? null : { client: 'codebuddy', payload, mergeAlways: true },
+    ),
     readQoderUsage(homedir()).then((payload) => (payload == null ? null : { client: 'qoder', payload })),
     readTraeLocalUsage(homedir(), app.getPath('userData')).then((payload) =>
       payload == null ? null : { client: 'trae', payload, mergeAlways: true },
