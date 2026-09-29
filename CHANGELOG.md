@@ -10,6 +10,28 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.6.5] - 2026-09-29
+
+### 中文
+- 新增三个本地 Agent 用量来源：Trae CN / SOLO CN（读取加密的本地会话库，密钥只在运行中的 IDE 内存里扫描得到，只回传聚合数字）、Qoder（会话 transcript）、CodeBuddy CN IDE（每个会话的逐条消息文件，与 tokscale 的 CLI 路径互不重叠，两边用量都会计入）
+- 套餐计划页新增 Trae CN 官方额度卡：显示当前周期的 Credits 已用情况与重置倒计时，凭据不出主进程
+- 修复在智能体管理里给 opencode 添加只填了「上下文」的模型后，整个 Provider 的模型全部消失：opencode 要求 `limit` 的 `context` 与 `output` 同时存在，缺一个会让它判定整个 Provider 非法并跳过；现在写入时自动补全缺失的 `output`（用 opencode 自身的默认值），无法补全时则移除该字段而不是留下半截
+- 修复 Qoder 用量可能成倍虚高：流式追加的同一轮回复会多次落盘且计数递增，原先按行累加会把中间值也算进去；现在按消息 id 归并、只保留最终值
+- 修复 Trae 扫描可能因一行损坏数据而完全读不到：改为只取需要子字段（用户消息正文不再进入进程内存），并过滤掉写入中途产生的坏行，避免一行坏数据让整库读取失败
+- 修复 CodeBuddy CN IDE 侧用量在同时使用 CLI 的用户上被整体漏算：两个来源物理上互不重叠，现在无条件合并
+- 修复 CodeBuddy 用量在成本分析里被归到错误的供应商：改为按模型名推断厂商（与 tokscale 一致），同一账号不再拆成两个供应商
+- 修复 Trae 额度卡的定时器在每轮刷新后残留、组件卸载后仍会写状态
+
+### English
+- Three new local agent usage sources: Trae CN / SOLO CN (reads the encrypted local session store — the key is only ever scanned out of the running IDE's memory and only aggregates are returned), Qoder (session transcripts) and the CodeBuddy CN IDE (per-message files, disjoint from tokscale's CLI path so both halves are now counted)
+- The plans page gains a Trae CN quota card showing credits consumed in the current period with its reset countdown; the credential never leaves the main process
+- Fix every model under a provider disappearing after adding one with only a context window in the agent config: opencode requires both `context` and `output` inside `limit`, and a half-filled pair makes it reject the whole provider. The write path now completes the pair with opencode's own default output budget, or drops the field when it cannot
+- Fix Qoder usage inflating: a streamed reply is appended several times with growing counters, so summing every line counted the intermediate values. Records are now merged by message id and only the final report is kept
+- Fix a Trae scan losing everything to a single corrupt row: the query now selects only the sub-fields it needs (the user's message body no longer enters process memory) and filters out rows torn mid-write, which would otherwise abort the whole read
+- Fix CodeBuddy CN IDE usage being dropped entirely for users who also run the CLI: the two stores cannot overlap, so the IDE half is now merged unconditionally
+- Fix CodeBuddy usage being attributed to the wrong provider in the cost breakdown: the vendor is now inferred from the model name like tokscale does, so one account no longer splits into two providers
+- Fix the Trae quota card leaving a timer behind on every refresh and writing state after unmount
+
 ## [v0.6.4] - 2026-09-23
 
 ### 中文
