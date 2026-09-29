@@ -22,6 +22,10 @@ electron/
   main.ts                # Electron main: windows, tray, IPC (net:fetch / safe:* / app:set-login-item / tokscale:scan), auto-update
   preload.ts             # contextBridge exposing window.desktopBridge (typed in src/globals.d.ts)
   kimi-usage.ts          # Kimi Code quota probe: local CLI state + loopback / remote usage endpoints; the token stays in main
+  codebuddy-usage.ts     # CodeBuddy CN IDE message-store usage reader (tokscale graph-shaped payload)
+  qoder-usage.ts         # Qoder CLI transcript usage reader (tokscale graph-shaped payload)
+  trae-usage.ts          # Trae CN credits probe: decrypts the IDE's tc login blob in-memory; JWT stays in main
+  trae-local-usage.ts    # Trae CN / SOLO CN local usage: SQLCipher key scan of the running IDE + page-level decrypt of chat_turn token_usage
 src/
   App.tsx                # Shell host: view router (hash) + account editor session
   main.tsx               # ReactDOM entry
@@ -75,10 +79,26 @@ lives in `src/lib/agent-usage.ts`. Renderer scans ride the shared refresh cycle
 (mount / manual buttons / auto-refresh tick, silent attempts throttled just past
 the cache window) instead of a hidden timer. DSH's versioned `session.v3.*`
 transcripts — invisible to tokscale's filename-based scanner — are hard-linked
-to the canonical discovery names before every scan (`electron/dsh-aliases.ts`).
+to the canonical discovery names before every scan (`electron/dsh-aliases.ts`,
+highest versioned name present wins: `session.v4.*` over `session.v3.*`, also
+covering the SkillSpace internal build that shares the same `~/.dsh` home).
 WorkBuddy AI's transcripts live under `~/.workbuddy-ai` — a home tokscale never
 scans — and are hard-linked into the scanned `~/.workbuddy` before every scan
-(`electron/workbuddy-aliases.ts`). Everything stays local — only aggregated
+(`electron/workbuddy-aliases.ts`). Three stores tokscale cannot reach are read
+by the main process directly and merged: CodeBuddy CN IDE per-message JSON files
+(`electron/codebuddy-usage.ts`; the CLI transcripts under `~/.codebuddy/projects`
+stay on the tokscale path, merged with a double-count guard), Qoder CLI
+transcripts (`electron/qoder-usage.ts`; Qoder CN bills in credits and reports
+all-zero token counters, so credits-billed turns count as messages with honest
+zero tokens) and the Trae CN / SOLO CN SQLCipher 4 store
+(`electron/trae-local-usage.ts`): a C# helper compiled once into userData scans
+the running IDE's process memory for the page-HMAC-verified key (the key never
+touches disk), the snapshot database is decrypted page-by-page with node:crypto
+and `chat_turn.context.token_usage` is aggregated per day — the IDE must be
+running, so the last aggregate (token counters only) is replayed from a userData
+cache when it is not. That merge is unconditional: tokscale's `trae` sync serves
+the international cloud account and can never overlap the CN local store.
+Everything stays local — only aggregated
 numbers are rendered, never message content. Packaging requires the
 `asarUnpack` entries in `electron-builder.yml` (spawning from inside the asar
 is impossible).

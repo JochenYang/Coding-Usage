@@ -125,6 +125,8 @@ declare global {
     geminiUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Grok Build (SuperGrok) quota via the local `grok login` state; body is a normalized {percent,resetsAt,plan,email} */
     grokUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /** Trae CN credits usage via the IDE's encrypted local login; body is a normalized {percent,consumed,total,resetsAt,plan,packs} */
+    traeUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Read one coding agent's provider configuration; credentials arrive masked */
     agentConfigRead(agent: AgentId): Promise<AgentConfigPayload>
     /** Reveal one provider's plaintext credential — only on an explicit user request */

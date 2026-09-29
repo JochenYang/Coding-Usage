@@ -38,6 +38,7 @@ const desktopBridge: DesktopBridge = {
   claudeUsage: () => ipcRenderer.invoke('claude:usage'),
   geminiUsage: () => ipcRenderer.invoke('gemini:usage'),
   grokUsage: () => ipcRenderer.invoke('grok:usage'),
+  traeUsage: () => ipcRenderer.invoke('trae:usage'),
   agentConfigRead: (agent) => ipcRenderer.invoke('agentConfig:read', agent),
   agentConfigReveal: (agent, providerId) =>
     ipcRenderer.invoke('agentConfig:reveal', agent, providerId),
