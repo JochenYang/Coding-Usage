@@ -37,6 +37,12 @@ const ENV_REFERENCE = /^\{env:([A-Za-z_][A-Za-z0-9_]*)\}$/
 
 const DEFAULT_PACKAGE = '@ai-sdk/openai-compatible'
 
+/**
+ * Output budget written when a model declares a context window but no output
+ * limit — opencode's own fallback for a model that states neither.
+ */
+const OPENCODE_DEFAULT_OUTPUT_TOKENS = 16_384
+
 export interface OpencodeModelRecord {
   name?: unknown
   id?: unknown
@@ -311,6 +317,27 @@ function applyModelFields(entry: OpencodeModelRecord, model: AgentModelInput): v
     }
     if (Object.keys(limit).length > 0) entry.limit = limit
     else delete entry.limit
+  }
+
+  // opencode validates every model against a schema whose `limit` requires BOTH
+  // `context` and `output`; a model carrying only one of them fails validation,
+  // and that failure is not scoped to the model — opencode drops the entire
+  // provider ("skipped malformed recognized value") and every model under it
+  // disappears from its picker. A context window alone is the normal case here
+  // (the editor's primary field), so the pair is completed on the way out, or
+  // dropped when it cannot be: an absent `limit` is valid, a half-filled one is
+  // not.
+  const limit = asRecord(entry.limit)
+  if (limit) {
+    const context = typeof limit.context === 'number' && limit.context > 0 ? limit.context : 0
+    const output = typeof limit.output === 'number' && limit.output > 0 ? limit.output : 0
+    if (context > 0 && output > 0) {
+      // already complete
+    } else if (context > 0) {
+      limit.output = OPENCODE_DEFAULT_OUTPUT_TOKENS
+    } else {
+      delete entry.limit
+    }
   }
 
   if (model.inputModalities !== undefined) {
