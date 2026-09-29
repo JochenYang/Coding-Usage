@@ -397,6 +397,10 @@ export interface Dict {
     grokNoAuth: string
     grokReauth: string
     grokBilling: string
+    traeCreditsPlan: string
+    traeNoAuth: string
+    traeReauth: string
+    traeBilling: string
     addAgent: string
     showAll: string
     enabled: string

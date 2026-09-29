@@ -19,14 +19,18 @@ import { displayProviderName } from './provider-labels'
  * `tokscale graph --client` values; keep electron/main.ts TOKSCALE_CLIENTS in
  * sync (the same list is passed to the CLI). Order = display order.
  *
- * Two clients are deliberate exceptions, read by the main process itself and
- * therefore absent from TOKSCALE_CLIENTS (the CLI would only add an empty
- * payload, and a client with no entries is filtered out of the card anyway):
+ * Deliberate exceptions, read by the main process itself and therefore absent
+ * from TOKSCALE_CLIENTS (the CLI would only add an empty payload, and a client
+ * with no entries is filtered out of the card anyway):
  *   - `mcode` (MiniMax Code): tokscale covers it through headless capture only
  *     → electron/minimax-code-usage.ts
  *   - `antigravity`: tokscale reads the terminal agent's databases
  *     (`~/.gemini/antigravity-cli`), not the IDE's
  *     → electron/antigravity-usage.ts
+ *   - `qoder`: no tokscale reader exists → electron/qoder-usage.ts
+ * `codebuddy` is the hybrid: tokscale scans the CLI transcripts and the CN
+ * IDE store comes from electron/codebuddy-usage.ts, merged with a
+ * double-count guard (see electron/main.ts).
  * The ids live here to drive the renderer's rows, labels and icons.
  */
 export const AGENT_CLIENTS = [
@@ -40,6 +44,8 @@ export const AGENT_CLIENTS = [
   'copilot',
   'qwen',
   'trae',
+  'codebuddy',
+  'qoder',
   'workbuddy',
   'cline',
   'roocode',
@@ -470,7 +476,12 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
     const all = allByClient.get(c) ?? zero()
     return {
       client: c,
-      exists: today.tokens > 0 || month.tokens > 0 || all.tokens > 0,
+      // Message-only clients exist too: credits-billed agents (Qoder CN's
+      // first-party models) report no token counters, but their calls are
+      // still real usage.
+      exists:
+        today.tokens + month.tokens + all.tokens > 0 ||
+        today.messages + month.messages + all.messages > 0,
       today,
       month,
       allTime: all,

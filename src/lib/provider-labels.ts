@@ -53,6 +53,9 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   dsh: 'DSH',
   zcode: 'ZCode',
   xiaomi: 'Xiaomi MiMo',
+  tencent: 'Tencent',
+  qoder: 'Qoder',
+  'eve-internal': 'EVE (internal)',
 }
 
 /** Display label for a tokscale provider id (raw id when unmapped) */

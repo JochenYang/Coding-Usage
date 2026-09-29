@@ -7,12 +7,14 @@ import type { Stats } from 'node:fs'
  *
  * tokscale's DSH scanner discovers transcripts by their canonical file names
  * (`session.jsonl` / `session.jsonl.zstd`); the DSH app moved its transcripts
- * to `session.v3.jsonl.zstd`, which the scanner never matches — DSH usage
- * silently freezes at the day of the rename (reproduced against tokscale
- * 4.14.0, 4.15.1 and its current main branch; a renamed v3 file parses fine).
- * Alias each v3 transcript to the canonical name with a hard link: one inode
- * keeps append-only writes visible, nothing is copied, and the v3 file stays
- * the single source of truth.
+ * to versioned names (`session.v3.jsonl.zstd`, and `session.v4.jsonl.zstd` on
+ * the 0.1.7-rc kernel line, also written by the SkillSpace internal build
+ * which shares the same `~/.dsh` home), which the scanner never matches — DSH
+ * usage silently freezes at the day of the rename (reproduced against
+ * tokscale 4.14.0, 4.15.1 and its current main branch; a renamed file parses
+ * fine). Alias each versioned transcript to the canonical name with a hard
+ * link: one inode keeps append-only writes visible, nothing is copied, and
+ * the versioned file stays the single source of truth.
  *
  * A state file remembers the links this app created. Only remembered aliases
  * are ever replaced (when the v3 file itself was replaced and the link went
@@ -22,11 +24,17 @@ import type { Stats } from 'node:fs'
  * is re-copied whenever the source moves on.
  */
 
-/** Source → canonical name pairs, in match order */
-const ALIAS_PAIRS: ReadonlyArray<readonly [string, string]> = [
-  ['session.v3.jsonl.zstd', 'session.jsonl.zstd'],
-  ['session.v3.jsonl', 'session.jsonl'],
-]
+/**
+ * Transcript versions recognized by the alias shim, newest first. A session
+ * directory can carry several versions side by side (a migrating kernel
+ * leaves the old file behind); aliasing more than one would flip the
+ * canonical between them on every sweep, so only the highest version present
+ * feeds the alias for each canonical name.
+ */
+const SOURCE_VERSIONS = ['v4', 'v3'] as const
+
+/** Canonical-name suffixes a versioned transcript can alias onto */
+const SOURCE_SUFFIXES = ['.jsonl.zstd', '.jsonl'] as const
 
 /** What was created for one alias path; `ino: -1` marks a copy fallback */
 interface AliasRecord {
@@ -69,8 +77,9 @@ function copyIsCurrent(rec: AliasRecord | undefined, v: Stats): boolean {
 }
 
 /**
- * Make every `session.v3.*` transcript visible to tokscale under the canonical
- * name. Best-effort: a missing/unreadable DSH root must never affect the scan.
+ * Make every versioned (`session.vN.*`) transcript visible to tokscale under
+ * the canonical name. Best-effort: a missing/unreadable DSH root must never
+ * affect the scan.
  *
  * @param dshRoot   DSH home (`DSH_HOME` or `~/.dsh`) — `sessions/` lives inside
  * @param stateFile JSON file remembering the aliases this app created
@@ -96,11 +105,22 @@ export async function ensureDshSessionAliases(dshRoot: string, stateFile: string
         for (const dir of dirs) {
           if (!dir.isDirectory()) continue
           const sessionDir = join(projectDir, dir.name)
-          for (const [sourceName, aliasName] of ALIAS_PAIRS) {
-            const source = join(sessionDir, sourceName)
-            const v = await statOrNull(source)
-            if (!v) continue
-            const alias = join(sessionDir, aliasName)
+          // One alias target per canonical suffix, fed by the newest versioned
+          // source present — see SOURCE_VERSIONS.
+          for (const suffix of SOURCE_SUFFIXES) {
+            let source: string | null = null
+            let v: Stats | null = null
+            for (const version of SOURCE_VERSIONS) {
+              const candidate = join(sessionDir, `session.${version}${suffix}`)
+              const stats = await statOrNull(candidate)
+              if (stats) {
+                source = candidate
+                v = stats
+                break
+              }
+            }
+            if (!source || !v) continue
+            const alias = join(sessionDir, `session${suffix}`)
             const a = await statOrNull(alias)
             const rec = state[alias]
 
@@ -135,14 +155,17 @@ export async function ensureDshSessionAliases(dshRoot: string, stateFile: string
       }
     }
 
-    // Prune: forgotten aliases (session dir gone) and orphaned ones (the v3
-    // source was deleted while our hard link kept the old data alive).
+    // Prune: forgotten aliases (session dir gone) and orphaned ones (every
+    // versioned source was deleted while our hard link kept the old data
+    // alive).
     for (const alias of Object.keys(state)) {
       const dir = dirname(alias)
+      const suffix = alias.endsWith('.zstd') ? '.jsonl.zstd' : '.jsonl'
       let source: string | null = null
-      for (const [sourceName] of ALIAS_PAIRS) {
-        if (await statOrNull(join(dir, sourceName))) {
-          source = join(dir, sourceName)
+      for (const version of SOURCE_VERSIONS) {
+        const candidate = join(dir, `session.${version}${suffix}`)
+        if (await statOrNull(candidate)) {
+          source = candidate
           break
         }
       }

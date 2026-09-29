@@ -19,12 +19,16 @@ import {
 import { autoUpdater } from 'electron-updater'
 import { fetchClaudeUsage, fetchGeminiUsage, type QuotaOutcome } from './subscription-quotas'
 import { fetchGrokUsage } from './grok-usage'
+import { fetchTraeUsage } from './trae-usage'
 import { fetchKimiUsage } from './kimi-usage'
 import { fetchAntigravityUsage } from './antigravity-quota'
 import { getPricingTable, priceTokens } from './model-pricing'
 import { hasClientEntries, mergeGraphPayloads } from './tokscale-merge'
 import { readMiniMaxCodeUsage } from './minimax-code-usage'
 import { readAntigravityUsage } from './antigravity-usage'
+import { readCodeBuddyUsage } from './codebuddy-usage'
+import { readQoderUsage } from './qoder-usage'
+import { readTraeLocalUsage } from './trae-local-usage'
 import { reconcileProviderAttribution } from './provider-reconcile'
 import { ensureDshSessionAliases } from './dsh-aliases'
 import { ensureWorkbuddyAliases } from './workbuddy-aliases'
@@ -233,13 +237,16 @@ function createTray(): void {
 
 // Scanned through `graph --client`. Mostly mirrors AGENT_CLIENTS in
 // src/lib/agent-usage.ts (which also drives the renderer's labels/icons), with
-// two deliberate differences: `mcode` (MiniMax Code) is absent here because
-// tokscale's reader for it only covers headless capture, and `antigravity` is
-// absent because tokscale reads the terminal agent's databases rather than the
-// IDE's. The main process collects both itself
-// (electron/minimax-code-usage.ts, electron/antigravity-usage.ts) and merges the
-// results, so asking the CLI for them would only add an empty payload.
-// Clients without local session dirs are skipped by the CLI.
+// deliberate differences: `mcode` (MiniMax Code), `antigravity` (IDE install)
+// and `qoder` are absent because tokscale's readers for them are missing or
+// cover a different store — the main process collects those itself
+// (electron/minimax-code-usage.ts, electron/antigravity-usage.ts,
+// electron/qoder-usage.ts) and merges the results, so asking the CLI for them
+// would only add an empty payload. `codebuddy` is the hybrid: the CLI scans
+// the CodeBuddy CLI transcripts (~/.codebuddy/projects) while the CN IDE's
+// own store is read by electron/codebuddy-usage.ts. The two stores are
+// disjoint by origin, so the IDE payload is merged unconditionally — a user
+// running both the CLI and the IDE gets both halves.
 const TOKSCALE_CLIENTS = [
   'codex',
   'claude',
@@ -250,6 +257,7 @@ const TOKSCALE_CLIENTS = [
   'copilot',
   'qwen',
   'trae',
+  'codebuddy',
   'workbuddy',
   'cline',
   'roocode',
@@ -272,6 +280,13 @@ interface LocalAgentPayload {
   /** tokscale client id this payload accounts for */
   client: string
   payload: unknown
+  /**
+   * Merge even when tokscale already reports this client. Only for stores that
+   * can never overlap tokscale's own source for the id — Trae: tokscale syncs
+   * the international build's cloud account, we read the CN builds' local
+   * encrypted store; both may exist side by side and are disjoint by origin.
+   */
+  mergeAlways?: boolean
 }
 
 interface TokScanResult {
@@ -555,23 +570,40 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
     [join(homedir(), '.kimi-code', 'sessions'), join(homedir(), '.kimi', 'sessions')],
     join(app.getPath('userData'), 'model-id-sanitize.json'),
   )
-  // Two agents keep their usage where tokscale never looks, so the main process
-  // reads them here and merges the result: MiniMax Code (tokscale covers it
-  // through headless capture only) and Antigravity on an IDE install (tokscale
-  // reads the terminal agent's databases). Each is skipped when tokscale already
-  // reports that client, which it would once upstream support lands — merging
-  // both would double count the same generations.
+  // Several agents keep their usage where tokscale never looks (or looks at a
+  // different store), so the main process reads them here and merges the
+  // result: MiniMax Code (tokscale covers it through headless capture only),
+  // Antigravity on an IDE install (tokscale reads the terminal agent's
+  // databases), CodeBuddy CN IDE (tokscale reads the CLI's transcripts only),
+  // Qoder (no tokscale reader at all) and Trae CN / SOLO CN (tokscale syncs
+  // the international build's cloud account; the CN builds' encrypted local
+  // store is read by trae-local-usage.ts and merged unconditionally — its
+  // data can never overlap the cloud sync). Apart from Trae, each is skipped
+  // when tokscale already reports that client, which it would once upstream
+  // support lands — merging both would double count the same generations.
   const reads: Array<Promise<LocalAgentPayload | null>> = [
     readMiniMaxCodeUsage(homedir()).then((payload) => (payload == null ? null : { client: 'mcode', payload })),
     readAntigravityUsage(homedir()).then((payload) =>
       payload == null ? null : { client: 'antigravity', payload },
+    ),
+    readCodeBuddyUsage(homedir()).then((payload) =>
+      // Merged unconditionally: tokscale's CodeBuddy reader scans the CLI
+      // transcripts under `~/.codebuddy/projects`, while this reader covers the
+      // CN IDE's own store under `%LOCALAPPDATA%/CodeBuddyExtension` — two
+      // disjoint origins, so a user running both the CLI and the IDE was losing
+      // the IDE half entirely under the old "skip when tokscale reports it" rule.
+      payload == null ? null : { client: 'codebuddy', payload, mergeAlways: true },
+    ),
+    readQoderUsage(homedir()).then((payload) => (payload == null ? null : { client: 'qoder', payload })),
+    readTraeLocalUsage(homedir(), app.getPath('userData')).then((payload) =>
+      payload == null ? null : { client: 'trae', payload, mergeAlways: true },
     ),
   ]
   const localAgents = (await Promise.all(reads)).filter(
     (entry): entry is LocalAgentPayload => entry !== null,
   )
   const withLocalAgents = (payload: unknown): unknown => {
-    const missing = localAgents.filter((entry) => !hasClientEntries(payload, entry.client))
+    const missing = localAgents.filter((entry) => entry.mergeAlways || !hasClientEntries(payload, entry.client))
     return missing.length === 0 ? payload : mergeGraphPayloads([payload, ...missing.map((e) => e.payload)])
   }
   await ensurePricingCache()
@@ -1082,6 +1114,16 @@ function registerIpc(): void {
     'grok:usage',
     async (): Promise<QuotaOutcome> =>
       cachedQuotaOutcome('grok', () => fetchGrokUsage(net.fetch, homedir())),
+  )
+
+  // Trae CN credits usage. The login state is an encrypted "tc" blob in the
+  // IDE's storage.json (decrypted in-memory, see trae-usage.ts); the JWT never
+  // leaves the main process and is never logged. An expired token maps to the
+  // card's "reopen Trae" hint — the IDE refreshes it on launch, we never do.
+  ipcMain.handle(
+    'trae:usage',
+    async (): Promise<QuotaOutcome> =>
+      cachedQuotaOutcome('trae', () => fetchTraeUsage(net.fetch, homedir())),
   )
 
   // Kimi Code subscription quota. Two distinct billing surfaces exist and the
