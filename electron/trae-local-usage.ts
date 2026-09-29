@@ -445,6 +445,11 @@ async function readTurns(decryptedPath: string, productKey: string, records: Usa
     // body, and this module's contract is that no message content is ever read
     // into the process. `json_extract` does the selection inside SQLite, so the
     // text never crosses into application memory.
+    //
+    // `json_valid` is required, not defensive: a torn row (the IDE writes while
+    // the snapshot is taken) makes `json_extract` abort the whole statement with
+    // "malformed JSON", which would lose every turn in the database rather than
+    // the one bad row. Filtering in SQL keeps that failure scoped to the row.
     const rows = db
       .prepare(
         `SELECT turn_id,
@@ -452,7 +457,7 @@ async function readTurns(decryptedPath: string, productKey: string, records: Usa
                 json_extract(context, '$.token_usage') AS token_usage,
                 json_extract(context, '$.persist_user_message_context.model_info.config_name') AS model_id
            FROM chat_turn
-          WHERE context IS NOT NULL`,
+          WHERE context IS NOT NULL AND json_valid(context)`,
       )
       .all() as TurnRow[]
     for (const row of rows) {
