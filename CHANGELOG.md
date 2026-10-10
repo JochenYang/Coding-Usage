@@ -10,6 +10,29 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.6.6] - 2026-10-10
+
+### 中文
+- 趋势页的时间范围改为按真实日历日计算：「最近 N 天」原先取的是「最近 N 条有记录的天」，跨度可能远超 N 天，中断几周后相隔一个月的两天会被画成相邻两列；现在按日历日补齐，没有记录的日子以 0 计入，x 轴间距不再说谎
+- 同一页的聚合列改为按真实跨度切分：原先按「每 7 条记录」分桶，实测「全部」档的 31 个「周」跨度从 3 天到 98 天不等，柱高之间无法比较；现在按跨度选列宽（30 天以内逐日、一个季度按周、更长按两周），「全部」档为 28 列 × 14 天
+- 修复本地扫描不足两天、页面回退到本地归档或服务商快照时，分模型曲线与筛选后的指标错位：按模型的数据只对应扫描序列，回退时仍按索引套用会把某模型的第一天画在窗口最后一列下面
+- 新增「历史累计」区块：全部模型的累计消耗、有消耗的天数与统计区间，以及按模型的累计排名（含占比、输出、调用次数），与上方时间范围无关
+- 修复「不含缓存」模式下累计区块的按模型合计反而大于上方总量：扫描结果里每个模型本来就带着输入 token，只是原先没有保存，那一列只能用含缓存的口径；现在两处同源
+- 修复「模型输出速度」严重偏低：分母取自扫描的「活跃时长」，而它实际上是会话跨度之和——实测 211 天里有 30 天超过 24 小时，最坏的一天记了 2471 小时却只有 6 次调用，这些天占了分母的 97%；超过一天的时长不是时长，现在这类日子连同与它配对的输出一起不参与计算，其余统计不变（实测该值由 1.06 修正为 34.6 tok/s）
+- 趋势图最后一列不足一个完整周期时给出说明，避免柱高偏低被读成用量下滑
+- 设置页的「清除趋势快照」更名为「清除账户配额快照」，并在确认时说明本地 Agent 的用量统计与趋势数据不受影响：该按钮清除的一直是各账户从服务商拉取的配额快照，90 天的本地日归档是另一份数据
+- 移除已无引用的代码：三个组件（在线状态点、重置倒计时、套餐卡片的旧实现）、若干导出，以及每次扫描都计算却从未被读取的「当日按模型切片」；同时移除从未接线、也没有读取接口的开机自启桥接
+
+### English
+- The trends range selector now counts real calendar days: "last N days" used to mean "the last N days that have a record", which could span far more than N days — after a few weeks away, two days a month apart were drawn as adjacent columns. Missing days are now inserted as zeros, so the axis spacing no longer lies
+- Aggregation on the same page now follows real spans: buckets were cut every 7 rows, which made the 31 "weeks" of the all-time range anywhere from 3 to 98 days long and their bar heights incomparable. The column width is now chosen from the span (daily up to 30 days, weekly for a quarter, fortnightly beyond), giving 28 columns of 14 days for the full range
+- Fix per-model curves and filtered figures misaligning when the local scan covers fewer than two days and the page falls back to the local archive or provider snapshots: the per-model data describes the scan only, and applying it by index put a model's first day under the window's last column
+- Add an all-time block: cumulative consumption across every model, the days carrying usage and the covered range, plus a per-model ranking with share, output and call counts — independent of the range above
+- Fix the per-model total exceeding the headline in "no cache" mode: each model's input tokens were already in the scan, just never stored, so that column could only use the cache-inclusive figure. Both sides now share one basis
+- Fix the output-speed figure reading far too low: its denominator is the scan's "active time", which is a sum of session spans — 30 of 211 days exceeded 24 hours, the worst recording 2471 hours for 6 calls, and those days took 97% of the denominator. Time beyond a day is not a duration, so such days no longer enter the rate, nor does the output paired with them; every other figure is unchanged (the value moves from 1.06 to 34.6 tok/s)
+- The last column of the trend chart is now labelled when it covers a partial period, so a shorter bar is not read as a drop in usage
+- Rename the settings action "Clear trend snapshots" to "Clear account quota snapshots" and say in the confirmation that local agent usage and trend data are unaffected: the action has always cleared the quota snapshots fetched from each provider, while the 90-day local daily archive is a separate store
+- Remove code with no remaining references: three components (the online dot, the reset countdown and the old plan-card implementation), several exports, and a per-day model slice that every scan computed but nothing read; also remove the launch-on-login bridge, which was never wired and had no getter for a toggle to read
 ## [v0.6.5] - 2026-09-29
 
 ### 中文
