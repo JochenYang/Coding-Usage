@@ -19,7 +19,7 @@ Supported Providers: OpenCode Zen Go, Zhipu GLM (Z.ai), Kimi / Moonshot, DeepSee
 
 ```
 electron/
-  main.ts                # Electron main: windows, tray, IPC (net:fetch / safe:* / app:set-login-item / tokscale:scan), auto-update
+  main.ts                # Electron main: windows, tray, IPC (net:fetch / safe:* / tokscale:scan), auto-update
   preload.ts             # contextBridge exposing window.desktopBridge (typed in src/globals.d.ts)
   kimi-usage.ts          # Kimi Code quota probe: local CLI state + loopback / remote usage endpoints; the token stays in main
   codebuddy-usage.ts     # CodeBuddy CN IDE message-store usage reader (tokscale graph-shaped payload)
@@ -32,14 +32,13 @@ src/
   types.ts               # Shared type definitions
   components/
     layout/              # AppShell / Sidebar (nav + status card) / TopBar (agent filter / auto-refresh / bell / settings)
-    common/              # ProgressBar / StatusDot / Badge / SearchInput / PageHeader / StatCard / EmptyState / Tooltip
+    common/              # ProgressBar / Badge / SearchInput / PageHeader / StatCard / EmptyState / Tooltip
     charts/              # Self-built SVG: LineChart / DonutChart / StackedBarLineChart / MultiSeriesChart / ModelCompareChart, shared ChartLegend + ChartTooltip
-    overview/            # KpiRow / TrendCard / DistributionCard / AttentionList / AlertsPanel / PlanCardsRow / LocalUsageCard / KimiQuotaCard
+    overview/            # KpiRow / TrendCard / DistributionCard / AttentionList / AlertsPanel / LocalUsageCard / KimiQuotaCard
     account/             # AccountDrawer (single-account editor: alias / key / region / enable / test)
     beui/                # Self-built components: drawer / loader / switch / select / popover / confirm-dialog
     ProviderLogo.tsx     # Brand logo via bundled @lobehub/icons (offline) + letter fallback
     GitHubIcon.tsx       # GitHub mark inline SVG (lucide-react dropped brand icons)
-    ResetCountdown.tsx   # Relative reset countdown
     LocaleSwitcher.tsx   # Language switcher
   pages/                 # OverviewPage + 11 management/analysis pages (see router.ts VIEWS)
   providers/             # Provider adapters (implementing ProviderDef)
@@ -49,7 +48,7 @@ src/
     cn.ts                # clsx + tailwind-merge
     format.ts            # Countdown / amount / currency symbol / relative time
     metric-helpers.ts    # UNLIMITED_KEY shared constant
-    ease.ts                # Single motion authority: EASE_* / SPRING_*
+    ease.ts                # Single motion authority for easing curves: EASE_OUT / EASE_IN_OUT
     query.ts             # fetchUsage + transportFetch (main-process bridge under Electron, plain fetch in browser)
     storage.ts           # loadSettings / persistSettings (v3 encrypt+verify) / v1→v2→v3 migration
     router.ts            # View union + hash sync (no router library)
@@ -137,10 +136,8 @@ Packaging config lives in `electron-builder.yml` (appId, win targets, GitHub pub
 ## Animation Conventions
 
 - All animations use `motion/react`. Self-built components are in `src/components/beui/`.
-- Single motion authority is `src/lib/ease.ts` (EASE_* / SPRING_*); components import from `@/lib/ease`, never define local duplicates.
-- Drawer panel spring: `stiffness:220 / damping:26 / mass:0.9` (`src/components/beui/drawer.tsx:28`).
-- Exit spring: `stiffness:260 / damping:30` (`src/components/beui/drawer.tsx:30`).
-- Button press spring: `SPRING_PRESS` in `src/lib/ease.ts` (`stiffness:500 / damping:30 / mass:0.6`).
+- Single motion authority for easing curves is `src/lib/ease.ts` (`EASE_OUT` / `EASE_IN_OUT`); components import from `@/lib/ease` rather than re-declaring a curve.
+- Springs are declared next to the gesture that owns them rather than centralised in `ease.ts`: the drawer's panel spring is `stiffness:220 / damping:26 / mass:0.9` and its exit spring `stiffness:260 / damping:30` (`src/components/beui/drawer.tsx:32,34`); the switch thumb and the tooltip carry their own too.
 - Easing curves: `EASE_OUT = [0.16, 1, 0.3, 1]` (panel transitions); `EASE_IN_OUT = [0.45, 0, 0.55, 1]` (Loader rhythm).
 - Must support `useReducedMotion()`: degrades to opacity pulse when the user enables "reduce motion" in their system.
 

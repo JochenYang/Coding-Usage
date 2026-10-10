@@ -75,7 +75,7 @@
   `≥100` 用 `danger`。阈值变更只改这一处。
 - 状态徽章（`Badge` 四档，底色一律 `/10` 透明度 + 同色文字）：`success→online` / `warning` /
   `danger` / `neutral→muted底 + muted-foreground字`。
-- 在线表达：`online` 双层圆点（halo + core，`StatusDot`）；离线 `offline` 单层无 halo——“静默就该看起来静默”。
+- 在线表达：`online` 双层圆点（halo + core，`src/components/layout/Sidebar.tsx:135`）；离线为单层无 halo 的 `offline` 圆点（`src/pages/ProvidersPage.tsx:95`）——“静默就该看起来静默”。
 - 灰度测试：错误/成功/选中除颜色外必须有图标或文字佐证（表单错误 = 红字 + 文案，不只变红）。
 
 ## 4. Typography / Spacing / Radius / Elevation / Icon
@@ -121,7 +121,6 @@
 | StatCard | 图标槽或 `iconSlot`（品牌 logo） | Default · Loading（上层骨架） · Empty（`—` 占位，图表同理） | 标题 `xs muted`、值 `28px semibold tabular`、footer `xs`；容器 `rounded-2xl border bg-card p-5` |
 | Badge | `success/warning/danger/neutral` | Default（静态展示） | `rounded-full px-2 py-0.5 11px medium`；文案由调用方传入（i18n 在外） |
 | ProgressBar | `sm(h-1.5)/md(h-2)` | Default · Empty（零值只留轨道） | 水位梯见 §3；`role=progressbar` + `aria-valuenow`；值钳制 0–100 |
-| StatusDot | — | 在线（halo ping）/离线（静默点） | 在线 halo `animate-ping`，reduced-motion 下退为静态辉光 |
 | EmptyState | — | Empty-首次/无结果/权限不足（三类文案区分） | 不用 Error 视觉渲染正常空态；action 槽调用方决定按钮/链接 |
 | PageHeader | — | Default | 左标题右 actions；`actions` 内 `gap-2` |
 | Drawer | `left/right` | Open · Closed · Esc 关闭 · body 滚动锁定 | 面板 `max-w-[min(560px,50vw)] sm:min-w-[440px]`，`bg-card`；backdrop `bg-black/40 + backdrop-blur-sm` |
@@ -141,11 +140,9 @@ Accessibility 五条（组件评审 + 实现后各走查一次）：焦点可见
 
 ## 7. Motion 语言
 
-- 唯一权威：`src/lib/ease.ts`（`EASE_*` / `SPRING_*`）。组件只从 `@/lib/ease` 引用，
-  不得定义局部动效常量（Drawer 进出场弹簧是唯一的局部例外，见下）。
+- 缓动权威：`src/lib/ease.ts`（`EASE_OUT` / `EASE_IN_OUT`）。组件只从 `@/lib/ease` 引用曲线，不重复定义。
 - 曲线：`EASE_OUT [0.16,1,0.3,1]`（进入/面板类），`EASE_IN_OUT [0.45,0,0.55,1]`（Loader 节奏）。
-- 弹簧：Drawer 进入 `220/26/0.9`（延迟 80ms，backdrop 先 250ms 淡入）、退出 `260/30`；
-  按钮按压短促弹簧；装饰性跟随（magnetic/tilt）用低刚度 `SPRING_MOUSE` 系。
+- 弹簧：就近声明在拥有该手势的组件里，不进 `ease.ts`。Drawer 进入 `220/26/0.9`（延迟 80ms，backdrop 先 250ms 淡入）、退出 `260/30`（`drawer.tsx:32,34`）；Switch 的滑块与 Tooltip 各自持有自己的弹簧。
 - 铁律：所有动效读 `useReducedMotion()`，降级为透明度脉冲或静止；骨架屏与 spinner 不在同一区块混用；
   状态切换预留空间防布局跳动。
 
@@ -173,7 +170,7 @@ Accessibility 五条（组件评审 + 实现后各走查一次）：焦点可见
 | 2 | `Switch` 用 `stone/slate` 硬编码；另有 6 处 `focus:border-stone-900`、1 处 `hover:border-stone-300`、`text-stone-600`、`text-slate-400` | Major | ✅ 已收敛：轨道 `accent/muted`、输入聚焦 `focus:border-accent`、悬停 `border-strong`、弱文本 `subtle/muted-foreground` |
 | 3 | 图表分类色板非主题感知；前三档与 `accent/warning/danger` 值重复 | Minor | ✅ 接受为例外：SVG `stroke` 属性无法消费 CSS 变量；`"其他"` 灰收敛为 `DIST_OTHER_COLOR` 单源常量，前三档有意镜像语义色浅色值 |
 | 4 | `dynamic-island.tsx:156` 一次性任意值（`min-h-[37px] min-w-[126px]`） | Minor | ✅ 注释理由：镜像 iPhone pill 物理尺寸，不进 spacing scale |
-| 5 | `AGENTS.md` 动效段与 `ease.ts` 现实不符 | Minor | ✅ 已修订（含 press 弹簧以 `ease.ts` `SPRING_PRESS 500/30/0.6` 为准） |
+| 5 | `AGENTS.md` 动效段与 `ease.ts` 现实不符 | Minor | ✅ 已修订：`ease.ts` 只保留缓动曲线（`EASE_OUT`/`EASE_IN_OUT`），弹簧改为在各手势旁声明；`SPRING_PRESS` 等 6 个无人引用的弹簧已删除 |
 
 ## 11. 改版与新增流程（红线）
 
