@@ -260,10 +260,6 @@ export function getProviderEntries(s: Settings, id: string): ProviderConfig[] {
   return s.providers[id] ?? []
 }
 
-export function getEntryConfig(s: Settings, id: string, index: number): ProviderConfig | undefined {
-  return s.providers[id]?.[index]
-}
-
 /** Shallow value equality for a ProviderConfig array */
 export function isSameEntry(a: ProviderConfig | undefined, b: ProviderConfig | undefined): boolean {
   if (!a && !b) return true

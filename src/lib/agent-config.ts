@@ -44,17 +44,6 @@ export const OPENCODE_PACKAGES = [
   '@ai-sdk/google',
 ] as const
 
-/** Capability flags both agents use (kimicode's `capabilities` array) */
-export const MODEL_CAPABILITIES = [
-  'tool_use',
-  'image_in',
-  'video_in',
-  'audio_in',
-  'thinking',
-  'always_thinking',
-  'dynamically_loaded_tools',
-] as const
-
 /** Input modalities a model can declare; `text` is always present */
 export const MODEL_MODALITIES = ['text', 'image', 'video', 'audio', 'pdf'] as const
 

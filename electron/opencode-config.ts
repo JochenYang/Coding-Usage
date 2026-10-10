@@ -35,8 +35,6 @@ import type {
 /** Credential references look like `{env:NAME}` and are not secrets */
 const ENV_REFERENCE = /^\{env:([A-Za-z_][A-Za-z0-9_]*)\}$/
 
-const DEFAULT_PACKAGE = '@ai-sdk/openai-compatible'
-
 /**
  * Output budget written when a model declares a context window but no output
  * limit — opencode's own fallback for a model that states neither.
@@ -440,15 +438,4 @@ export function removeOpencodeProvider(doc: OpencodeDocument, providerId: string
 
   const current = str(doc.model)
   if (current && current.startsWith(`${providerId}/`)) delete doc.model
-}
-
-/** Package names offered in the editor, matching the shape this file uses */
-export function opencodePackageChoices(existing: string[]): string[] {
-  const base = [
-    DEFAULT_PACKAGE,
-    '@ai-sdk/anthropic',
-    '@ai-sdk/openai',
-    '@ai-sdk/google',
-  ]
-  return [...new Set([...base, ...existing])]
 }

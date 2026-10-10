@@ -35,12 +35,6 @@ export function convertAmount(
   return (amount * fromRate) / displayRate
 }
 
-/** True when the currency appears in the active rate table */
-export function isKnownCurrency(code: string, rates?: FxRates | null): boolean {
-  const table = rates && Object.keys(rates).length > 0 ? rates : FALLBACK_RATES
-  return table[code.toUpperCase()] != null
-}
-
 /**
  * Normalize an open.er-api.com `/latest/USD` payload into the CNY-pivot
  * table: every currency gets "1 X = ? CNY" (rates.CNY / rates.X). Returns

@@ -53,7 +53,7 @@ function providerPlan(t: Dict, providerId: string): string {
   return t.providers[providerId as keyof Dict['providers']].plan
 }
 
-/** Logo + account name column + status badge, mirroring PlanCardsRow's header */
+/** Logo + account name column + status badge, mirroring the plan grid header */
 function PlanGridCardHead({ card }: { card: PlanCardVM }) {
   const t = useT()
 
@@ -206,8 +206,8 @@ function PlanGridCard({ card, now }: { card: PlanCardVM; now: number }) {
 /**
  * Plans page: all accounts' plan windows and balances in one grid. Filters and
  * the add action live in the page header; cards render here directly because
- * PlanCardsRow owns its own header row (fixed title + add button), which this
- * page replaces with filterable actions.
+ * the cards render directly here, so this page owns the header row and the
+ * filterable actions that sit in it.
  */
 export function PlansPage({ onAddAccount }: PlansPageProps) {
   const t = useT()

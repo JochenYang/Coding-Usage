@@ -205,12 +205,3 @@ function dirnameOf(filePath: string): string {
   const idx = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'))
   return idx > 0 ? filePath.slice(0, idx) : filePath
 }
-
-/** Every agent's location keyed by id */
-export function resolveAllAgentLocations(): Record<AgentId, AgentLocation> {
-  return {
-    kimi: resolveAgentLocation('kimi'),
-    mcode: resolveAgentLocation('mcode'),
-    opencode: resolveAgentLocation('opencode'),
-  }
-}

@@ -90,10 +90,6 @@ export interface ProviderConfig {
   displayCurrencies?: string[]
 }
 
-/** Outbound alert-push channels. Every channel's credential (URL / token /
- *  key) is safeStorage-encrypted into v3 exactly like provider API keys. */
-export type PushChannelId = 'wecom' | 'feishu' | 'telegram' | 'weixin'
-
 export interface IntegrationsSettings {
   /** Master switch for pushing newly-raised alerts to every configured channel */
   alertPush: boolean
