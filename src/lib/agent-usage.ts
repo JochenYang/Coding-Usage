@@ -111,8 +111,6 @@ export interface DayPointVM {
   activeTimeMs: number
   /** Message (call) count recorded for this day */
   messages: number
-  /** Top models of that day (trend tooltip detail) */
-  models?: DayModelSlice[]
 }
 
 /** One model's own daily output series, for the per-model split view */
@@ -120,6 +118,13 @@ export interface ModelDailySeriesVM {
   model: string
   /** Total tokens across the whole span, used for ranking */
   tokens: number
+  /**
+   * Input tokens per day, aligned with `dailySeries`.
+   *
+   * Kept so a per-model figure can honour the "no cache" display mode
+   * (`input + output`); the cache split itself stays day-level.
+   */
+  input: number[]
   /** Output tokens per day, aligned index-by-index with `dailySeries` */
   output: number[]
   /** Message count per day, aligned with `dailySeries` */
@@ -288,15 +293,6 @@ function sortedByCost(list: [string, SliceAgg][], priced?: Map<string, boolean>)
 function sortedByProviderCost(list: [string, SliceAgg][]): CostSliceVM[] {
   return toProviderSlice(list).sort((a, b) => b.costUsd - a.costUsd)
 }
-
-/** One model's token share within a single day (trend tooltip detail) */
-export interface DayModelSlice {
-  label: string
-  tokens: number
-}
-
-/** Max model rows kept per day for the trend tooltip */
-const DAY_MODELS_KEPT = 5
 
 function emptyVM(
   error: string | null,
@@ -490,24 +486,12 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
 
   // Per-model daily accumulation. Built alongside the day series (not in a
   // second pass) so both stay index-aligned with `contribs` by construction.
-  const modelDays = new Map<string, { output: number[]; messages: number[]; total: number[] }>()
+  const modelDays = new Map<
+    string,
+    { input: number[]; output: number[]; messages: number[]; total: number[] }
+  >()
 
   const dailySeries = contribs.map((c) => {
-    const byModel = new Map<string, number>()
-    for (const e of c.clients ?? []) {
-      const model = typeof e.modelId === 'string' && e.modelId ? e.modelId : null
-      if (!model) continue
-      const t =
-        numberOr(e.tokens?.input) +
-        numberOr(e.tokens?.output) +
-        numberOr(e.tokens?.cacheRead) +
-        numberOr(e.tokens?.cacheWrite)
-      if (t > 0) byModel.set(model, (byModel.get(model) ?? 0) + t)
-    }
-    const models: DayModelSlice[] = [...byModel.entries()]
-      .map(([label, tokens]) => ({ label, tokens }))
-      .sort((a, b) => b.tokens - a.tokens)
-      .slice(0, DAY_MODELS_KEPT)
     return {
       day: c.date,
       label: c.date.slice(5),
@@ -518,7 +502,6 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
       cacheWrite: numberOr(c.tokenBreakdown?.cacheWrite),
       activeTimeMs: numberOr(c.activeTimeMs),
       messages: numberOr(c.totals.messages),
-      models,
     }
   })
 
@@ -531,7 +514,12 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
       if (!model) continue
       let row = modelDays.get(model)
       if (!row) {
-        row = { output: new Array(contribs.length).fill(0), messages: new Array(contribs.length).fill(0), total: new Array(contribs.length).fill(0) }
+        row = {
+          input: new Array(contribs.length).fill(0),
+          output: new Array(contribs.length).fill(0),
+          messages: new Array(contribs.length).fill(0),
+          total: new Array(contribs.length).fill(0),
+        }
         modelDays.set(model, row)
       }
       const t =
@@ -539,6 +527,7 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
         numberOr(e.tokens?.output) +
         numberOr(e.tokens?.cacheRead) +
         numberOr(e.tokens?.cacheWrite)
+      row.input[i] += numberOr(e.tokens?.input)
       row.output[i] += numberOr(e.tokens?.output)
       row.messages[i] += numberOr(e.messages)
       row.total[i] += t
@@ -549,6 +538,7 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
     .map(([model, row]) => ({
       model,
       tokens: row.total.reduce((s, v) => s + v, 0),
+      input: row.input,
       output: row.output,
       messages: row.messages,
       total: row.total,
@@ -661,27 +651,28 @@ export function archiveDailyUsage(todayTokens: number): void {
   }
 }
 
-/** Daily total-token series from the local archive (oldest first) */
-export function getDailyUsageSeries(days: number): { label: string; value: number }[] {
+/**
+ * Daily total-token series from the local archive (oldest first).
+ *
+ * Each point carries its real calendar date so the trends page can densify this
+ * series exactly like the scan's; without it the fallback would silently keep
+ * meaning "the last N recorded days".
+ */
+export function getDailyUsageSeries(days: number): { day: string; label: string; value: number }[] {
   const store = loadDaily()
-  const out: { label: string; value: number }[] = []
+  const out: { day: string; label: string; value: number }[] = []
   const now = new Date()
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i)
     const key = `${d.getFullYear()}-${`${d.getMonth() + 1}`.padStart(2, '0')}-${`${d.getDate()}`.padStart(2, '0')}`
     const value = store[key]
     if (value != null && value > 0) {
-      out.push({ label: `${`${d.getMonth() + 1}`.padStart(2, '0')}-${`${d.getDate()}`.padStart(2, '0')}`, value })
+      out.push({
+        day: key,
+        label: `${`${d.getMonth() + 1}`.padStart(2, '0')}-${`${d.getDate()}`.padStart(2, '0')}`,
+        value,
+      })
     }
   }
   return out
-}
-
-/** Clear the daily archive (used by the settings page "clear snapshots" flow) */
-export function clearDailyUsage(): void {
-  try {
-    localStorage.removeItem(DAILY_KEY)
-  } catch {
-    // ignore
-  }
 }

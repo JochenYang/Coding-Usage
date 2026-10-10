@@ -2,7 +2,6 @@ import { Activity, Database, Gauge, Hash, TrendingUp } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useData } from '@/lib/data-context'
 import { useT } from '@/i18n/useT'
-import type { DayPointVM } from '@/lib/agent-usage'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { StatCard } from '@/components/common/StatCard'
@@ -13,14 +12,19 @@ import { ModelCompareChart } from '@/components/charts/ModelCompareChart'
 import { formatCompactValue } from '@/lib/format'
 import { buildTrendPoints } from '@/lib/overview'
 import { cn } from '@/lib/cn'
+import { displayTokens } from '@/lib/agent-usage'
 import {
   RANGE_DAYS,
   bucketize,
+  bucketWidthDays,
+  buildCumulative,
   buildModelRows,
   computeTotals,
+  filterByModels,
   groupModelDaily,
   modelColor,
   modelSlots,
+  selectTrendSource,
   shortModelName,
   sliceRange,
   type ModelCompareRow,
@@ -29,6 +33,9 @@ import {
 
 /** How many models the split view draws before it stops being readable */
 const SPLIT_SERIES_LIMIT = 8
+
+/** Rows the all-time table lists before folding its tail; the ranking is size-ordered */
+const CUMULATIVE_ROWS = 30
 
 /**
  * Usage trends: the aggregate, cross-agent view of historic consumption.
@@ -65,71 +72,102 @@ export function TrendsPage() {
     [agentUsage.dailySeries.length, agentDailySeries],
   )
 
-  const source: DayPointVM[] = useMemo(() => {
-    if (agentUsage.dailySeries.length >= 2) return agentUsage.dailySeries
-    if (archived.length >= 2) {
-      // Archive points carry only a total: model/active-time dimensions are
-      // genuinely absent, and are left at zero rather than invented.
-      return archived.map((p) => ({
-        label: p.label,
-        value: p.value,
-        input: p.value,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        activeTimeMs: 0,
-        messages: 0,
-      }))
-    }
-    // Provider snapshots are the only history an account without local agent
-    // logs has, and the previous implementation charted them. Without this the
-    // API-only mode falls through to the normal render with an empty series and
-    // shows "gathering" placeholders permanently. Shaped like the archive
-    // points above: a total only, with the genuinely absent dimensions at zero.
-    const apiFallback = buildTrendPoints(sections)
-    if (apiFallback.length >= 2) {
-      return apiFallback.map((p) => ({
-        label: p.label,
-        value: p.value,
-        input: p.value,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        activeTimeMs: 0,
-        messages: 0,
-      }))
-    }
-    return []
-  }, [agentUsage.dailySeries, archived, sections])
+  /**
+   * Provider snapshots are the last resort, and reading them parses
+   * localStorage — so this is gated on the two series above being unusable
+   * instead of being computed on every refresh.
+   */
+  const apiFallback = useMemo(
+    () => (agentUsage.dailySeries.length >= 2 || archived.length >= 2 ? [] : buildTrendPoints(sections)),
+    [agentUsage.dailySeries.length, archived.length, sections],
+  )
 
+  /**
+   * Source selection lives in trend-analysis so the invariant that matters is
+   * structural rather than a comment: the per-model rows describe the SCAN
+   * series only, so `hasModelDetail` is false for every fallback. Without that
+   * flag the model filter summed scan-indexed rows against archive-indexed
+   * columns and plotted a model's first day under the window's last label.
+   *
+   * The scan series is densified there too (days without usage become zero
+   * rows), which is what makes "last 30 days" mean 30 calendar days.
+   */
+  const source = useMemo(
+    () =>
+      selectTrendSource({
+        scan: agentUsage.dailySeries,
+        models: modelDaily,
+        archive: archived,
+        snapshots: apiFallback,
+      }),
+    [agentUsage.dailySeries, modelDaily, archived, apiFallback],
+  )
+
+  /**
+   * The per-model rows that match the charted series. Always `source.models`,
+   * never the raw `modelDaily`: densifying the day series inserts zero days, so
+   * the raw rows would be off by every inserted position.
+   */
+  const modelSeries = source.models
+  const modelUiEnabled = source.hasModelDetail
+  /**
+   * The view actually rendered. A fallback source carries no per-model rows, so
+   * the split view must not be reachable; forcing it here leaves the user's own
+   * choice in `view` intact for when the scan recovers.
+   */
+  const activeView = modelUiEnabled ? view : 'aggregate'
+
+  /**
+   * All-time figures for the block below the comparison chart.
+   *
+   * Coverage comes from the SCAN series, never from `source.points`: the
+   * headline is an all-time figure while a fallback series covers a much
+   * shorter window, and pairing the two reported "0 days" beside a non-zero
+   * total on a first-day scan.
+   *
+   * A model filter narrows every other figure on the page, so the headline
+   * follows the selection too — `rowSum` is exactly the selected models' total.
+   */
+  const cumulative = useMemo(() => {
+    const selected = modelUiEnabled
+      ? picked.length > 0
+        ? modelSeries.filter((m) => picked.includes(m.model))
+        : modelSeries
+      : []
+    const vm = buildCumulative(
+      agentUsage.dailySeries,
+      selected,
+      displayTokens(agentUsage.allTimeTotal, mode),
+      mode,
+    )
+    return modelUiEnabled && picked.length > 0 ? { ...vm, tokens: vm.rowSum } : vm
+  }, [agentUsage.dailySeries, agentUsage.allTimeTotal, modelUiEnabled, modelSeries, picked, mode])
+  /** Without a scan there is no all-time figure to show */
+  const showCumulative = agentUsage.allTimeTotal.tokens > 0
+  const cumulativeShown = cumulative.rows.slice(0, CUMULATIVE_ROWS)
+  const cumulativeRest = cumulative.rows.slice(CUMULATIVE_ROWS)
+  const cumulativeRestTokens = cumulativeRest.reduce((s, r) => s + r.tokens, 0)
   /**
    * Model-filtered view. `modelDaily` carries no input/cache split (tokscale
    * reports the breakdown per day, not per model), so a filtered selection
    * cannot report a cache hit rate — the flag below tells the UI to say
    * "unavailable" instead of rendering a misleading 0%.
    */
-  const isFiltered = picked.length > 0
+  const isFiltered = modelUiEnabled && picked.length > 0
 
-  const filtered: DayPointVM[] = useMemo(() => {
-    if (picked.length === 0) return source
-    // A day is kept when ANY picked model was active on it; the day's totals
-    // are then recomputed from those models alone so the KPI row, the stacked
-    // bars and the comparison chart all describe the same selection.
-    const pickedSet = new Set(picked)
-    const rows = modelDaily.filter((m) => pickedSet.has(m.model))
-    if (rows.length === 0) return []
-    return source.map((day, i) => {
-      let output = 0
-      let messages = 0
-      let total = 0
-      for (const r of rows) {
-        messages += r.messages[i] ?? 0
-        output += r.output[i] ?? 0
-        total += r.total[i] ?? 0
-      }
-      return { ...day, input: Math.max(0, total - output), output, cacheRead: 0, cacheWrite: 0, value: total, messages }
-    })
-  }, [source, picked, modelDaily])
+  /**
+   * The cache hit rate needs a per-day input/cache split, which only the scan
+   * series carries: a model filter collapses it (the scan breaks the split down
+   * per day, never per model) and a fallback source never had it at all.
+   * Rendering "0.0%" there reads as "cache never hit" rather than "not
+   * measured", so this — not `isFiltered` alone — drives the unavailable state.
+   */
+  const hitRateUnavailable = isFiltered || source.kind !== 'scan'
+
+  const filtered = useMemo(
+    () => (modelUiEnabled ? filterByModels(source.points, modelSeries, picked) : source.points),
+    [source, modelUiEnabled, modelSeries, picked],
+  )
 
   const windowed = useMemo(() => sliceRange(filtered, range), [filtered, range])
   const buckets = useMemo(() => bucketize(windowed), [windowed])
@@ -140,6 +178,7 @@ export function TrendsPage() {
   // before the comparison rows because the palette slots depend on which models
   // are actually drawn (see `modelSlots`).
   const topModels = useMemo(() => {
+    if (!modelUiEnabled) return []
     const windowSize = windowed.length
     const sumOverWindow = (values: number[]): number => {
       const start = Math.max(0, values.length - windowSize)
@@ -147,34 +186,34 @@ export function TrendsPage() {
       for (let i = start; i < values.length; i++) s += values[i] ?? 0
       return s
     }
-    return modelDaily
+    return modelSeries
       .filter((m) => picked.length === 0 || picked.includes(m.model))
       .map((m) => ({ m, output: sumOverWindow(m.output) }))
       .sort((a, b) => b.output - a.output)
       .slice(0, SPLIT_SERIES_LIMIT)
       .map((x) => x.m)
-  }, [modelDaily, picked, windowed.length])
+  }, [modelSeries, modelUiEnabled, picked, windowed.length])
 
   // One slot per model, shared by the chips, the split legend and the comparison
   // rows, so a model wears one colour everywhere. The drawn models are placed
   // first and therefore never share a colour with each other — see `modelSlots`
   // for why that ordering is load-bearing.
-  const slots = useMemo(() => modelSlots(modelDaily, topModels), [modelDaily, topModels])
+  const slots = useMemo(() => modelSlots(modelSeries, topModels), [modelSeries, topModels])
 
   const modelRows = useMemo(
     () =>
       buildModelRows(
-        modelDaily.filter((m) => picked.length === 0 || picked.includes(m.model)),
+        modelSeries.filter((m) => picked.length === 0 || picked.includes(m.model)),
         windowed.length,
         windowed.map((d) => d.activeTimeMs),
         windowed.map((d) => d.messages),
         slots,
       ),
-    [modelDaily, picked, windowed, slots],
+    [modelSeries, picked, windowed, slots],
   )
 
   const splitSeries = useMemo(() => {
-    const offset = Math.max(0, agentUsage.dailySeries.length - windowed.length)
+    const offset = Math.max(0, source.points.length - windowed.length)
     const pickedSet = new Set(picked)
     return topModels.map((m) => ({
       // Identity stays the raw id (unique); the label is display-only and can
@@ -187,9 +226,9 @@ export function TrendsPage() {
       // to dim the curves a filter has switched off.
       active: picked.length === 0 || pickedSet.has(m.model),
     }))
-  }, [topModels, slots, agentUsage.dailySeries.length, windowed.length, picked])
+  }, [topModels, slots, source.points.length, windowed.length, picked])
 
-  const hasLocal = agentUsage.allTimeTotal.tokens > 0 || source.length > 0
+  const hasLocal = agentUsage.allTimeTotal.tokens > 0 || source.points.length > 0
   const apiFallbackOnly = !hasLocal && sections.length > 0
 
   if (!hasLocal && !apiFallbackOnly) {
@@ -220,13 +259,21 @@ export function TrendsPage() {
    */
   const chartNote = isFiltered
     ? t.trends.filteredSplitNote
-    : view !== 'aggregate'
-      ? ''
-      : windowed.length > 30
+    : activeView !== 'aggregate'
+      ? t.trends.splitKpiNote
+      : bucketWidthDays(windowed.length) > 1
         ? t.trends.weeklyNote
         : windowed.length > 0
           ? t.trends.speedHint
           : ''
+
+  /**
+   * The trailing column often covers a partial period, so its bar is naturally
+   * shorter. Saying so is the difference between "quiet week" and "the tool
+   * lost data" — the height alone cannot carry that.
+   */
+  const lastBucketPartial =
+    activeView === 'aggregate' && totals.tokens > 0 && buckets[buckets.length - 1]?.partial === true
 
   return (
     <div className="space-y-4">
@@ -272,9 +319,9 @@ export function TrendsPage() {
         <StatCard
           title={t.trends.kpiHitRate}
           icon={Activity}
-          value={isFiltered ? '—' : `${totals.hitRatePct.toFixed(1)}%`}
+          value={hitRateUnavailable ? '—' : `${totals.hitRatePct.toFixed(1)}%`}
           valueSlot={
-            isFiltered ? (
+            hitRateUnavailable ? (
               <Tooltip text={t.trends.hitRateUnavailable} bubbleClassName="w-64 whitespace-normal">
                 <div className="mt-2 inline-block cursor-help text-[28px] font-semibold leading-tight tabular-nums text-subtle underline decoration-dotted underline-offset-4">
                   —
@@ -283,7 +330,7 @@ export function TrendsPage() {
             ) : undefined
           }
           footer={
-            isFiltered ? (
+            hitRateUnavailable ? (
               <span className="text-muted-foreground">{t.trends.hitRateUnavailableShort}</span>
             ) : (
               <ProgressMeter pct={totals.hitRatePct} />
@@ -305,7 +352,7 @@ export function TrendsPage() {
       </div>
 
       {/* Model filter */}
-      {modelDaily.length > 0 && (
+      {modelUiEnabled && (
         <section className="rounded-2xl border border-border bg-card p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
@@ -334,7 +381,7 @@ export function TrendsPage() {
             </div>
           </div>
           <div className="mt-2.5 flex flex-wrap gap-1.5">
-            {modelDaily.slice(0, 24).map((m) => {
+            {modelSeries.slice(0, 24).map((m) => {
               const on = picked.includes(m.model)
               return (
                 <button
@@ -363,12 +410,13 @@ export function TrendsPage() {
       <section className="rounded-2xl border border-border bg-card p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-foreground">
-            {view === 'aggregate' ? t.trends.chartTrend : t.trends.chartSplit}
+            {activeView === 'aggregate' ? t.trends.chartTrend : t.trends.chartSplit}
           </h2>
           <div className="flex flex-wrap items-center gap-2">
             {/* The aggregate view needs no subtitle: the legend the chart draws
                 above the plot already names every series in it. */}
-            {view === 'byModel' && <span className="text-[11px] text-subtle">{t.trends.chartSplitHint}</span>}
+            {activeView === 'byModel' && <span className="text-[11px] text-subtle">{t.trends.chartSplitHint}</span>}
+            {modelUiEnabled && (
             <div
               role="tablist"
               aria-label={t.trends.viewAggregate}
@@ -395,10 +443,11 @@ export function TrendsPage() {
                 </button>
               ))}
             </div>
+            )}
           </div>
         </div>
         <div className="mt-3">
-          {view === 'aggregate' ? (
+          {activeView === 'aggregate' ? (
             buckets.length >= 1 && totals.tokens > 0 ? (
               <StackedBarLineChart
                 buckets={buckets}
@@ -411,6 +460,7 @@ export function TrendsPage() {
                 }}
                 ariaLabel={t.trends.chartTrend}
                 keyboardHint={t.common.chartKeyboardHint}
+                partialSuffix={t.trends.partialBucketShort}
               />
             ) : (
               <p className="py-10 text-center text-xs text-subtle">{t.trends.gathering}</p>
@@ -429,6 +479,9 @@ export function TrendsPage() {
           )}
         </div>
         {chartNote !== '' && <p className="mt-2 text-[11px] text-subtle">{chartNote}</p>}
+        {lastBucketPartial && (
+          <p className="mt-2 text-[11px] text-subtle">{t.trends.partialBucketNote}</p>
+        )}
       </section>
 
       {/* Model comparison */}
@@ -486,6 +539,117 @@ export function TrendsPage() {
               ariaLabel={t.trends.chartCompare}
             />
           </div>
+        </section>
+      )}
+      {/* All-time cumulative. Deliberately outside the range selector: this is
+          the one block on the page that does not narrow with the window. */}
+      {showCumulative && (
+        <section className="rounded-2xl border border-border bg-card p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold text-foreground">{t.trends.cumulativeTitle}</h2>
+            <span className="text-[11px] text-subtle">{t.trends.cumulativeDesc}</span>
+          </div>
+          <dl className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <div>
+              <dt className="text-[11px] text-subtle">{t.trends.cumulativeTotalLabel}</dt>
+              <dd className="mt-0.5 text-2xl font-semibold tabular-nums text-foreground">
+                {formatCompactValue(cumulative.tokens)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[11px] text-subtle">{t.trends.cumulativeActiveDays}</dt>
+              <dd className="mt-0.5 text-2xl font-semibold tabular-nums text-foreground">
+                {t.trends.cumulativeDays(cumulative.activeDays)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[11px] text-subtle">{t.trends.cumulativeSpan}</dt>
+              <dd className="mt-0.5 text-sm font-medium tabular-nums text-foreground">
+                {cumulative.span ? `${cumulative.span.from} – ${cumulative.span.to}` : '—'}
+              </dd>
+            </div>
+          </dl>
+
+          {cumulative.rows.length > 0 && (
+            <div className="mt-5">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="text-xs font-semibold text-foreground">{t.trends.cumulativeModels}</h3>
+                <span className="max-w-2xl text-[11px] text-subtle">{t.trends.cumulativeModelNote}</span>
+              </div>
+              <div role="table" aria-label={t.trends.cumulativeModels} className="mt-2">
+                <div role="row" className="flex items-center gap-3 border-b border-border/60 pb-1 text-[11px] text-subtle">
+                  <span role="columnheader" className="min-w-0 flex-1">{t.overview.colModel}</span>
+                  <span role="columnheader" className="w-20 shrink-0 text-right">{t.trends.cumulativeColTokens}</span>
+                  <span role="columnheader" className="hidden w-28 shrink-0 sm:block">{t.trends.cumulativeColShare}</span>
+                  <span role="columnheader" className="hidden w-16 shrink-0 text-right md:block">{t.trends.seriesOutput}</span>
+                  <span role="columnheader" className="hidden w-16 shrink-0 text-right md:block">{t.trends.seriesCalls}</span>
+                </div>
+                {cumulativeShown.map((r) => (
+                  <div role="row" key={r.model} className="flex items-center gap-3 border-b border-border/40 py-2 text-xs">
+                    <span role="cell" className="flex min-w-0 flex-1 flex-col">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span
+                          className="inline-block h-2 w-2 shrink-0 rounded-sm"
+                          style={{ backgroundColor: modelColor(slots.get(r.model) ?? 0) }}
+                        />
+                        <span className="truncate font-medium text-foreground" title={r.model}>
+                          {shortModelName(r.model, 28)}
+                        </span>
+                      </span>
+                      {/* Below sm the share / output / call columns are hidden,
+                          so they fold under the name instead of vanishing. */}
+                      <span className="mt-0.5 block text-[10px] tabular-nums text-subtle sm:hidden">
+                        {r.sharePct > 0 ? `${r.sharePct.toFixed(1)}%` : '—'} · {t.trends.seriesOutput}{' '}
+                        {formatCompactValue(r.output)} · {t.trends.seriesCalls} {formatCompactValue(r.messages)}
+                      </span>
+                    </span>
+                    <span role="cell" className="w-20 shrink-0 text-right tabular-nums text-foreground">
+                      {formatCompactValue(r.tokens)}
+                    </span>
+                    <span role="cell" className="hidden w-28 shrink-0 items-center gap-2 sm:flex">
+                      <span className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+                        <span
+                          className="block h-full rounded-full"
+                          style={{ width: `${r.sharePct}%`, backgroundColor: modelColor(slots.get(r.model) ?? 0) }}
+                        />
+                      </span>
+                      <span className="w-10 shrink-0 text-right tabular-nums text-muted-foreground">
+                        {r.sharePct > 0 ? `${r.sharePct.toFixed(1)}%` : '—'}
+                      </span>
+                    </span>
+                    <span role="cell" className="hidden w-16 shrink-0 text-right tabular-nums text-muted-foreground md:block">
+                      {formatCompactValue(r.output)}
+                    </span>
+                    <span role="cell" className="hidden w-16 shrink-0 text-right tabular-nums text-muted-foreground md:block">
+                      {formatCompactValue(r.messages)}
+                    </span>
+                  </div>
+                ))}
+                {cumulativeRest.length > 0 && (
+                  <div role="row" className="flex items-center gap-3 border-b border-border/40 py-2 text-xs">
+                    <span role="cell" className="min-w-0 flex-1 text-muted-foreground">
+                      {t.trends.cumulativeMoreModels(cumulativeRest.length)}
+                    </span>
+                    <span role="cell" className="w-20 shrink-0 text-right tabular-nums text-muted-foreground">
+                      {formatCompactValue(cumulativeRestTokens)}
+                    </span>
+                    <span role="cell" className="hidden w-28 shrink-0 sm:block" aria-hidden />
+                    <span role="cell" className="hidden w-16 shrink-0 md:block" aria-hidden />
+                    <span role="cell" className="hidden w-16 shrink-0 md:block" aria-hidden />
+                  </div>
+                )}
+                <div role="row" className="flex items-center gap-3 pt-2 text-xs font-medium text-foreground">
+                  <span role="cell" className="min-w-0 flex-1">{t.trends.cumulativeSum}</span>
+                  <span role="cell" className="w-20 shrink-0 text-right tabular-nums">
+                    {formatCompactValue(cumulative.rowSum)}
+                  </span>
+                  <span role="cell" className="hidden w-28 shrink-0 sm:block" aria-hidden />
+                  <span role="cell" className="hidden w-16 shrink-0 md:block" aria-hidden />
+                  <span role="cell" className="hidden w-16 shrink-0 md:block" aria-hidden />
+                </div>
+              </div>
+            </div>
+          )}
         </section>
       )}
     </div>

@@ -43,6 +43,11 @@ export interface StackedBarLineChartProps {
   ariaLabel?: string
   /** Appended to the accessible name; see MultiSeriesChart for why it exists */
   keyboardHint?: string
+  /**
+   * Appended to the hover/screen-reader text of a bucket that covers less than
+   * a full period. The chart cannot localise it itself.
+   */
+  partialSuffix?: string
   className?: string
 }
 
@@ -64,6 +69,7 @@ export function StackedBarLineChart({
   labels,
   ariaLabel,
   keyboardHint,
+  partialSuffix,
   className,
 }: StackedBarLineChartProps) {
   const rawId = useId()
@@ -162,7 +168,10 @@ export function StackedBarLineChart({
   // the typographic one the KPI rows use, so nothing needs translating.
   const announcement =
     keyboard && active
-      ? [active.rangeLabel, ...tooltipRows.map((r) => `${r.label} ${r.value}`)].join(' · ')
+      ? [
+          active.partial && partialSuffix ? `${active.rangeLabel} · ${partialSuffix}` : active.rangeLabel,
+          ...tooltipRows.map((r) => `${r.label} ${r.value}`),
+        ].join(' · ')
       : ''
 
   return (
@@ -325,7 +334,7 @@ export function StackedBarLineChart({
         {/* HTML tooltip (fixed font size, independent of SVG scaling) */}
         {active && (
           <ChartTooltip
-            title={active.rangeLabel}
+            title={active.partial && partialSuffix ? `${active.rangeLabel} · ${partialSuffix}` : active.rangeLabel}
             rows={tooltipRows}
             {...tooltipAnchor(activeX / W, `${(PAD.top / H) * 100}%`)}
           />

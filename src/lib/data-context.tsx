@@ -147,8 +147,13 @@ interface DataContextValue {
   refreshAgentUsage: () => Promise<void>
   /** Live FX rates (1 unit = ? CNY); null until fetched — conversions then use the static table */
   fxRates: FxRates | null
-  /** Daily local-agent token series (trend chart); [] until history accumulates */
-  agentDailySeries: (days: number) => { label: string; value: number }[]
+  /**
+   * Daily local-agent token series (trend chart); [] until history accumulates.
+   * `day` is part of the contract: the trends page densifies this series onto a
+   * calendar grid, and dropping the field would silently fall back to counting
+   * records instead of days.
+   */
+  agentDailySeries: (days: number) => { day: string; label: string; value: number }[]
   /** Live alert set (already merged with the persisted store) */
   alerts: AlertItem[]
   unreadAlerts: number

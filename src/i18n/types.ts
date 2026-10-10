@@ -309,7 +309,6 @@ export interface Dict {
     alertBalanceDetail: (s: string) => string
     agoJust: string
     agoShort: (m: number) => string
-    plansTitle: string
     searchPlan: string
     allPlans: string
     allAccounts: string
@@ -371,6 +370,27 @@ export interface Dict {
     weeklyNote: string
     /** Filtered view cannot split input from cache */
     filteredSplitNote: string
+    /** All-time block, independent of the range selector */
+    cumulativeTitle: string
+    cumulativeDesc: string
+    cumulativeTotalLabel: string
+    cumulativeActiveDays: string
+    cumulativeDays: (n: number) => string
+    cumulativeSpan: string
+    cumulativeModels: string
+    cumulativeColTokens: string
+    cumulativeColShare: string
+    cumulativeSum: string
+    /** Row label that folds the table's tail */
+    cumulativeMoreModels: (n: number) => string
+    /** Per-model totals cover only records that carry a model id */
+    cumulativeModelNote: string
+    /** The split chart plots output only, while the KPI row stays aggregate */
+    splitKpiNote: string
+    /** Marker appended to a bucket that covers less than a full period */
+    partialBucketShort: string
+    /** Note under the chart explaining the short trailing column */
+    partialBucketNote: string
   }
   manage: {
     agentsTitle: string

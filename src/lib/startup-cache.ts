@@ -72,6 +72,29 @@ function isValidUsageVM(value: unknown): value is AgentUsageVM {
   )
 }
 
+/**
+ * Repair the per-model rows read from a cache written before `input` existed.
+ *
+ * The trends page reads `input` per index to honour the no-cache display mode,
+ * so an absent array would turn that arithmetic into `undefined`. The best an
+ * old row can offer is `total - output` — input plus cache — and the next scan
+ * replaces it; leaving the array empty would understate every row instead.
+ */
+function normalizeModelRows(value: unknown): AgentUsageVM['modelDaily'] {
+  if (!Array.isArray(value)) return []
+  return value.map((entry) => {
+    const row = (entry ?? {}) as AgentUsageVM['modelDaily'][number]
+    const total = Array.isArray(row.total) ? row.total : []
+    const output = Array.isArray(row.output) ? row.output : []
+    const input = Array.isArray(row.input)
+      ? row.input
+      : total.map((v, i) =>
+          Math.max(0, (typeof v === 'number' ? v : 0) - (typeof output[i] === 'number' ? output[i]! : 0)),
+        )
+    return { ...row, input }
+  })
+}
+
 export function loadCachedAgentUsage(): AgentUsageVM | null {
   try {
     const raw = localStorage.getItem(USAGE_KEY)
@@ -89,7 +112,7 @@ export function loadCachedAgentUsage(): AgentUsageVM | null {
     return {
       ...parsed,
       skippedClients: Array.isArray(parsed.skippedClients) ? parsed.skippedClients : null,
-      modelDaily: Array.isArray(parsed.modelDaily) ? parsed.modelDaily : [],
+      modelDaily: normalizeModelRows(parsed.modelDaily),
     }
   } catch {
     return null
