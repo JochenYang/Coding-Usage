@@ -17,9 +17,30 @@ env:
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
+  # Gate the release on the unit suite. Its own job rather than a step inside
+  # each build cell: the three platforms would otherwise run the same tests
+  # three times, and a failure here stops the draft from being created at all.
+  test:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The suite is pure node (no Electron, no DOM), so one platform is enough.
+      - name: Unit tests
+        run: npm test
+
   # One draft release created up-front so parallel build cells never race
   # electron-builder's internal release creation.
   prepare-release:
+    needs: test
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
