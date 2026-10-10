@@ -986,10 +986,6 @@ function registerIpc(): void {
     }
   })
 
-  ipcMain.handle('app:set-login-item', (_event, open: unknown): void => {
-    app.setLoginItemSettings({ openAtLogin: open === true })
-  })
-
   // Custom caption buttons (DOM-drawn replacements for the native overlay).
   ipcMain.handle('window:minimize', (): void => {
     mainWindow?.minimize()

@@ -32,7 +32,6 @@ const desktopBridge: DesktopBridge = {
   },
   encrypt: (plain) => ipcRenderer.invoke('safe:encrypt', plain),
   decrypt: (blob) => ipcRenderer.invoke('safe:decrypt', blob),
-  setLoginItem: (open) => ipcRenderer.invoke('app:set-login-item', open),
   tokscaleScan: () => ipcRenderer.invoke('tokscale:scan'),
   codexQuota: () => ipcRenderer.invoke('codex:quota'),
   claudeUsage: () => ipcRenderer.invoke('claude:usage'),

@@ -113,8 +113,6 @@ declare global {
     encrypt(plain: string): Promise<string | null>
     /** Decrypt an `enc:v3:` blob produced by {@link DesktopBridge.encrypt}; null on failure */
     decrypt(blob: string): Promise<string | null>
-    /** Toggle launch-on-login (Windows: openAtLogin registry entry) */
-    setLoginItem(open: boolean): Promise<void>
     /** Scan local AI coding-agent usage via tokscale (main process). Absent in browser dev */
     tokscaleScan(): Promise<TokScaleRaw>
     /** Codex subscription quota from the local ChatGPT login (official wham endpoint) */
