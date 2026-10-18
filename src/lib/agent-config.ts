@@ -68,8 +68,56 @@ export const MODALITY_CAPABILITIES: Record<string, string> = {
  * whatever the model declares — so this is a starting point for the checkboxes
  * rather than a constraint. Levels already present in a config are merged in by
  * the UI, and the write path stores exactly what the user selected.
+ *
+ * It is also the canonical order a ladder is *stored* in, weakest first. That
+ * is not cosmetic: every one of the three agents renders the ladder in the
+ * order it appears in its config (opencode lists `variants` in insertion
+ * order), so the sequence carries meaning and {@link orderEfforts} is what
+ * keeps it from becoming click order.
  */
 export const EFFORT_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
+
+/**
+ * Levels that are not rungs on the strength axis but do appear in the same
+ * list, with the rank they sort at.
+ *
+ * kimicode's engine types a level as `'off' | 'on' | string`, and the project's
+ * own findings record both as boolean states rather than rungs: `off` means
+ * "thinking disabled" and is only legal when the model lacks `always_thinking`,
+ * while `on` means "thinks but is not graded". Ranking them with the rungs would
+ * sort "off" *above* "max" — the disable switch would sit at the strongest end of
+ * the picker — so they get fixed positions instead: off before everything, on
+ * just above off.
+ */
+const EFFORT_STATE_RANK: Record<string, number> = { off: -2, on: -1 }
+
+/** Strength rank of a known level; unknown levels rank last */
+const EFFORT_RANK = new Map<string, number>([
+  ...Object.entries(EFFORT_STATE_RANK),
+  ...EFFORT_LEVELS.map((level, index): [string, number] => [level, index]),
+])
+
+/**
+ * Sort a ladder into strength order: `off`, `on`, then
+ * {@link EFFORT_LEVELS} weakest first.
+ *
+ * Applied wherever a ladder becomes a stored sequence: the read path so the UI
+ * shows what is meant rather than what a previous write left behind, and each
+ * agent's write path so the file always carries the canonical order.
+ *
+ * Levels this module does not know are *placed after* the known ones, keeping
+ * their relative order among themselves (`sort` is stable). That is the one
+ * judgement call here: the accepted set is whatever the model declares, so an
+ * unfamiliar name is assumed to be a rung stronger than any it knows, which is
+ * right for a vendor that adds `ultra` above `max` and wrong for a vendor that
+ * invents a new non-rung state. Known non-rung states are enumerated in
+ * {@link EFFORT_STATE_RANK} for that reason.
+ */
+export function orderEfforts(levels: readonly string[]): string[] {
+  const unknown = EFFORT_LEVELS.length
+  const rank = (level: string): number => EFFORT_RANK.get(level) ?? unknown
+  return [...levels].sort((a, b) => rank(a) - rank(b))
+}
 
 /**
  * How a model's thinking can be controlled.
@@ -266,14 +314,19 @@ export interface AgentModelInput {
  * True when two lists hold the same members, ignoring order.
  *
  * The write path uses this to leave an array alone when an edit did not really
- * change it: rewriting an identical set would reorder the file for no reason,
- * and the ordering only matters where the agent requires it (effort ladders),
- * which the UI never permutes.
+ * change it: rewriting an identical set would reorder the file for no reason.
+ * It is deliberately not used for effort ladders, whose order is meaningful —
+ * those are compared with {@link sameSequence} against the canonical order.
  */
 export function sameMembers(a: readonly string[], b: readonly string[]): boolean {
   if (a.length !== b.length) return false
   const set = new Set(a)
   return b.every((value) => set.has(value))
+}
+
+/** True when two lists hold the same items in the same order */
+export function sameSequence(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index])
 }
 
 /** Mask a credential for display: first 4 + last 4, middle elided */export function maskKey(key: string): string {
@@ -293,6 +346,16 @@ function isStringArray(value: unknown): value is string[] {
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+/**
+ * Like {@link optionalString}, but an empty string is kept.
+ *
+ * Used for the fields whose write contract is "undefined = keep, '' = clear":
+ * collapsing '' to undefined would turn a deliberate clear into a no-op.
+ */
+function optionalEffort(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
 }
 
 function optionalNumber(value: unknown): number | undefined {
@@ -416,8 +479,11 @@ export function parseProviderInput(raw: unknown): AgentProviderInput | null {
         capabilities: isStringArray(entry.capabilities) ? entry.capabilities : undefined,
         inputModalities: isStringArray(entry.inputModalities) ? entry.inputModalities : undefined,
         supportEfforts: isStringArray(entry.supportEfforts) ? entry.supportEfforts : undefined,
-        defaultEffort: optionalString(entry.defaultEffort),
-        offEffort: optionalString(entry.offEffort),
+        // '' is a real instruction here ("remove the stored default"), so it
+        // must survive validation — optionalString would turn it into undefined,
+        // which every adapter reads as "keep the stored value".
+        defaultEffort: optionalEffort(entry.defaultEffort),
+        offEffort: optionalEffort(entry.offEffort),
         reasoningKey: optionalString(entry.reasoningKey),
       })
     }

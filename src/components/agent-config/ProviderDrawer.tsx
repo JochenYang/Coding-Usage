@@ -93,7 +93,10 @@ function toModelInput(draft: ModelDraft, provider: AgentProvider | undefined): A
     inputModalities: draft.inputModalities,
     capabilities: draft.capabilities,
     supportEfforts: draft.supportEfforts,
-    defaultEffort: draft.defaultEffort || undefined,
+    // Clearing the default must reach the file as '' ("delete"), not as
+    // undefined ("keep the stored value") — otherwise a model whose default is
+    // no longer in its ladder keeps pointing at a level it no longer declares.
+    defaultEffort: draft.defaultEffort || (original?.defaultEffort ? '' : undefined),
   }
 }
 

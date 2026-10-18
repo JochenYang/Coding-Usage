@@ -1,4 +1,4 @@
-import { maskKey } from '../src/lib/agent-config'
+import { maskKey, orderEfforts, sameSequence } from '../src/lib/agent-config'
 import type {
   AgentConfigPayload,
   AgentGlobals,
@@ -156,7 +156,9 @@ function toModel(id: string, raw: OpencodeModelRecord): AgentModel {
     capabilities: capabilitiesOf(raw),
     inputModalities: inputModalitiesOf(raw),
     // opencode names reasoning levels, so the variant keys are the ladders.
-    supportEfforts: Object.keys(variants),
+    // The file's own key order is what its picker renders, so a disordered one
+    // is normalised here and written back in the canonical order below.
+    supportEfforts: orderEfforts(Object.keys(variants)),
     thinkingMode: thinkingModeOf(raw),
   }
 }
@@ -363,14 +365,24 @@ function applyModelFields(entry: OpencodeModelRecord, model: AgentModelInput): v
 
   if (model.supportEfforts !== undefined) {
     // A level becomes a variant that patches the request body, which is how
-    // opencode expresses reasoning effort.
+    // opencode expresses reasoning effort. The keys of that object are the
+    // ladder the user sees, so they are inserted in strength order — the
+    // editor sends click order, and an older file may hold any order at all.
     const existing = { ...(asRecord(entry.variants) ?? {}) }
-    const next: Record<string, unknown> = {}
-    for (const level of model.supportEfforts) {
-      next[level] = existing[level] ?? { body: { reasoning_effort: level } }
+    const ladder = orderEfforts(model.supportEfforts)
+    if (ladder.length === 0) {
+      // No levels means no variants: the field is removed rather than left
+      // behind as an empty object.
+      delete entry.variants
+    } else if (!sameSequence(Object.keys(existing), ladder)) {
+      // A stored ladder that already holds these levels in this order is left
+      // untouched, so an edit that did not change it produces no diff.
+      const next: Record<string, unknown> = {}
+      for (const level of ladder) {
+        next[level] = existing[level] ?? { body: { reasoning_effort: level } }
+      }
+      entry.variants = next
     }
-    if (Object.keys(next).length > 0) entry.variants = next
-    else delete entry.variants
   }
 }
 

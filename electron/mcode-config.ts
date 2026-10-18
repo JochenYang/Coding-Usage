@@ -1,5 +1,5 @@
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import { maskKey, sameMembers } from '../src/lib/agent-config'
+import { maskKey, orderEfforts, sameMembers, sameSequence } from '../src/lib/agent-config'
 import type {
   AgentConfigPayload,
   AgentGlobals,
@@ -161,7 +161,7 @@ function toModel(id: string, raw: McodeModelRecord): AgentModel {
     outputLimit: num(limit.output),
     capabilities,
     inputModalities,
-    supportEfforts: strArray(thinking.effortOptions),
+    supportEfforts: orderEfforts(strArray(thinking.effortOptions)),
     defaultEffort: str(thinking.defaultEffort),
     thinkingMode: thinkingModeOf(raw),
   }
@@ -378,9 +378,11 @@ function applyModelFields(entry: McodeModelRecord, model: AgentModelInput): void
   if (model.supportEfforts !== undefined || model.defaultEffort !== undefined) {
     const thinking = { ...(asRecord(entry.thinking) ?? {}) }
     if (model.supportEfforts !== undefined) {
-      const current = strArray(thinking.effortOptions)
-      if (!sameMembers(current, model.supportEfforts)) {
-        if (model.supportEfforts.length > 0) thinking.effortOptions = [...model.supportEfforts]
+      const ladder = orderEfforts(model.supportEfforts)
+      // The ladder's order is meaningful, so an unchanged set stored in a
+      // different order is still rewritten — that is the whole point here.
+      if (!sameSequence(strArray(thinking.effortOptions), ladder)) {
+        if (ladder.length > 0) thinking.effortOptions = ladder
         else delete thinking.effortOptions
       }
     }

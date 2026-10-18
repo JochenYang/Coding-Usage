@@ -1,5 +1,5 @@
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import { maskKey, MODALITY_CAPABILITIES, sameMembers } from '../src/lib/agent-config'
+import { maskKey, MODALITY_CAPABILITIES, orderEfforts, sameMembers, sameSequence } from '../src/lib/agent-config'
 import type {
   AgentConfigPayload,
   AgentGlobals,
@@ -145,7 +145,8 @@ function joinCapabilities(inputModalities: string[], capabilities: string[]): st
 
 function toModel(key: string, raw: KimiModelRecord, providerId: string): AgentModel {
   const { capabilities, inputModalities } = splitCapabilities(strArray(raw.capabilities))
-  const supportEfforts = strArray(raw.support_efforts)
+  // Stored as an array, so its order is the ladder the UI and the agent show.
+  const supportEfforts = orderEfforts(strArray(raw.support_efforts))
   // Only the first slash separates provider from id: mcode-style routers alias
   // models whose own id contains slashes (`command-goat/deepseek/x-flash`).
   const slash = key.indexOf('/')
@@ -392,9 +393,11 @@ export function applyKimiProviderEdit(doc: KimiDocument, input: AgentProviderInp
       }
     }
     if (model.supportEfforts !== undefined) {
-      const current = strArray(next.support_efforts)
-      if (!sameMembers(current, model.supportEfforts)) {
-        if (model.supportEfforts.length > 0) next.support_efforts = [...model.supportEfforts]
+      const ladder = orderEfforts(model.supportEfforts)
+      // The ladder's order is meaningful, so an unchanged set stored in a
+      // different order is still rewritten — that is the whole point here.
+      if (!sameSequence(strArray(next.support_efforts), ladder)) {
+        if (ladder.length > 0) next.support_efforts = ladder
         else delete next.support_efforts
       }
     }

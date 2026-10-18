@@ -1,7 +1,7 @@
 import { ChevronRight, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useT } from '@/i18n/useT'
-import { EFFORT_LEVELS, MODEL_MODALITIES } from '@/lib/agent-config'
+import { EFFORT_LEVELS, MODEL_MODALITIES, orderEfforts } from '@/lib/agent-config'
 
 /** Editable draft of one model; numeric fields are strings so typing is free-form */
 export interface ModelDraft {
@@ -32,7 +32,9 @@ const BEHAVIOURS = ['tool_use', 'thinking', 'always_thinking'] as const
 /** Levels offered in addition to whatever the model already declares */
 function effortOptions(current: string[]): string[] {
   const set = new Set<string>([...EFFORT_LEVELS, ...current])
-  return [...set]
+  // Canonical order, so the checkboxes (and the levels they add) are stable
+  // regardless of what order the stored config happened to carry.
+  return orderEfforts([...set])
 }
 
 /** Small labelled checkbox shared by the parameter panel and the fetch list */
@@ -253,7 +255,9 @@ export function ModelEditor({ draft, onChange, onRemove }: ModelEditorProps) {
                   label={level}
                   checked={draft.supportEfforts.includes(level)}
                   onChange={(on) => {
-                    const supportEfforts = toggleIn(draft.supportEfforts, level, on)
+                    // Strength order, not click order: the ladder is stored and
+                    // rendered by the agent in this sequence.
+                    const supportEfforts = orderEfforts(toggleIn(draft.supportEfforts, level, on))
                     // A default that is no longer selectable would be rejected
                     // by the agent at request time, so it is dropped with it.
                     const defaultEffort = supportEfforts.includes(draft.defaultEffort)
