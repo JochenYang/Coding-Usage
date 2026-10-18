@@ -10,6 +10,18 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.6.7] - 2026-10-18
+
+### 中文
+- 修复在智能体管理里保存 provider 后，模型的推理档位被改写成乱序：opencode 按 `variants` 的键顺序渲染选择列表，而写入时沿用了输入数组的顺序、界面又按勾选顺序构造它，于是每保存一次就把 `none → low → medium → high → max` 打乱成 `low/high/medium/none`；读取端还把乱序原样读回界面，形成自持闭环。现在读取、写入与界面三处统一按强度序排列（kimicode 的 `support_efforts`、mcode 的 `thinking.effortOptions` 同样处理）
+- 修复 `off` / `on` 被当作推理强度排序：它们是「关闭思考」与「不分档思考」两个状态而不是档位，此前会排在 `max` 之后，等于把关闭开关摆到最强一端；现在固定排在所有档位之前
+- 修复默认推理档位无法清除：取消勾选该档位后界面发出的清空指令在校验层被折叠成「保持原值」，文件里留下一个指向已不存在档位的默认值；现在清空会真正写入
+
+### English
+- Fix model reasoning ladders being rewritten into a scrambled order after saving a provider in the agent config: opencode renders its picker from the key order of `variants`, but the write path reused the incoming array order and the editor built that array in click order, so every save turned `none → low → medium → high → max` into `low/high/medium/none`. The read path then fed the scrambled order straight back to the UI, closing the loop. Reading, writing and the editor now all use strength order (kimicode's `support_efforts` and mcode's `thinking.effortOptions` are handled the same way)
+- Fix `off` / `on` being ranked as reasoning strengths: they are the "thinking disabled" and "ungraded thinking" states rather than rungs, and used to sort after `max`, which put the off switch at the strongest end of the picker. They now sort before every rung
+- Fix the default reasoning level being impossible to clear: after unchecking that level, the clear instruction from the UI was collapsed into "keep the stored value" during validation, leaving the file with a default pointing at a level the model no longer declares. Clearing now actually clears
+
 ## [v0.6.6] - 2026-10-10
 
 ### 中文
