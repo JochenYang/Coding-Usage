@@ -10,6 +10,15 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.6.8] - 2026-10-18
+### 中文
+- 修复 opencode 新版数组式 `variants`（`[{id, …}]`）在保存时被整段删除：读取端只认对象式，数组被当成「没有档位」，于是一次保存就把整段变体连同每个变体的请求体补丁一起删掉。现在两种写法都能读，且保存时保持记录原本使用的写法
+- 修正上一版新增的「不重写」回归断言：其中两条只断言结果的顺序，重写与不重写产出相同，无法发现门控失效；改为断言对象引用同一性
+
+### English
+- Fix opencode's array-shaped `variants` (`[{id, …}]`) being deleted wholesale on save: the read path only understood the map shape, so an array looked like a model with no levels and a single save removed the whole field along with every variant's request-body patch. Both spellings are now read, and a record keeps the one it already used
+- Fix the "does not rewrite" regression assertions added in the previous release: two of them only checked the resulting order, which a rewrite and a no-op both produce, so they could not detect a broken gate. They now assert reference identity
+
 ## [v0.6.7] - 2026-10-18
 
 ### 中文
