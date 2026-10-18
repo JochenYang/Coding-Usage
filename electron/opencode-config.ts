@@ -51,7 +51,8 @@ export interface OpencodeModelRecord {
   attachment?: unknown
   reasoning?: unknown
   tool_call?: unknown
-  variants?: Record<string, unknown>
+  /** A map of level → patch (v1) or an array of `{id, …}` entries (v2) */
+  variants?: Record<string, unknown> | unknown[]
   [key: string]: unknown
 }
 
@@ -140,9 +141,31 @@ function capabilitiesOf(record: OpencodeModelRecord): string[] {
   return out
 }
 
+/**
+ * The ladder a model declares, whichever spelling its record uses.
+ *
+ * Two shapes exist: a map (`{none: {body}, …}`, what the installed build
+ * writes) and an array of `{id, …}` entries (the v2 native shape). Reading only
+ * the map made an array-shaped record look like a model with no levels at all,
+ * and saving then deleted the whole field — a real loss of every variant body.
+ */
+function variantLevels(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw
+      .map((entry) => str(asRecord(entry)?.id))
+      .filter((id): id is string => id !== undefined)
+  }
+  return Object.keys(asRecord(raw) ?? {})
+}
+
+/** True when this record spells its variants as an array rather than a map */
+function usesVariantArray(raw: unknown): boolean {
+  return Array.isArray(raw)
+}
+
 function toModel(id: string, raw: OpencodeModelRecord): AgentModel {
   const limit = asRecord(raw.limit) ?? {}
-  const variants = asRecord(raw.variants) ?? {}
+  const variants = raw.variants
   return {
     id,
     alias: id,
@@ -158,7 +181,7 @@ function toModel(id: string, raw: OpencodeModelRecord): AgentModel {
     // opencode names reasoning levels, so the variant keys are the ladders.
     // The file's own key order is what its picker renders, so a disordered one
     // is normalised here and written back in the canonical order below.
-    supportEfforts: orderEfforts(Object.keys(variants)),
+    supportEfforts: orderEfforts(variantLevels(variants)),
     thinkingMode: thinkingModeOf(raw),
   }
 }
@@ -166,7 +189,7 @@ function toModel(id: string, raw: OpencodeModelRecord): AgentModel {
 /** opencode has no explicit mode; a variant list implies switchable */
 function thinkingModeOf(record: OpencodeModelRecord): AgentModel['thinkingMode'] {
   if (record.reasoning === true) return 'switchable'
-  return Object.keys(asRecord(record.variants) ?? {}).length > 0 ? 'switchable' : 'unknown'
+  return variantLevels(record.variants).length > 0 ? 'switchable' : 'unknown'
 }
 
 /**
@@ -368,20 +391,37 @@ function applyModelFields(entry: OpencodeModelRecord, model: AgentModelInput): v
     // opencode expresses reasoning effort. The keys of that object are the
     // ladder the user sees, so they are inserted in strength order — the
     // editor sends click order, and an older file may hold any order at all.
-    const existing = { ...(asRecord(entry.variants) ?? {}) }
+    //
+    // Whichever spelling the record already used is preserved: an array-shaped
+    // v2 record keeps its `{id, …}` entries (matched by id, so a variant's
+    // remaining fields survive), and a map-shaped one keeps its keys.
+    const stored = entry.variants
+    const arrayShape = usesVariantArray(stored)
+    const byId = new Map<string, unknown>()
+    const byLevel = asRecord(stored) ?? {}
+    for (const variant of Array.isArray(stored) ? stored : []) {
+      const record = asRecord(variant)
+      const id = str(record?.id)
+      if (record && id) byId.set(id, record)
+    }
+    /** The existing entry for a level, or a fresh patch when there is none */
+    const patchFor = (level: string): unknown =>
+      (arrayShape ? byId.get(level) : byLevel[level]) ?? { body: { reasoning_effort: level } }
+
     const ladder = orderEfforts(model.supportEfforts)
     if (ladder.length === 0) {
       // No levels means no variants: the field is removed rather than left
-      // behind as an empty object.
+      // behind as an empty container.
       delete entry.variants
-    } else if (!sameSequence(Object.keys(existing), ladder)) {
+    } else if (!sameSequence(variantLevels(stored), ladder)) {
       // A stored ladder that already holds these levels in this order is left
       // untouched, so an edit that did not change it produces no diff.
-      const next: Record<string, unknown> = {}
-      for (const level of ladder) {
-        next[level] = existing[level] ?? { body: { reasoning_effort: level } }
-      }
-      entry.variants = next
+      entry.variants = arrayShape
+        ? ladder.map((level) => {
+            const existing = byId.get(level)
+            return existing ? { ...existing, id: level } : { id: level, body: { reasoning_effort: level } }
+          })
+        : Object.fromEntries(ladder.map((level) => [level, patchFor(level)]))
     }
   }
 }

@@ -4,6 +4,7 @@ import { applyMcodeProviderEdit, parseMcodeDocument, serializeMcodeDocument } fr
 import {
   applyOpencodeProviderEdit,
   parseOpencodeDocument,
+  readOpencodePayload,
   serializeOpencodeDocument,
 } from '../../electron/opencode-config'
 
@@ -55,12 +56,49 @@ describe('opencode variants', () => {
       models: [{ id: 'm1', supportEfforts: ['max', 'none', 'low'] }],
     })
     const variants = parseOpencodeDocument(serializeOpencodeDocument(doc)).provider?.gw?.models?.m1?.variants
-    expect(Object.keys(variants ?? {})).toEqual(['none', 'low', 'max'])
-    expect(variants?.max).toEqual({ body: { reasoning_effort: 'max' } })
+    const map = variants as Record<string, unknown>
+    expect(Object.keys(map)).toEqual(['none', 'low', 'max'])
+    expect(map.max).toEqual({ body: { reasoning_effort: 'max' } })
   })
 
   it('drops variants when the ladder is emptied', () => {
     expect(JSON.parse(write({ supportEfforts: [] })).provider.gw.models.m1.variants).toBeUndefined()
+  })
+
+  it('reads and preserves the v2 array spelling', () => {
+    // The v2 native shape is an array of `{id, …}` entries. Reading only the map
+    // made such a record look like a model with no levels, and saving then
+    // deleted the whole field — every variant body with it.
+    const source = JSON.stringify({
+      providers: {
+        gw: {
+          package: '@ai-sdk/openai-compatible',
+          models: {
+            m1: {
+              variants: [
+                { id: 'high', body: { reasoning_effort: 'high', extra: 'keep-me' } },
+                { id: 'none', body: { reasoning_effort: 'none' } },
+              ],
+            },
+          },
+        },
+      },
+    })
+    const payload = readOpencodePayload(source, 'x', false)
+    expect(payload.providers[0].models[0].supportEfforts).toEqual(['none', 'high'])
+
+    const doc = parseOpencodeDocument(source)
+    applyOpencodeProviderEdit(doc, {
+      id: 'gw',
+      name: 'gw',
+      protocol: '@ai-sdk/openai-compatible',
+      models: [{ id: 'm1', supportEfforts: ['none', 'high'] }],
+    })
+    const out = JSON.parse(serializeOpencodeDocument(doc)).providers.gw.models.m1.variants
+    expect(Array.isArray(out)).toBe(true)
+    expect(out.map((v: { id: string }) => v.id)).toEqual(['none', 'high'])
+    // The entry's own fields survive the reorder.
+    expect(out[1]).toEqual({ id: 'high', body: { reasoning_effort: 'high', extra: 'keep-me' } })
   })
 
   it('does not rewrite a ladder that is already canonical', () => {
@@ -70,16 +108,16 @@ describe('opencode variants', () => {
       provider: { gw: { models: { m1: { variants: { none: { body: {} }, low: { body: {} }, high: { body: {} } } } } } },
     })
     const doc = parseOpencodeDocument(source)
+    // The reference is the observable: asserting only the resulting key order
+    // cannot tell a rewrite from a no-op, because both produce the same order.
+    const before = doc.provider?.gw?.models?.m1?.variants
     applyOpencodeProviderEdit(doc, {
       id: 'gw',
       name: 'gw',
       protocol: '',
       models: [{ id: 'm1', supportEfforts: ['none', 'low', 'high'] }],
     })
-    // Scoped to the ladder: the save also completes unrelated record fields
-    // (name, options), which is separate behaviour.
-    const after = JSON.parse(serializeOpencodeDocument(doc)).provider.gw.models.m1
-    expect(Object.keys(after.variants)).toEqual(['none', 'low', 'high'])
+    expect(doc.provider?.gw?.models?.m1?.variants).toBe(before)
   })
 })
 
@@ -115,10 +153,18 @@ describe('kimicode support_efforts', () => {
   })
 
   it('leaves an already ordered ladder untouched', () => {
-    // Compared against the serialiser's own round trip rather than the source
-    // text: smol-toml normalises quoting, which is unrelated to this fix.
-    const untouched = serializeKimiDocument(parseKimiDocument(orderedSource))
-    expect(write(orderedSource, CANONICAL)).toBe(untouched)
+    // Reference identity, not the serialised text: writing the same array back
+    // produces identical TOML, so only the reference proves no rewrite happened.
+    const doc = parseKimiDocument(orderedSource)
+    const before = (doc.models?.['gw/m1'] as Record<string, unknown> | undefined)?.support_efforts
+    applyKimiProviderEdit(doc, {
+      id: 'gw',
+      name: 'gw',
+      protocol: 'openai',
+      models: [{ id: 'm1', supportEfforts: CANONICAL }],
+    })
+    const after = (doc.models?.['gw/m1'] as Record<string, unknown> | undefined)?.support_efforts
+    expect(after).toBe(before)
   })
 
   it('clears a default effort that is no longer in the ladder', () => {
@@ -188,14 +234,20 @@ describe('mcode thinking.effortOptions', () => {
       '',
     ].join('\n')
     const doc = parseMcodeDocument(canonicalSource)
+    // mcode rebuilds the enclosing `thinking` object on every save, and a
+    // rewrite of an already-canonical ladder produces byte-identical output, so
+    // no assertion on this adapter can distinguish the two. This pins the
+    // behaviour that is observable: the ladder survives unchanged. The gating
+    // itself is covered on the two adapters where it IS observable (opencode
+    // and kimicode, both by reference identity).
+    const before = [...((doc.custom_provider?.gw?.models?.m1?.thinking?.effortOptions ?? []) as string[])]
     applyMcodeProviderEdit(doc, {
       id: 'gw',
       name: 'gw',
       protocol: 'openai-completions',
       models: [{ id: 'm1', supportEfforts: CANONICAL }],
     })
-    // Scoped to the ladder: the save also completes unrelated record fields.
-    const after = parseMcodeDocument(serializeMcodeDocument(doc))
-    expect(after.custom_provider?.gw?.models?.m1?.thinking?.effortOptions).toEqual(CANONICAL)
+    const after = doc.custom_provider?.gw?.models?.m1?.thinking?.effortOptions
+    expect(after).toEqual(before)
   })
 })
