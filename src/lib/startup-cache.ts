@@ -116,9 +116,32 @@ function normalizeClientRows(value: unknown): AgentUsageVM['clients'] {
     if (entry == null || typeof entry !== 'object') continue
     const row = entry as AgentUsageVM['clients'][number]
     if (typeof row.client !== 'string' || !known.has(row.client)) continue
-    out.push({ ...row, models: Array.isArray(row.models) ? row.models : [] })
+    out.push({
+      ...row,
+      today: withCacheWrite(row.today),
+      month: withCacheWrite(row.month),
+      allTime: withCacheWrite(row.allTime),
+      models: Array.isArray(row.models)
+        ? row.models.map((m) => ({
+            ...m,
+            today: withCacheWrite(m.today),
+            month: withCacheWrite(m.month),
+            allTime: withCacheWrite(m.allTime),
+          }))
+        : [],
+    })
   }
   return out
+}
+
+/**
+ * Fill `cacheWrite` on a period read from a cache written before the field
+ * existed. It is a counter, so 0 is the honest default; leaving it undefined
+ * would turn the breakdown arithmetic into NaN the moment a caller sums it.
+ */
+function withCacheWrite(period: AgentUsageVM['clients'][number]['today'] | undefined) {
+  if (period == null || typeof period !== 'object') return { tokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0, messages: 0 }
+  return { ...period, cacheWrite: typeof period.cacheWrite === 'number' ? period.cacheWrite : 0 }
 }
 
 export function loadCachedAgentUsage(): AgentUsageVM | null {
@@ -140,6 +163,17 @@ export function loadCachedAgentUsage(): AgentUsageVM | null {
       skippedClients: Array.isArray(parsed.skippedClients) ? parsed.skippedClients : null,
       modelDaily: normalizeModelRows(parsed.modelDaily),
       clients: normalizeClientRows(parsed.clients),
+      todayTotal: withCacheWrite(parsed.todayTotal),
+      monthTotal: withCacheWrite(parsed.monthTotal),
+      allTimeTotal: withCacheWrite(parsed.allTimeTotal),
+      other:
+        parsed.other && typeof parsed.other === 'object'
+          ? {
+              today: withCacheWrite(parsed.other.today),
+              month: withCacheWrite(parsed.other.month),
+              all: withCacheWrite(parsed.other.all),
+            }
+          : null,
     }
   } catch {
     return null

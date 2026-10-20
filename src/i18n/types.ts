@@ -289,6 +289,7 @@ export interface Dict {
     colInput: string
     colOutput: string
     colCache: string
+    colCacheWrite: string
     statusOnline: string
     statusOffline: string
     shownAgents: (n: number) => string

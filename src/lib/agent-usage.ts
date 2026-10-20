@@ -72,6 +72,13 @@ export interface AgentPeriodVM {
   input: number
   output: number
   cacheRead: number
+  /**
+   * Prompt-cache writes. Folded into `tokens` like the other three, but kept
+   * separate so the breakdown dials sum to the headline figure: without it an
+   * agent whose prompts were cached writes would show parts smaller than its
+   * own total with nothing accounting for the gap.
+   */
+  cacheWrite: number
   costUsd: number
   messages: number
 }
@@ -182,7 +189,7 @@ export interface AgentUsageVM {
 }
 
 function zero(): AgentPeriodVM {
-  return { tokens: 0, input: 0, output: 0, cacheRead: 0, costUsd: 0, messages: 0 }
+  return { tokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0, messages: 0 }
 }
 
 function numberOr(value: unknown, fallback = 0): number {
@@ -222,6 +229,7 @@ function addSlice(map: Map<string, SliceAgg>, key: string, p: AgentPeriodVM): vo
     input: hit.input + p.input,
     output: hit.output + p.output,
     cacheRead: hit.cacheRead + p.cacheRead,
+    cacheWrite: hit.cacheWrite + p.cacheWrite,
     costUsd: hit.costUsd + p.costUsd,
     messages: hit.messages + p.messages,
   })
@@ -240,6 +248,7 @@ function makePeriod(parts: {
     input: parts.input,
     output: parts.output,
     cacheRead: parts.cacheRead,
+    cacheWrite: parts.cacheWrite,
     costUsd: parts.cost,
     messages: parts.messages,
   }
@@ -351,6 +360,7 @@ function addPeriod(a: AgentPeriodVM, b: AgentPeriodVM): AgentPeriodVM {
     input: a.input + b.input,
     output: a.output + b.output,
     cacheRead: a.cacheRead + b.cacheRead,
+    cacheWrite: a.cacheWrite + b.cacheWrite,
     costUsd: a.costUsd + b.costUsd,
     messages: a.messages + b.messages,
   }
@@ -635,6 +645,7 @@ function subtract(a: AgentPeriodVM, b: AgentPeriodVM): AgentPeriodVM {
     input: Math.max(0, a.input - b.input),
     output: Math.max(0, a.output - b.output),
     cacheRead: Math.max(0, a.cacheRead - b.cacheRead),
+    cacheWrite: Math.max(0, a.cacheWrite - b.cacheWrite),
     costUsd: Math.max(0, a.costUsd - b.costUsd),
     messages: Math.max(0, a.messages - b.messages),
   }

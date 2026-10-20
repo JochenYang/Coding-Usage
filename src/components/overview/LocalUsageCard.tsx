@@ -132,6 +132,30 @@ function PeriodColumn({ period, exists, mode }: PeriodColumnProps) {
 const PERIOD_GRID = 'grid w-[150px] shrink-0 grid-cols-3 gap-1 sm:w-[220px] sm:gap-2'
 
 /**
+ * Today's token split under an agent name.
+ *
+ * The four parts must add up to the headline figure the row shows, so the
+ * cache-write tier is printed whenever it is non-zero: without it a row whose
+ * prompts were cache-written would print parts that fall short of its own total.
+ * It is omitted at zero because that tier is rare and bursty (this machine has
+ * 58M of them on historical days, none today) — a permanent "· Cache write 0"
+ * would be noise on every row, and with all parts present the sum is exact.
+ */
+function breakdownText(
+  period: AgentPeriodVM,
+  l: { colInput: string; colOutput: string; colCache: string; colCacheWrite: string },
+  compact: (n: number) => string,
+): string {
+  const parts = [
+    `${l.colInput} ${compact(period.input)}`,
+    `${l.colOutput} ${compact(period.output)}`,
+    `${l.colCache} ${compact(period.cacheRead)}`,
+  ]
+  if (period.cacheWrite > 0) parts.push(`${l.colCacheWrite} ${compact(period.cacheWrite)}`)
+  return parts.join(' · ')
+}
+
+/**
  * Local agent usage (tokscale) card: per-client today / month / all-time token
  * and cost columns plus a manual refresh. Each agent expands to the models it
  * actually called, which is the only place the agent → model attribution is
@@ -270,7 +294,7 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
                         </span>
                         {/* Consumption breakdown makes the counting口径 visible */}
                         <span className="block truncate text-[10px] text-subtle">
-                          {`${t.overview.colInput} ${formatCompactValue(client.today.input)} · ${t.overview.colOutput} ${formatCompactValue(client.today.output)} · ${t.overview.colCache} ${formatCompactValue(client.today.cacheRead)}`}
+                          {breakdownText(client.today, t.overview, formatCompactValue)}
                         </span>
                       </span>
                     </button>
@@ -348,7 +372,7 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
                   {t.overview.distOther}
                 </span>
                 <span className="block truncate text-[10px] text-subtle">
-                  {t.overview.colInput} {formatCompactValue(usage.other.all.input)} · {t.overview.colOutput} {formatCompactValue(usage.other.all.output)} · {t.overview.colCache} {formatCompactValue(usage.other.all.cacheRead)}
+                  {breakdownText(usage.other.all, t.overview, formatCompactValue)}
                 </span>
               </span>
               <div className={PERIOD_GRID}>

@@ -115,6 +115,13 @@ longer knows: a cache written before the field existed, or by another version
 with a client since removed, would otherwise throw during render and blank the
 window.
 
+`AgentPeriodVM` keeps all four token tiers (`input` / `output` / `cacheRead` /
+`cacheWrite`) plus `tokens`, and the four always sum to `tokens`. Any new tier
+must be added to `makePeriod`, `addPeriod`, `subtract` and `zero()` together, or
+the breakdown printed under an agent name stops matching the total beside it —
+a wrong-looking number rather than a crash, which is why
+`src/lib/agent-usage.test.ts` asserts the sum.
+
 ## Development Commands
 
 ```bash

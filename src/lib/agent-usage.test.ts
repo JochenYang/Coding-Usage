@@ -145,4 +145,37 @@ describe('agent × model cross-cut', () => {
     const vm = summarizeScan(null)
     for (const client of vm.clients) expect(Array.isArray(client.models)).toBe(true)
   })
+
+  it('keeps the four breakdown parts summing to the headline token figure', () => {
+    // cacheWrite is the part that used to be folded into `tokens` only, which
+    // made the printed breakdown add up to less than the row's own total.
+    const vm = scan([
+      day(localDay(0), [
+        {
+          client: 'pi',
+          modelId: 'm',
+          tokens: { input: 10, output: 4, cacheRead: 6, cacheWrite: 3 },
+          messages: 1,
+        },
+      ]),
+    ])
+    const row = vm.clients.find((c) => c.client === 'pi')!
+    for (const p of [row.today, row.month, row.allTime, row.models[0]!.allTime]) {
+      expect(p.input + p.output + p.cacheRead + p.cacheWrite).toBe(p.tokens)
+      expect(p.cacheWrite).toBe(3)
+    }
+    expect(row.allTime.tokens).toBe(23)
+    // The day total carries the same tier, so totals stay reconciled.
+    expect(vm.todayTotal.cacheWrite).toBe(3)
+    expect(
+      vm.todayTotal.input + vm.todayTotal.output + vm.todayTotal.cacheRead + vm.todayTotal.cacheWrite,
+    ).toBe(vm.todayTotal.tokens)
+  })
+
+  it('defaults cacheWrite to zero when the scan omits the field', () => {
+    const vm = scan([day(localDay(0), [{ client: 'pi', modelId: 'm', tokens: { input: 5 } }])])
+    const row = vm.clients.find((c) => c.client === 'pi')!
+    expect(row.today.cacheWrite).toBe(0)
+    expect(Number.isNaN(row.today.cacheWrite)).toBe(false)
+  })
 })

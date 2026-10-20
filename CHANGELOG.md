@@ -10,6 +10,16 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- 修复智能体用量副标题的分项加不到主数字：缓存写入原本只并入合计、没有单独保留，于是提示词被写入缓存过的智能体，副标题里「输入 + 输出 + 缓存」会小于右侧的合计，差额无从解释。现在缓存写入单独成项，仅在非零时显示（这一档很稀疏，常年为 0 时不显示以免每行都拖一个 `0`）
+- 为启动缓存补上 `cacheWrite` 归一化：旧缓存没有该字段，补齐为 0 而不是让它参与运算后得到 `NaN`
+
+### English
+- Fix the agent usage breakdown not adding up to the headline figure: cache writes were folded into the total but never kept as their own counter, so any agent whose prompts had been cache-written showed input + output + cache smaller than the total beside it with nothing accounting for the gap. Cache writes are now their own part, shown only when non-zero — the tier is sparse and reads 0 on most days, and a permanent zero would just add noise to every row
+- Normalize `cacheWrite` when loading the startup cache: older caches lack the field, and 0 is the honest default instead of letting it participate in arithmetic as `NaN`
+
 ## [v0.6.9] - 2026-10-20
 
 ### 中文

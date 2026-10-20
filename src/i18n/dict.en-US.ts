@@ -298,6 +298,7 @@ export const enUS: Dict = {
     colInput: 'Input',
     colOutput: 'Output',
     colCache: 'Cache',
+    colCacheWrite: 'Cache write',
     statusOnline: 'Online',
     statusOffline: 'Offline',
     shownAgents: (n: number) => `Showing ${n} accounts`,

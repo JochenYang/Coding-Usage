@@ -289,6 +289,7 @@ export const zhCN: Dict = {
     colInput: '输入',
     colOutput: '输出',
     colCache: '缓存',
+    colCacheWrite: '缓存写入',
     statusOnline: '在线',
     statusOffline: '离线',
     shownAgents: (n: number) => `显示 ${n} 个账号`,
