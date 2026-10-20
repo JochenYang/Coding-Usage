@@ -1,5 +1,5 @@
 import type { ProviderResult } from '../types'
-import type { AgentUsageVM } from './agent-usage'
+import { AGENT_CLIENTS, type AgentUsageVM } from './agent-usage'
 
 /**
  * Startup cache for the two slow-to-compute surfaces (provider fetch results
@@ -95,6 +95,32 @@ function normalizeModelRows(value: unknown): AgentUsageVM['modelDaily'] {
   })
 }
 
+/**
+ * Repair the per-client rows read from a cache written before `models`
+ * existed, and drop rows whose client id this build no longer knows.
+ *
+ * Two independent crash paths are closed here:
+ *   1. `models` missing → the card maps it unconditionally.
+ *   2. `client` missing or not in AGENT_CLIENTS → the card resolves the row's
+ *      label as `AGENT_LABELS[client.client][0]`, which dereferences undefined.
+ * Either one throws during render, and there is no error boundary above the
+ * page, so the whole window would stay blank until a scan replaced the cache.
+ * A cache written by another build (downgrade, or a client later removed) is
+ * exactly where such an id comes from.
+ */
+function normalizeClientRows(value: unknown): AgentUsageVM['clients'] {
+  if (!Array.isArray(value)) return []
+  const known = new Set<string>(AGENT_CLIENTS)
+  const out: AgentUsageVM['clients'] = []
+  for (const entry of value) {
+    if (entry == null || typeof entry !== 'object') continue
+    const row = entry as AgentUsageVM['clients'][number]
+    if (typeof row.client !== 'string' || !known.has(row.client)) continue
+    out.push({ ...row, models: Array.isArray(row.models) ? row.models : [] })
+  }
+  return out
+}
+
 export function loadCachedAgentUsage(): AgentUsageVM | null {
   try {
     const raw = localStorage.getItem(USAGE_KEY)
@@ -113,6 +139,7 @@ export function loadCachedAgentUsage(): AgentUsageVM | null {
       ...parsed,
       skippedClients: Array.isArray(parsed.skippedClients) ? parsed.skippedClients : null,
       modelDaily: normalizeModelRows(parsed.modelDaily),
+      clients: normalizeClientRows(parsed.clients),
     }
   } catch {
     return null

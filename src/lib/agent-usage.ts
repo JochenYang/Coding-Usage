@@ -60,6 +60,7 @@ export const AGENT_CLIENTS = [
   'dsh',
   'zcode',
   'micode',
+  'pi',
   'mcode',
 ] as const
 export type AgentClientId = (typeof AGENT_CLIENTS)[number]
@@ -75,6 +76,15 @@ export interface AgentPeriodVM {
   messages: number
 }
 
+/** One model's usage inside a single agent (the agent × model cross-cut) */
+export interface AgentModelVM {
+  /** Model id as tokscale reports it (vendor prefix kept when present) */
+  model: string
+  today: AgentPeriodVM
+  month: AgentPeriodVM
+  allTime: AgentPeriodVM
+}
+
 export interface AgentClientVM {
   client: AgentClientId
   /** True when any period has data for this client */
@@ -82,6 +92,17 @@ export interface AgentClientVM {
   today: AgentPeriodVM
   month: AgentPeriodVM
   allTime: AgentPeriodVM
+  /**
+   * Models this agent called, sorted by all-time tokens descending.
+   *
+   * Answers "which models did this agent actually request", which the flat
+   * model list cannot: the same model id often arrives from several agents
+   * (e.g. `deepseek-v4-flash` behind both OpenCode and Kimi Code), and those
+   * rows are indistinguishable once aggregated by model alone. Entries with no
+   * model id on the scan never appear here, so a client's model rows can sum
+   * to slightly less than its own totals.
+   */
+  models: AgentModelVM[]
 }
 
 /** tokens/cost for one model or provider label (analysis views) */
@@ -306,6 +327,7 @@ function emptyVM(
       today: zero(),
       month: zero(),
       allTime: zero(),
+      models: [],
     })),
     other: null,
     todayTotal: zero(),
@@ -389,6 +411,27 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
   // main process repriced it; tokscale-native costs stay unpriced)
   const todayModelPriced = new Map<string, boolean>()
   const monthModelPriced = new Map<string, boolean>()
+  // Agent × model cross-cut, keyed by client then model id. Kept for both
+  // periods a row needs (today/month) plus all-time, because the card lets a
+  // user expand an agent and read its models under the same three columns.
+  const modelsByClient = new Map<string, Map<string, { today: SliceAgg; month: SliceAgg; all: SliceAgg }>>()
+
+  /** Record one entry into the agent × model buckets */
+  const addAgentModel = (owner: string, model: string, period: AgentPeriodVM, isToday: boolean, isMonthDay: boolean): void => {
+    let perClient = modelsByClient.get(owner)
+    if (!perClient) {
+      perClient = new Map()
+      modelsByClient.set(owner, perClient)
+    }
+    let row = perClient.get(model)
+    if (!row) {
+      row = { today: zero(), month: zero(), all: zero() }
+      perClient.set(model, row)
+    }
+    row.all = addPeriod(row.all, period)
+    if (isMonthDay) row.month = addPeriod(row.month, period)
+    if (isToday) row.today = addPeriod(row.today, period)
+  }
 
   for (let i = 0; i < contribs.length; i++) {
     const c = contribs[i]
@@ -424,6 +467,7 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
         if (model) {
           addSlice(todayByModel, model, period)
           if (e.priced === true) todayModelPriced.set(model, true)
+          addAgentModel(owner, model, period, true, isMonthDay)
         }
         // Today always sits inside the current month: feed the month/provider
         // buckets too, otherwise every "本月" figure and the distribution
@@ -462,6 +506,7 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
           addSlice(monthByModel, model, period)
           if (e.priced === true) monthModelPriced.set(model, true)
         }
+        if (model) addAgentModel(owner, model, period, false, isMonthDay)
       }
     }
   }
@@ -470,6 +515,13 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
     const today = todayByClient.get(c) ?? zero()
     const month = monthByClient.get(c) ?? zero()
     const all = allByClient.get(c) ?? zero()
+    // Ranked by all-time tokens so the heaviest model of each agent reads first
+    // under every period column. Call count is the tie-break: token-zero rows
+    // (credits-billed turns) would otherwise fall back to first-seen order,
+    // which puts the longest-unused model on top.
+    const models: AgentModelVM[] = [...(modelsByClient.get(c) ?? new Map()).entries()]
+      .map(([model, row]) => ({ model, today: row.today, month: row.month, allTime: row.all }))
+      .sort((a, b) => b.allTime.tokens - a.allTime.tokens || b.allTime.messages - a.allTime.messages)
     return {
       client: c,
       // Message-only clients exist too: credits-billed agents (Qoder CN's
@@ -481,6 +533,7 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
       today,
       month,
       allTime: all,
+      models,
     }
   })
 

@@ -1,5 +1,6 @@
-import { RefreshCw } from 'lucide-react'
+import { ChevronRight, RefreshCw } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { useState } from 'react'
 import {
   Amp,
   Antigravity,
@@ -13,6 +14,7 @@ import {
   Kimi,
   Minimax,
   OpenCode,
+  Pi,
   Qoder,
   Qwen,
   Trae,
@@ -64,6 +66,8 @@ const AGENT_ICONS: Partial<Record<AgentClientId, ReactNode>> = {
   zcode: <img src={zcodeLogo} className="h-5 w-5 rounded" alt="" />,
   // XiaomiMiMo ships no Color variant — its Avatar tile fills the slot
   micode: <XiaomiMiMo.Avatar size={16} />,
+  // Pi Agent's mark is a black glyph with no Color variant either
+  pi: <Pi.Avatar size={16} />,
   mcode: <Minimax.Color />,
   antigravity: <Antigravity.Color />,
 }
@@ -95,6 +99,7 @@ const AGENT_LABELS: Record<AgentClientId, string> = {
   dsh: 'DSH',
   zcode: 'ZCode',
   micode: 'MiMo',
+  pi: 'Pi',
   mcode: 'MiniMax Code',
   antigravity: 'Antigravity',
 }
@@ -109,19 +114,31 @@ interface PeriodColumnProps {
 /** One right-aligned stat value; the column headers live on the list header row */
 function PeriodColumn({ period, exists, mode }: PeriodColumnProps) {
   return (
-    <div className="text-right text-sm font-medium tabular-nums text-foreground">
+    <div className="text-right text-xs font-medium tabular-nums text-foreground sm:text-sm">
       {exists ? formatCompactValue(displayTokens(period, mode)) : '—'}
     </div>
   )
 }
 
-/** Fixed period-column widths keep the header row aligned with every data row */
-const PERIOD_GRID = 'grid w-[220px] shrink-0 grid-cols-3 gap-2'
+/**
+ * Fixed period-column widths keep the header row aligned with every data row.
+ *
+ * Narrow viewports get a slimmer, smaller-text grid: the card can be ~280px
+ * wide there (375px viewport minus the sidebar), and a hard 220px three-column
+ * block left the agent label with no width at all, so names and figures drew on
+ * top of each other. Model rows reuse the same grid so their figures stay in
+ * the same columns as the parent row's.
+ */
+const PERIOD_GRID = 'grid w-[150px] shrink-0 grid-cols-3 gap-1 sm:w-[220px] sm:gap-2'
 
 /**
  * Local agent usage (tokscale) card: per-client today / month / all-time token
- * and cost columns plus a manual refresh. Desktop mode only — without the
- * Electron bridge every client degrades to the empty hint.
+ * and cost columns plus a manual refresh. Each agent expands to the models it
+ * actually called, which is the only place the agent → model attribution is
+ * visible: the flat per-model views merge entries from every agent, so the same
+ * model id arriving from OpenCode and from Kimi Code is indistinguishable
+ * there. Desktop mode only — without the Electron bridge every client degrades
+ * to the empty hint.
  */
 export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUsageCardProps) {
   const t = useT()
@@ -135,6 +152,18 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
   // Every row's brand mark carries its own <title>, which Chromium would show
   // as a native hover tooltip (see useStripSvgTitle)
   const brandRef = useStripSvgTitle<HTMLElement>()
+  // Expanded agents, keyed by client id. Deliberately not persisted: this is a
+  // reading aid for the current visit, and a scan refresh must not collapse a
+  // panel the user just opened.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
+  const toggle = (client: string): void => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(client)) next.delete(client)
+      else next.add(client)
+      return next
+    })
+  }
 
   return (
     <section ref={brandRef} className={cn('rounded-2xl border border-border bg-card p-5', className)}>
@@ -203,47 +232,111 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
           </div>
           {usage.clients
             .filter((client) => client.exists)
-            .map((client) => (
-            <div
-              key={client.client}
-              className="flex items-center gap-3 border-t border-border/60 py-2.5"
-            >
-              <span
-                className={cn(
-                  'flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted text-[11px] font-semibold text-muted-foreground [&>svg]:h-5 [&>svg]:w-5',
-                  client.client === 'kimi' && invertOnLight && '[&>svg]:invert',
-                )}
-                aria-hidden
-              >
-                {AGENT_ICONS[client.client] ?? AGENT_LABELS[client.client][0]}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-foreground">
-                  {AGENT_LABELS[client.client]}
-                </span>
-                {/* Consumption breakdown makes the counting口径 visible */}
-                <span className="block truncate text-[10px] text-subtle">
-                  {client.exists
-                    ? `${t.overview.colInput} ${formatCompactValue(client.today.input)} · ${t.overview.colOutput} ${formatCompactValue(client.today.output)} · ${t.overview.colCache} ${formatCompactValue(client.today.cacheRead)}`
-                    : ''}
-                </span>
-              </span>
-              <div className={PERIOD_GRID}>
-                {[
-                  { period: client.today },
-                  { period: client.month },
-                  { period: client.allTime },
-                ].map((col, ci) => (
-                  <PeriodColumn
-                    key={ci}
-                    period={col.period}
-                    exists={client.exists}
-                    mode={mode}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
+            .map((client) => {
+              const isOpen = expanded.has(client.client)
+              const models = client.models
+              return (
+                <div key={client.client} className="border-t border-border/60">
+                  <div className="flex flex-wrap items-center gap-2 py-2.5 sm:flex-nowrap">
+                    {/* Chevron sits left of the brand tile so every agent row's
+                        logo keeps the same x-offset whether or not the row can
+                        expand; the whole label is the hit target. */}
+                    <button
+                      type="button"
+                      onClick={() => toggle(client.client)}
+                      aria-expanded={isOpen}
+                      aria-label={`${AGENT_LABELS[client.client]} — ${t.overview.agentModelsLabel(models.length)}`}
+                      className="flex min-w-0 grow shrink basis-full items-center gap-2 rounded-lg text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent sm:basis-auto"
+                    >
+                      <ChevronRight
+                        className={cn(
+                          'h-3.5 w-3.5 shrink-0 text-subtle transition-transform',
+                          isOpen && 'rotate-90',
+                        )}
+                        aria-hidden
+                      />
+                      <span
+                        className={cn(
+                          'flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted text-[11px] font-semibold text-muted-foreground [&>svg]:h-5 [&>svg]:w-5',
+                          client.client === 'kimi' && invertOnLight && '[&>svg]:invert',
+                        )}
+                        aria-hidden
+                      >
+                        {AGENT_ICONS[client.client] ?? AGENT_LABELS[client.client][0]}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-foreground">
+                          {AGENT_LABELS[client.client]}
+                        </span>
+                        {/* Consumption breakdown makes the counting口径 visible */}
+                        <span className="block truncate text-[10px] text-subtle">
+                          {`${t.overview.colInput} ${formatCompactValue(client.today.input)} · ${t.overview.colOutput} ${formatCompactValue(client.today.output)} · ${t.overview.colCache} ${formatCompactValue(client.today.cacheRead)}`}
+                        </span>
+                      </span>
+                    </button>
+                    <div className={cn(PERIOD_GRID, 'ml-auto')}>
+                      {[
+                        { period: client.today },
+                        { period: client.month },
+                        { period: client.allTime },
+                      ].map((col, ci) => (
+                        <PeriodColumn
+                          key={ci}
+                          period={col.period}
+                          exists={client.exists}
+                          mode={mode}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  {isOpen && (
+                    <div className="pb-2 pl-7 sm:pl-[52px]">
+                      {models.length === 0 ? (
+                        <p className="py-1 text-[11px] text-subtle">{t.overview.agentModelsEmpty}</p>
+                      ) : (
+                        <>
+                          {/* Visual grouping label only: the button's aria-label
+                              already announces the count, so read it once. */}
+                          <p className="pb-1 text-[10px] text-subtle" aria-hidden>
+                            {t.overview.agentModelsLabel(models.length)}
+                          </p>
+                          {models.map((row) => (
+                            <div
+                              key={row.model}
+                              className="flex items-center gap-2 py-1.5 [&+&]:border-t [&+&]:border-border/40"
+                            >
+                              <span
+                                className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
+                                title={row.model}
+                              >
+                                {row.model}
+                              </span>
+                              <div className={PERIOD_GRID}>
+                                {[row.today, row.month, row.allTime].map((period, ci) => {
+                                  const value = displayTokens(period, mode)
+                                  // A credits-billed or aborted turn records calls
+                                  // but no tokens (opencode reports 0/0 for some
+                                  // models). Showing "0" reads like a measurement;
+                                  // a dash says "no tokens recorded", which is true.
+                                  return (
+                                    <div
+                                      key={ci}
+                                      className="text-right text-xs tabular-nums text-muted-foreground"
+                                    >
+                                      {value > 0 ? formatCompactValue(value) : '—'}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           {/* Unclassified (synthetic) entries keep the four rows summing to totals */}
           {usage.other && usage.other.all.tokens > 0 && (
             <div className="flex items-center gap-3 border-t border-border/60 py-2.5">

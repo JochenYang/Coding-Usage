@@ -272,6 +272,7 @@ const TOKSCALE_CLIENTS = [
   'dsh',
   'zcode',
   'micode',
+  'pi',
 ]
 const TOKSCALE_CACHE_MS = 5 * 60_000
 

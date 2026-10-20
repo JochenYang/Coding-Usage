@@ -324,6 +324,9 @@ export interface Dict {
     todayCol: string
     monthCol: string
     allTimeCol: string
+    /** Expanded agent row: how many models that agent called */
+    agentModelsLabel: (n: number) => string
+    agentModelsEmpty: string
   }
   trends: {
     pageDesc: string

@@ -326,6 +326,8 @@ export const zhCN: Dict = {
     todayCol: '今日',
     monthCol: '本月',
     allTimeCol: '累计',
+    agentModelsLabel: (n: number) => `${n} 个模型`,
+    agentModelsEmpty: '暂无模型明细',
   },
   trends: {
     pageDesc: '聚合全部智能体与模型的历史消耗，查看用量结构、缓存命中与模型分布。',

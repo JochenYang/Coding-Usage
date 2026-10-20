@@ -335,6 +335,8 @@ export const enUS: Dict = {
     todayCol: 'Today',
     monthCol: 'Month',
     allTimeCol: 'All time',
+    agentModelsLabel: (n: number) => `${n} ${n === 1 ? 'model' : 'models'}`,
+    agentModelsEmpty: 'No model detail yet',
   },
   trends: {
     pageDesc: 'Aggregated historic consumption across all agents and models — usage mix, cache hits and model distribution.',

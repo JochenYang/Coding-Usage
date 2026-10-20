@@ -53,6 +53,7 @@ src/
     storage.ts           # loadSettings / persistSettings (v3 encrypt+verify) / v1→v2→v3 migration
     router.ts            # View union + hash sync (no router library)
     data-context.tsx     # App-wide state: settings / results / alerts / agent usage / refresh scheduler
+    startup-cache.ts     # Startup replay of provider results + the agent-usage VM, with old-field repair
     overview.ts          # Overview view-model builders (pure, testable)
     snapshots.ts         # Local time-series store (trends / today consumption)
     alerts.ts            # Alert derivation engine (window reset / high usage / low balance)
@@ -101,6 +102,18 @@ Everything stays local — only aggregated
 numbers are rendered, never message content. Packaging requires the
 `asarUnpack` entries in `electron-builder.yml` (spawning from inside the asar
 is impossible).
+
+`AgentUsageVM.clients[]` carries a per-agent `models[]` cross-cut in addition to
+the today / month / all-time periods: the card expands an agent into the models
+it actually called. This is the only place that attribution exists — the flat
+`todayByModel` / `monthCostByModel` views merge entries from every agent, so the
+same model id arriving from OpenCode and from Kimi Code is indistinguishable
+there. Rows sort by all-time tokens and are therefore a subset of the agent's
+own totals (an entry with no model id produces no row). `src/lib/startup-cache.ts`
+repairs `clients[].models` on read and drops rows whose client id this build no
+longer knows: a cache written before the field existed, or by another version
+with a client since removed, would otherwise throw during render and blank the
+window.
 
 ## Development Commands
 
