@@ -10,6 +10,24 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.6.9] - 2026-10-20
+
+### 中文
+- 本地 Agent 用量新增 Pi Agent（`pi`，pi.dev）：tokscale 的 `pi` 客户端已原生解析 `~/.pi/agent/sessions` 下的会话记录，随扫描管线、标签与图标完整接入，无需主进程另写读取器
+- 本地 Agent 用量支持按智能体展开模型明细：点开任意智能体即可看到它实际请求过哪些模型、各自的今日 / 本月 / 累计用量。此前只有按模型合并的视图，同一模型经由不同智能体产生的用量无法区分
+- 修复窄屏（375px）下本地 Agent 用量卡片的智能体名被数值列压成单字：数值列固定 220px 宽，而卡片在窄屏只剩约 280px，名字与数字叠在一起；现在窄屏改为名字与数值分两行，桌面宽度保持不变
+- 修复启动缓存中残留的未知智能体 id 会让整个窗口白屏：展开行按 id 查标签，缓存若来自另一个版本（降级安装、或某个客户端已移除）拿到 `undefined` 后取下标即抛错，而应用没有错误边界，首帧抛出后永远不会挂载。现在读取缓存时丢弃本版本不认识的客户端行
+- 模型明细里 token 为零的记录（credits 计费 / 中断的调用）不再显示成 `0`：这类行只有调用次数没有 token，三个 `0` 会被读成「测出来是零」，现在显示 `—` 表示未记录；同 token 时按调用次数排序，避免最久未用的模型排在最前
+- 为扫描聚合补回归测试（7 项）：覆盖今日与本月双写、历史日归属、模型行恒为本智能体用量的子集、排序与零 token 并列顺序
+
+### English
+- Local agent usage adds Pi Agent (`pi`, pi.dev): tokscale's `pi` client already parses the transcripts under `~/.pi/agent/sessions`, so it joins the scan pipeline with its label and brand mark and needs no main-process reader
+- Local agent usage can now expand any agent into the models it actually called, with today / month / all-time figures per model. Until now only a merged by-model view existed, where the same model id arriving from two different agents was indistinguishable
+- Fix the agent names being crushed to a single character on a 375px viewport: the period columns are a fixed 220px while the card is only ~280px wide there, so names and figures drew on top of each other. Narrow screens now put the figures on their own line; the desktop layout is unchanged
+- Fix a stale unknown agent id in the startup cache blanking the whole window: the expandable row resolves its label by id, so a cache written by another build (a downgrade, or a client since removed) yields `undefined` and the subscript throws. With no error boundary above the app, the first frame throws and the app never mounts. Cache reads now drop client rows this build does not know
+- Token-zero records in the model detail (credits-billed or aborted calls) no longer render as `0`: such rows carry calls but no tokens, and three zeros read as a measured zero. They now show `—` for not recorded, and equal-token rows order by call count so the longest-unused model is not listed first
+- Add regression tests for scan aggregation (7 cases): today/month double-write, historical day bucketing, the model-rows-are-a-subset invariant, ordering, and the zero-token tie-break
+
 ## [v0.6.8] - 2026-10-18
 ### 中文
 - 修复 opencode 新版数组式 `variants`（`[{id, …}]`）在保存时被整段删除：读取端只认对象式，数组被当成「没有档位」，于是一次保存就把整段变体连同每个变体的请求体补丁一起删掉。现在两种写法都能读，且保存时保持记录原本使用的写法
