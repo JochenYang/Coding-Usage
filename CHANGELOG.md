@@ -10,6 +10,22 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- 修复灵动岛弹出与收起完全没有动效：此前宿主组件在渲染前就决定是否显示，外壳一帧内直接出现在最终尺寸、关闭时整块消失。现在挂载与收起由组件自己持有（`open` / `onExitComplete`），外壳从 126x37 的胶囊尺寸弹出到内容尺寸，关闭时缩回胶囊并淡出，动画结束才卸载
+- 修复桌面覆盖窗（屏幕顶部居中的灵动岛窗口）在点击关闭的瞬间就隐藏、收缩动画被整段截断：现在窗口等收缩结束后才隐藏，并先恢复鼠标穿透
+- 收缩期间的外壳不可点击、不进 Tab 顺序（`inert` 加 `pointer-events-none`）：退场中的按钮此前仍可被点到，误触会打断正在进行的收起
+- 删除两帧 `requestAnimationFrame` 的临时补丁（`use-island-bloom`），胶囊与正文的进出改由外壳尺寸与内容弹簧共同驱动；`prefers-reduced-motion` 下改为整块淡入淡出，不再从胶囊尺寸瞬间跳变
+- 为覆盖窗补超时兜底隐藏：窗口被遮挡时动画帧不再触发、退场回调可能永远不来，而常驻的置顶透明窗会吞掉桌面点击
+
+### English
+- Fix the island having no open or close animation at all: the host decided whether to render it before painting, so the shell appeared at its final size in one frame and vanished wholesale on close. Presence now belongs to the component (`open` / `onExitComplete`): the shell springs out of the 126x37 pill to the measured content, collapses back into the pill and fades, and only unmounts once that collapse finishes
+- Fix the desktop overlay window (the island centred at the top of the screen) hiding the instant close was clicked, cutting the collapse off: it now hides after the collapse has finished, and restores click-through first
+- Make the collapsing shell unclickable and untabbable (`inert` plus `pointer-events-none`): its buttons stayed live during the exit, and a stray click could interrupt the collapse
+- Drop the two-frame `requestAnimationFrame` workaround (`use-island-bloom`); the pill and the body now move with the shell size and the content spring, and `prefers-reduced-motion` gets a plain cross-fade instead of a jump from the pill size
+- Add a timeout fallback for hiding the overlay window: an occluded window stops receiving animation frames, so the exit callback may never arrive, and a permanently visible always-on-top transparent window would swallow desktop clicks
+
 ## [v0.7.0] - 2026-10-20
 
 ### 中文

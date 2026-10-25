@@ -169,7 +169,7 @@ Accessibility 五条（组件评审 + 实现后各走查一次）：焦点可见
 | 1 | 动效权威曾分裂三套 | Major | ✅ 已合并至 `src/lib/ease.ts`，`motion-presets.ts` 删除，6 处引用改道；`AGENTS.md` 已同步 |
 | 2 | `Switch` 用 `stone/slate` 硬编码；另有 6 处 `focus:border-stone-900`、1 处 `hover:border-stone-300`、`text-stone-600`、`text-slate-400` | Major | ✅ 已收敛：轨道 `accent/muted`、输入聚焦 `focus:border-accent`、悬停 `border-strong`、弱文本 `subtle/muted-foreground` |
 | 3 | 图表分类色板非主题感知；前三档与 `accent/warning/danger` 值重复 | Minor | ✅ 接受为例外：SVG `stroke` 属性无法消费 CSS 变量；`"其他"` 灰收敛为 `DIST_OTHER_COLOR` 单源常量，前三档有意镜像语义色浅色值 |
-| 4 | `dynamic-island.tsx:156` 一次性任意值（`min-h-[37px] min-w-[126px]`） | Minor | ✅ 注释理由：镜像 iPhone pill 物理尺寸，不进 spacing scale |
+| 4 | `dynamic-island.tsx:235` 一次性任意值（`min-h-[37px] min-w-[126px]`） | Minor | ✅ 注释理由：镜像 iPhone pill 物理尺寸，不进 spacing scale |
 | 5 | `AGENTS.md` 动效段与 `ease.ts` 现实不符 | Minor | ✅ 已修订：`ease.ts` 只保留缓动曲线（`EASE_OUT`/`EASE_IN_OUT`），弹簧改为在各手势旁声明；`SPRING_PRESS` 等 6 个无人引用的弹簧已删除 |
 
 ## 11. 改版与新增流程（红线）

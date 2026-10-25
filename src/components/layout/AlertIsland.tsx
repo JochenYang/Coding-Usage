@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { BellOff, CircleAlert, Info, Lock, X } from 'lucide-react'
 import type { AlertItem, AlertKind } from '@/lib/alerts'
 import { alertDetail, alertTitle } from '@/lib/alert-text'
@@ -93,6 +93,11 @@ export function AlertIsland() {
   const { alerts, settings } = useData()
   const [, navigate] = useView()
   const [batch, setBatch] = useState<AlertItem[]>([])
+  // Snapshot the island renders. It outlives the batch: dismissal empties the
+  // batch (which closes the island), and the body is dropped only once the
+  // collapse animation reports completion — otherwise the whole surface would
+  // vanish in a single frame.
+  const [shown, setShown] = useState<{ latest: AlertItem; rest: number } | null>(null)
   // Desktop overlay mode: popups leave the window entirely (the in-app island
   // stays as the browser/fallback surface). Preview is also overlay-driven.
   const overlayOn = settings.desktopIsland && !!window.desktopBridge
@@ -122,49 +127,46 @@ export function AlertIsland() {
     })
   }, [alerts, overlayOn])
 
+  // Closing is a two-step: emptying the batch closes the island (so the shell
+  // collapses), and `onExitComplete` then clears the retained body.
+  const dismiss = useCallback(() => setBatch([]), [])
+
+  // Mirror the newest arrival onto the island. The island is open exactly while
+  // the batch is non-empty; the body survives the collapse via `shown`.
+  useEffect(() => {
+    if (batch.length === 0) return
+    setShown({ latest: batch[batch.length - 1], rest: batch.length - 1 })
+  }, [batch])
+
+  const open = batch.length > 0
+
   // Auto-dismiss; the timer restarts whenever the batch changes
   useEffect(() => {
     if (batch.length === 0) return
-    const timer = setTimeout(() => setBatch([]), AUTO_DISMISS_MS)
+    const timer = setTimeout(dismiss, AUTO_DISMISS_MS)
     return () => clearTimeout(timer)
-  }, [batch])
+  }, [batch, dismiss])
 
-  // Two-phase bloom: hold the bare pill for one frame, then expand — the
-  // shell springs out from the pill like the iOS island instead of popping
-  // at full size.
-  const [bloom, setBloom] = useState(false)
-  useEffect(() => {
-    if (batch.length === 0) {
-      setBloom(false)
-      return
-    }
-    let raf2 = 0
-    const raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => setBloom(true))
-    })
-    return () => {
-      cancelAnimationFrame(raf1)
-      cancelAnimationFrame(raf2)
-    }
-  }, [batch])
-
-  if (batch.length === 0) return null
-
-  const latest = batch[batch.length - 1]
+  if (!shown) return null
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-3 z-50 flex justify-center">
       <div className="pointer-events-auto">
-        <DynamicIsland view={bloom ? 'alert' : null} compact={<span className="h-2 w-2 rounded-full bg-background/25" aria-hidden />}>
+        <DynamicIsland
+          view={open ? 'alert' : null}
+          open={open}
+          onExitComplete={() => setShown(null)}
+          compact={<span className="h-2 w-2 rounded-full bg-background/25" aria-hidden />}
+        >
           <DynamicIslandView id="alert" className="min-w-[320px] max-w-[460px] py-2.5">
             <AlertIslandBody
-              latest={latest}
-              rest={batch.length - 1}
+              latest={shown.latest}
+              rest={shown.rest}
               onOpen={() => {
-                setBatch([])
+                dismiss()
                 navigate('alerts')
               }}
-              onDismiss={() => setBatch([])}
+              onDismiss={dismiss}
               dismissLabel={t.island.dismiss}
               openLabel={t.nav.alerts}
             />
