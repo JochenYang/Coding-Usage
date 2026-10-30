@@ -212,5 +212,6 @@ Packaging config lives in `electron-builder.yml` (appId, win targets, GitHub pub
 
 ### Version numbering
 
-- Every release is exactly three parts, `vX.Y.Z`, and the patch is a single digit: `Z` counts 0–9, so stepping past 9 carries into the minor instead of widening the patch. `v0.5.9` is followed by `v0.6.0`, never `v0.5.10`. The carry repeats one position up (`v0.9.9` → `v1.0.0`).
-- History: `v0.5.10` was tagged before this rule existed; the next release after it is `v0.6.0`.
+- Every release is exactly three parts, `vX.Y.Z`, and the patch steps by one: `v0.8.0` is followed by `v0.8.1`. This holds regardless of what the release contains — a new feature, a bug fix and a refactor all take the same step. While the major version is 0 there is no "a feature bumps the minor" rule: SemVer's `minor` clause is scoped to `x > 0`, and it does not apply here.
+- The patch is a single digit: `Z` counts 0–9, so stepping past 9 carries into the minor instead of widening the patch. `v0.8.9` is followed by `v0.9.0`, never `v0.8.10`. The carry repeats one position up (`v0.9.9` → `v1.0.0`).
+- History: `v0.5.10` was tagged before the single-digit rule existed, and `v0.7.1` → `v0.8.0` was cut by reading SemVer's minor clause as applicable to a 0.y.z project. Neither is reversible — the sequence continues from `v0.8.0`.
