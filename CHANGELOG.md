@@ -10,6 +10,22 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.8.0] - 2026-10-30
+
+### 中文
+- 本地 Agent 用量改为持久化保存：每次扫描到的每日用量（按智能体、模型、供应商拆分的四段 token、成本与调用数）写入本机 SQLite 数据库，不再随原始会话文件删除而消失。此前每次扫描只反映磁盘上现存的会话记录，删掉或轮转掉日志后，那部分用量会从今日、本月乃至累计数字里一并消失
+- 合并规则为「新扫描优先、消失的智能体保留」：某天某个智能体不再出现在扫描结果里时，保留库里那天的记录，并把它的用量加回当天汇总，避免它从总量里消失却在按智能体明细里仍然存在
+- 设置页新增「本地用量历史」区块：显示已存历史的起止日期与天数，可按 30 / 90 / 180 / 365 天前或全部清除，带二次确认，清除后自动重新扫描以同步界面。只清除已保存的历史，仍在磁盘上的会话文件会在下次刷新时重新计入
+- 用量卡片的「数据截至」在数据不是当天时改为显示日期（`MM-DD HH:mm`）：扫描失败时会回放库里保存的历史，此前只显示时分，几天前的数据会被读成刚扫描的
+- 新增 10 项测试覆盖历史库的合并与清除语义，含「合并结果重新聚合后未分类桶仍为空」的跨模块断言
+
+### English
+- Local agent usage is now persisted: each scanned day (four token tiers, cost and call counts split by agent, model and provider) is written to a local SQLite database, so deleting the original session logs no longer erases it. Until now every scan reflected only the transcripts still on disk, and a removed or rotated log took that usage out of the today, month and all-time figures alike
+- Merge rule is "fresh scan wins, vanished agents are kept": when a day no longer reports an agent, the stored row for that day is kept and its usage is added back to the day total, so it cannot drop out of the headline while still showing under that agent
+- Settings gains a "Local usage history" section: it shows the stored date range and day count, and can purge everything older than 30 / 90 / 180 / 365 days or the whole history behind a confirmation, rescanning afterwards so the views agree. Only stored history is removed — session files still on disk are counted again on the next refresh
+- The usage card's as-of label now carries the date (`MM-DD HH:mm`) once the figures are not from today: a failed scan falls back to stored history, and a time-only stamp made days-old data read as freshly scanned
+- Add 10 tests for the history store's merge and purge semantics, including a cross-module assertion that re-aggregating the merged day leaves the unclassified bucket empty
+
 ## [v0.7.1] - 2026-10-25
 
 ### 中文
