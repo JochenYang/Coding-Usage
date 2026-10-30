@@ -115,6 +115,14 @@ declare global {
     decrypt(blob: string): Promise<string | null>
     /** Scan local AI coding-agent usage via tokscale (main process). Absent in browser dev */
     tokscaleScan(): Promise<TokScaleRaw>
+    /** Range covered by the persisted local-agent usage history */
+    usageStats(): Promise<UsageHistoryStats>
+    /**
+     * Trim the stored usage history: `null` wipes it, a positive number keeps
+     * the last N days. Only days already saved can go — a session file that
+     * still exists is re-scanned into the store on the next refresh.
+     */
+    usagePurge(beforeDays: number | null): Promise<UsageHistoryPurgeResult>
     /** Codex subscription quota from the local ChatGPT login (official wham endpoint) */
     codexQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Claude subscription quota from the local Claude Code OAuth login (official usage endpoint) */
@@ -210,6 +218,24 @@ declare global {
     error?: string
     /** Epoch ms when the scan finished; stable across main-process cache hits */
     scannedAt?: number
+  }
+
+  /** Range covered by the persisted local-agent usage history (`usage:stats` IPC) */
+  interface UsageHistoryStats {
+    /** Number of days stored */
+    days: number
+    /** Oldest stored day (YYYY-MM-DD), null when the store is empty */
+    oldest: string | null
+    /** Newest stored day (YYYY-MM-DD), null when the store is empty */
+    newest: string | null
+  }
+
+  /** Result of one history purge (`usage:purge` IPC) */
+  interface UsageHistoryPurgeResult {
+    /** Number of stored days deleted */
+    removed: number
+    /** Range remaining after the purge */
+    stats: UsageHistoryStats
   }
 
   interface Window {

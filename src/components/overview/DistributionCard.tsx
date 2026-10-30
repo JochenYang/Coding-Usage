@@ -1,7 +1,7 @@
 import { cn } from '@/lib/cn'
 import type { DistSliceVM } from '@/lib/overview'
 import { DonutChart } from '@/components/charts/DonutChart'
-import { formatCompactValue } from '@/lib/format'
+import { formatAsOf, formatCompactValue } from '@/lib/format'
 import { useT } from '@/i18n/useT'
 
 export interface DistributionCardProps {
@@ -26,10 +26,7 @@ export function DistributionCard({ slices, total, centerLabel, asOf, className }
             slow-moving month total doesn't read as broken */}
         {asOf != null && (
           <span className="shrink-0 text-[11px] text-subtle tabular-nums">
-            {`${t.overview.asOfPrefix} ${new Date(asOf).toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-            })}`}
+            {`${t.overview.asOfPrefix} ${formatAsOf(asOf)}`}
           </span>
         )}
       </div>

@@ -18,6 +18,7 @@ import { useT } from '@/i18n/useT'
 import { useData } from '@/lib/data-context'
 import { KNOWN_CURRENCIES } from '@/lib/rates'
 import { clearSnapshots, getSnapshots, type AccountSnapshot } from '@/lib/snapshots'
+import { getUsageHistoryStats, purgeUsageHistory } from '@/lib/usage-store'
 import { resolveThresholds } from '@/lib/alerts'
 import type { AlertThresholds, IntegrationsSettings, ProviderConfig } from '@/types'
 
@@ -78,6 +79,61 @@ function useUpdateState(): {
     }
   }
   return { update, updateText, setUpdate }
+}
+
+/** Purge scopes offered by the settings page: day counts, plus "everything" */
+const PURGE_SCOPES = [30, 90, 180, 365] as const
+
+/**
+ * Local agent usage history: the stored range plus the purge control.
+ *
+ * The history lives in the main process (electron/usage-store.ts), so this hook
+ * is all the settings page needs to know about it. `stats` stays null when the
+ * store is unavailable — the browser build, or a failed IPC — and the section is
+ * hidden rather than offering a control whose effect cannot be confirmed.
+ */
+function useUsageHistory() {
+  const t = useT()
+  const { refreshAgentUsage } = useData()
+  const [stats, setStats] = useState<UsageHistoryStats | null>(null)
+  /** Chosen scope: a day count, or 'all' for the whole history */
+  const [scope, setScope] = useState('90')
+  const [confirming, setConfirming] = useState(false)
+  const [purging, setPurging] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void getUsageHistoryStats().then((next) => {
+      if (!cancelled) setStats(next)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const purge = async () => {
+    setConfirming(false)
+    setPurging(true)
+    try {
+      const result = await purgeUsageHistory(scope === 'all' ? null : Number(scope))
+      if (!result) {
+        // The one destructive control in the app must never fail silently
+        setNotice(t.prefs.purgeFailed)
+        return
+      }
+      setStats(result.stats)
+      setNotice(t.prefs.purgeDone(result.removed))
+      // The main process dropped its cached scan, so this re-merges from what
+      // actually remains. Without it the usage pages would keep showing the
+      // deleted days until the next scheduled refresh.
+      void refreshAgentUsage()
+    } finally {
+      setPurging(false)
+    }
+  }
+
+  return { stats, scope, setScope, confirming, setConfirming, purging, notice, purge }
 }
 
 // Storage key of the local time-series store; must stay in sync with the
@@ -198,6 +254,7 @@ export function SettingsPage({ className }: SettingsPageProps) {
   const { theme, setTheme } = useTheme()
   const { settings, updateSettings } = useData()
   const { update, updateText, setUpdate } = useUpdateState()
+  const history = useUsageHistory()
   const fileRef = useRef<HTMLInputElement>(null)
 
   // Auto-refresh options mirror TopBar's autoOptions; numeric values stay
@@ -426,6 +483,72 @@ export function SettingsPage({ className }: SettingsPageProps) {
         danger
         onConfirm={handleClear}
         onCancel={() => setConfirmClear(false)}
+      />
+
+      {/* Local agent usage history — rendered only when the main-process store
+          answered, i.e. never in the browser build */}
+      {history.stats && (
+        <section className="space-y-5 rounded-2xl border border-border bg-card p-5">
+          <h2 className="text-sm font-semibold">{t.prefs.usageHistory}</h2>
+
+          <p className="text-xs text-muted-foreground">{t.prefs.usageHistoryHint}</p>
+
+          <SettingRow label={t.prefs.usageHistoryRange}>
+            <span className="text-xs text-muted-foreground">
+              {history.stats.days === 0
+                ? t.prefs.usageHistoryEmpty
+                : t.prefs.usageHistorySpan(
+                    history.stats.days,
+                    history.stats.oldest ?? '',
+                    history.stats.newest ?? '',
+                  )}
+            </span>
+          </SettingRow>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-sm text-foreground">{t.prefs.purgeScope}</span>
+              <div className="flex items-center gap-2">
+                <Select value={history.scope} onValueChange={history.setScope}>
+                  <SelectTrigger className="w-32 rounded-lg border-border bg-card px-3 py-1.5 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PURGE_SCOPES.map((days) => (
+                      <SelectItem key={days} value={String(days)}>
+                        {t.prefs.purgeDays(days)}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="all">{t.prefs.purgeAll}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <button
+                  type="button"
+                  disabled={history.purging || history.stats.days === 0}
+                  onClick={() => history.setConfirming(true)}
+                  className="rounded-lg border border-danger/40 px-3 py-1.5 text-xs text-danger hover:bg-danger/10 disabled:opacity-50"
+                >
+                  {t.prefs.purgeAction}
+                </button>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">{t.prefs.purgeHint}</p>
+            {history.notice && <p className="text-xs text-muted-foreground">{history.notice}</p>}
+          </div>
+        </section>
+      )}
+
+      <ConfirmDialog
+        open={history.confirming}
+        title={t.prefs.purgeAction}
+        description={
+          history.scope === 'all' ? t.prefs.purgeConfirmAll : t.prefs.purgeConfirm(Number(history.scope))
+        }
+        confirmText={t.prefs.purgeAction}
+        cancelText={t.common.cancel}
+        danger
+        onConfirm={() => void history.purge()}
+        onCancel={() => history.setConfirming(false)}
       />
 
       {/* About — version row followed by the update block */}

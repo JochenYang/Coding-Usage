@@ -24,6 +24,18 @@ import { fetchKimiUsage } from './kimi-usage'
 import { fetchAntigravityUsage } from './antigravity-quota'
 import { getPricingTable, priceTokens } from './model-pricing'
 import { hasClientEntries, mergeGraphPayloads } from './tokscale-merge'
+import {
+  closeUsageStore,
+  extractContributions,
+  getUsageStoreStats,
+  getUsageStoreUpdatedAt,
+  initUsageStore,
+  mergeScanIntoStore,
+  purgeUsageBefore,
+  readStoredContributions,
+  type UsagePurgeResult,
+  type UsageStoreStats,
+} from './usage-store'
 import { readMiniMaxCodeUsage } from './minimax-code-usage'
 import { readAntigravityUsage } from './antigravity-usage'
 import { readCodeBuddyUsage } from './codebuddy-usage'
@@ -1145,12 +1157,42 @@ function registerIpc(): void {
     return cachedQuotaOutcome('antigravity', () => fetchAntigravityUsage())
   })
 
+  /**
+   * Fold a finished scan into the persistent history and return the merged set.
+   *
+   * The store, not the disk, is what the renderer aggregates: a day the scan no
+   * longer reports — its transcript was deleted or rotated away — is served from
+   * history, so today / month / all-time survive the source disappearing. An
+   * empty scan therefore still returns stored history instead of nothing.
+   */
+  function persistScanHistory(daily: unknown): unknown {
+    const merged = mergeScanIntoStore(extractContributions(daily))
+    if (merged.length === 0) return daily
+    // Recompute summary/years so the payload cannot contradict the rows it now
+    // carries. The renderer only reads `contributions`, but a stale summary is
+    // a trap for the next reader.
+    return mergeGraphPayloads([{ contributions: merged }])
+  }
+
+  /** Upper bound on a purge range: ~100 years, far past any real history */
+  const MAX_PURGE_DAYS = 36500
+
+  /** Local calendar day key (YYYY-MM-DD) for `daysBack` days before today */
+  function usageCutoffDay(daysBack: number): string {
+    const boundary = new Date()
+    boundary.setDate(boundary.getDate() - daysBack)
+    const month = `${boundary.getMonth() + 1}`.padStart(2, '0')
+    const day = `${boundary.getDate()}`.padStart(2, '0')
+    return `${boundary.getFullYear()}-${month}-${day}`
+  }
+
   // Local agent usage scan. Cached in the main process: a full three-period
   // scan takes tens of seconds, so repeated renderer refreshes are cheap. Each
   // result carries the epoch ms of its scan request (`scannedAt`) — cache hits
   // return the original stamp, so the renderer's as-of time stays honest — and
   // overlapping calls share one in-flight round-trip instead of spawning the
-  // binary twice.
+  // binary twice. Every result is folded into the history store first (see
+  // usage-store.ts), so a deleted session file cannot erase its usage.
   ipcMain.handle('tokscale:scan', async (): Promise<TokScanResult> => {
     const now = Date.now()
     if (tokScanCache && now - tokScanCache.at < TOKSCALE_CACHE_MS) return tokScanCache.result
@@ -1161,10 +1203,24 @@ function registerIpc(): void {
         // Stamp the request time, not the completion time: the data is read
         // during the scan, and the label must never claim fresher than we
         // asked. Same anchor as the cache window (`at`) above.
-        const stamped: TokScanResult = { ...result, scannedAt: now }
+        const stamped: TokScanResult = {
+          ...result,
+          daily: persistScanHistory(result.daily),
+          scannedAt: now,
+        }
         tokScanCache = { at: now, result: stamped }
         return stamped
       } catch (e) {
+        // A failed scan must not blank the dashboard: the store may already hold
+        // real history. Serve it, stamped with the last successful write so the
+        // as-of label cannot claim the data is fresh.
+        const stored = readStoredContributions()
+        if (stored.length > 0) {
+          return {
+            daily: mergeGraphPayloads([{ contributions: stored }]),
+            scannedAt: getUsageStoreUpdatedAt() ?? now,
+          }
+        }
         return { error: String(e instanceof Error ? e.message : e) }
       } finally {
         tokScanInflight = null
@@ -1172,6 +1228,34 @@ function registerIpc(): void {
     })()
     tokScanInflight = pending
     return pending
+  })
+
+  // Stored usage history: how far back it reaches (settings page) and how to
+  // trim it. `null` wipes everything; a whole number of days keeps the last N.
+  // This is the one destructive path into the app's own storage, so the
+  // argument is bounded rather than coerced: a fractional value would truncate
+  // to 0 (deleting everything before today) and a huge one would push the cutoff
+  // past the representable date range, where the string comparison in the DELETE
+  // would match every row.
+  ipcMain.handle('usage:stats', async (): Promise<UsageStoreStats> => getUsageStoreStats())
+
+  ipcMain.handle('usage:purge', async (_event, beforeDays: unknown): Promise<UsagePurgeResult> => {
+    if (beforeDays === null) {
+      // The cached scan result still carries the deleted days; dropping it makes
+      // the renderer's follow-up refresh re-merge from what actually remains.
+      tokScanCache = null
+      return purgeUsageBefore(null)
+    }
+    if (
+      typeof beforeDays !== 'number' ||
+      !Number.isInteger(beforeDays) ||
+      beforeDays < 1 ||
+      beforeDays > MAX_PURGE_DAYS
+    ) {
+      return { removed: 0, stats: getUsageStoreStats() }
+    }
+    tokScanCache = null
+    return purgeUsageBefore(usageCutoffDay(beforeDays))
   })
 
   // ===== Agent configuration (kimicode / mcode) =====
@@ -1342,6 +1426,9 @@ if (!gotSingleInstanceLock) {
   void app.whenReady().then(() => {
     applyCsp()
     initIlinkSession(net.fetch)
+    // Point the usage history store at userData before any scan can run, so a
+    // first refresh already merges into the persistent history.
+    initUsageStore(app.getPath('userData'))
     registerIpc()
     createWindow()
     createTray()
@@ -1359,5 +1446,6 @@ if (!gotSingleInstanceLock) {
     // Let pending close events pass through during the real quit sequence
     isQuitting = true
     void stopIlinkSession()
+    closeUsageStore()
   })
 }

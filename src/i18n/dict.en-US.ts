@@ -479,6 +479,24 @@ export const enUS: Dict = {
     importData: 'Import data',
     clearSnapshots: 'Clear account quota snapshots',
     clearConfirm: 'Clear every account quota snapshot? Local agent usage and trend data are unaffected.',
+    usageHistory: 'Local usage history',
+    usageHistoryHint:
+      'Scanned local agent usage accumulates in a database on this machine, so deleting the original session files no longer erases it.',
+    usageHistoryRange: 'Stored history',
+    usageHistoryEmpty: 'No history yet',
+    usageHistorySpan: (days: number, oldest: string, newest: string) =>
+      `${oldest} to ${newest}, ${days} days`,
+    purgeScope: 'Purge range',
+    purgeDays: (days: number) => `Older than ${days} days`,
+    purgeAll: 'Everything',
+    purgeAction: 'Purge usage history',
+    purgeHint:
+      'Only stored history is removed; session files still on disk are counted again on the next refresh.',
+    purgeConfirm: (days: number) =>
+      `This permanently deletes local usage history older than ${days} days and cannot be undone.`,
+    purgeConfirmAll: 'This permanently deletes all local usage history and cannot be undone.',
+    purgeDone: (removed: number) => `Removed ${removed} days of history.`,
+    purgeFailed: 'Purge failed; the history is unchanged.',
     repoLink: 'Project repository',
     exportHint:
       'Export settings and account quota snapshots as a JSON backup. Note: the file contains API keys in plain text.',

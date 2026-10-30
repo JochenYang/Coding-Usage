@@ -482,6 +482,20 @@ export interface Dict {
     importData: string
     clearSnapshots: string
     clearConfirm: string
+    usageHistory: string
+    usageHistoryHint: string
+    usageHistoryRange: string
+    usageHistoryEmpty: string
+    usageHistorySpan: (days: number, oldest: string, newest: string) => string
+    purgeScope: string
+    purgeDays: (days: number) => string
+    purgeAll: string
+    purgeAction: string
+    purgeHint: string
+    purgeConfirm: (days: number) => string
+    purgeConfirmAll: string
+    purgeDone: (removed: number) => string
+    purgeFailed: string
     repoLink: string
     exportHint: string
     importHint: string

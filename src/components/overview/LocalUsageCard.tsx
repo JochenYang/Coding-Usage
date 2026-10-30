@@ -21,7 +21,7 @@ import {
   XiaomiMiMo,
 } from '@lobehub/icons'
 import type { AgentClientId, AgentPeriodVM, AgentUsageVM } from '@/lib/agent-usage'
-import { formatCompactValue } from '@/lib/format'
+import { formatAsOf, formatCompactValue } from '@/lib/format'
 import workbuddyLogo from '@/components/logos/workbuddy.png'
 import zcodeLogo from '@/components/logos/zcode.png'
 import { useT } from '@/i18n/useT'
@@ -194,14 +194,12 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
       <div className="flex items-center justify-between">
         <h2 className="text-[15px] font-semibold text-foreground">{t.overview.localUsageTitle}</h2>
         <div className="flex items-center gap-2">
-          {/* Snapshot age: the startup cache replays last launch's numbers, so
-              say explicitly how fresh the figures are */}
+          {/* Snapshot age: the startup cache replays last launch's numbers and a
+              failed scan falls back to stored history, so say explicitly how
+              fresh the figures are — including the date once it is not today's */}
           {!loading && usage.scannedAt != null && (
             <span className="text-[11px] text-subtle tabular-nums">
-              {`${t.overview.asOfPrefix} ${new Date(usage.scannedAt).toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}`}
+              {`${t.overview.asOfPrefix} ${formatAsOf(usage.scannedAt)}`}
             </span>
           )}
           <Tooltip text={t.card.refresh}>

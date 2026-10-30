@@ -43,6 +43,28 @@ export function formatAgo(fetchedAt: number | undefined, now: number, t: Dict): 
   return t.time.agoMinutes(Math.floor(sec / 60))
 }
 
+/**
+ * As-of stamp for a point-in-time reading.
+ *
+ * A same-day stamp shows the clock time alone; anything older carries its date
+ * too. Local agent usage falls back to stored history when a scan fails, so
+ * without the date a three-day-old figure would read exactly like one fetched
+ * moments ago.
+ */
+export function formatAsOf(epochMs: number, now: number = Date.now()): string {
+  const at = new Date(epochMs)
+  const today = new Date(now)
+  const time = at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const sameDay =
+    at.getFullYear() === today.getFullYear() &&
+    at.getMonth() === today.getMonth() &&
+    at.getDate() === today.getDate()
+  if (sameDay) return time
+  const month = `${at.getMonth() + 1}`.padStart(2, '0')
+  const day = `${at.getDate()}`.padStart(2, '0')
+  return `${month}-${day} ${time}`
+}
+
 /** Generic relative day offset: "今天到期" / "in N days" / "已过期 N 天". */
 export function formatDaysFromNow(
   expiresAt: number,
