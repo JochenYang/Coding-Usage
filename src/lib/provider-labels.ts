@@ -9,6 +9,10 @@
 
 const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   moonshot: 'Moonshot',
+  // Vendor-prefixed spelling some model ids carry (`moonshotai/…`); the local
+  // readers normalize it away, but a raw id reaching the provider list should
+  // still read as the vendor's name
+  moonshotai: 'Moonshot',
   deepseek: 'DeepSeek',
   opencode: 'OpenCode',
   'opencode-go': 'OpenCode Go',
@@ -23,6 +27,7 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   google: 'Google',
   xai: 'xAI',
   zhipu: 'Z.ai',
+  'z-ai': 'Z.ai',
   minimax: 'MiniMax',
   // MiniMax Code's internal routing channels; the mcode reader collapses them
   // onto `minimax`, so these only catch the same ids arriving from other clients
@@ -55,6 +60,8 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   xiaomi: 'Xiaomi MiMo',
   tencent: 'Tencent',
   qoder: 'Qoder',
+  // Cindy's own gateway channel (models with no vendor prefix)
+  cindy: 'Cindy',
   'eve-internal': 'EVE (internal)',
 }
 

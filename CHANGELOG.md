@@ -10,6 +10,18 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- 本地 Agent 用量新增 Cindy：Cindy 的 Pi 运行时使用自己的 agent home（`%APPDATA%/Cindy/pi-agent-home`，Cindy 自己的 userData，不是本应用的）而不是 `~/.pi`，tokscale 的 `pi` 客户端扫不到这部分记录，此前完全不计入。现在由主进程直接读取普通会话与子智能体运行两处的会话文件，按条目 id 去重（fork / clone 会把同一轮生成复制进第二个文件，只算一次），并带入记录里的模型、供应商与成本；其余读取器一样，只读 token 计数与模型 id，不触碰对话内容
+- 补齐供应商显示名：Cindy 网关的 `moonshotai` / `z-ai` 前缀按厂商归并到 Moonshot / Z.ai，另加 `cindy` 本身；卡片里使用其安装目录的应用图标
+- 新增 7 项测试覆盖 Cindy 读取器：会话头校验、助手消息与 `usage` / `compaction` 条目、损坏尾行、跨文件去重，以及聚合结果经 `summarizeScan` 后的呈现
+
+### English
+- Local agent usage gains Cindy: Cindy runs Pi on its own agent home (`%APPDATA%/Cindy/pi-agent-home` — Cindy's own userData, not this app's) instead of `~/.pi`, so tokscale's `pi` client never sees those transcripts and nothing was counted. The main process now reads the chat and subagent session files directly, deduplicating by entry id — a fork / clone replays the same generation into a second transcript and is counted once — and carries over each entry's model, provider and recorded cost. Like every other reader it reads token counters and model ids only, never conversation content
+- Fold the gateway vendor prefixes Cindy emits onto their vendors (`moonshotai` → Moonshot, `z-ai` → Z.ai) instead of splitting one provider across two rows, add a display name for `cindy` itself, and draw the agent row with Cindy's own app icon from its install directory
+- Add 7 tests for the Cindy reader: the session-header gate, assistant messages plus `usage` / `compaction` entries, torn trailing lines, cross-file deduplication, and the aggregated payload surviving `summarizeScan`
+
 ## [v0.8.0] - 2026-10-30
 
 ### 中文

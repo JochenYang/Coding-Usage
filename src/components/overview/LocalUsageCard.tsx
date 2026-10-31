@@ -24,6 +24,7 @@ import type { AgentClientId, AgentPeriodVM, AgentUsageVM } from '@/lib/agent-usa
 import { formatAsOf, formatCompactValue } from '@/lib/format'
 import workbuddyLogo from '@/components/logos/workbuddy.png'
 import zcodeLogo from '@/components/logos/zcode.png'
+import cindyLogo from '@/components/logos/cindy.png'
 import { useT } from '@/i18n/useT'
 import { useTheme } from '@/components/ThemeProvider'
 import { useData } from '@/lib/data-context'
@@ -64,6 +65,9 @@ const AGENT_ICONS: Partial<Record<AgentClientId, ReactNode>> = {
   workbuddy: <img src={workbuddyLogo} className="h-5 w-5 rounded" alt="" />,
   // Same story for ZCode: lobehub carries no mark, bundle the install-dir icon
   zcode: <img src={zcodeLogo} className="h-5 w-5 rounded" alt="" />,
+  // Cindy's app icon (from its install dir, committed at 512px): lobehub has
+  // no mark for it either
+  cindy: <img src={cindyLogo} className="h-5 w-5 rounded" alt="" />,
   // XiaomiMiMo ships no Color variant — its Avatar tile fills the slot
   micode: <XiaomiMiMo.Avatar size={16} />,
   // Pi Agent's mark is a black glyph with no Color variant either
@@ -102,6 +106,7 @@ const AGENT_LABELS: Record<AgentClientId, string> = {
   pi: 'Pi',
   mcode: 'MiniMax Code',
   antigravity: 'Antigravity',
+  cindy: 'Cindy',
 }
 
 interface PeriodColumnProps {

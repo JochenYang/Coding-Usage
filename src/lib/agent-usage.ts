@@ -28,6 +28,10 @@ import { displayProviderName } from './provider-labels'
  *     (`~/.gemini/antigravity-cli`), not the IDE's
  *     → electron/antigravity-usage.ts
  *   - `qoder`: no tokscale reader exists → electron/qoder-usage.ts
+ *   - `cindy`: Cindy runs Pi on its own agent home
+ *     (`%APPDATA%/Cindy/pi-agent-home` on Windows), which tokscale's `pi`
+ *     client never scans (it only reads `~/.pi`)
+ *     → electron/cindy-usage.ts
  * `codebuddy` is the hybrid: tokscale scans the CLI transcripts and the CN
  * IDE store comes from electron/codebuddy-usage.ts, merged with a
  * double-count guard (see electron/main.ts).
@@ -61,6 +65,7 @@ export const AGENT_CLIENTS = [
   'zcode',
   'micode',
   'pi',
+  'cindy',
   'mcode',
 ] as const
 export type AgentClientId = (typeof AGENT_CLIENTS)[number]

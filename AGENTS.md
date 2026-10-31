@@ -84,10 +84,15 @@ highest versioned name present wins: `session.v4.*` over `session.v3.*`, also
 covering the SkillSpace internal build that shares the same `~/.dsh` home).
 WorkBuddy AI's transcripts live under `~/.workbuddy-ai` — a home tokscale never
 scans — and are hard-linked into the scanned `~/.workbuddy` before every scan
-(`electron/workbuddy-aliases.ts`). Three stores tokscale cannot reach are read
+(`electron/workbuddy-aliases.ts`). Four stores tokscale cannot reach are read
 by the main process directly and merged: CodeBuddy CN IDE per-message JSON files
 (`electron/codebuddy-usage.ts`; the CLI transcripts under `~/.codebuddy/projects`
-stay on the tokscale path, merged with a double-count guard), Qoder CLI
+stay on the tokscale path, merged with a double-count guard), Cindy's Pi sessions
+(`electron/cindy-usage.ts`; Cindy keeps its agent home at
+`%APPDATA%/Cindy/pi-agent-home` — Cindy's own userData, not this app's — instead
+of `~/.pi`, so tokscale's `pi` client never sees them; records are deduplicated
+by entry id because a fork/clone replays its branch into a second transcript),
+Qoder CLI
 transcripts (`electron/qoder-usage.ts`; Qoder CN bills in credits and reports
 all-zero token counters, so credits-billed turns count as messages with honest
 zero tokens) and the Trae CN / SOLO CN SQLCipher 4 store

@@ -39,6 +39,7 @@ import {
 import { readMiniMaxCodeUsage } from './minimax-code-usage'
 import { readAntigravityUsage } from './antigravity-usage'
 import { readCodeBuddyUsage } from './codebuddy-usage'
+import { readCindyUsage } from './cindy-usage'
 import { readQoderUsage } from './qoder-usage'
 import { readTraeLocalUsage } from './trae-local-usage'
 import { reconcileProviderAttribution } from './provider-reconcile'
@@ -588,11 +589,13 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
   // result: MiniMax Code (tokscale covers it through headless capture only),
   // Antigravity on an IDE install (tokscale reads the terminal agent's
   // databases), CodeBuddy CN IDE (tokscale reads the CLI's transcripts only),
-  // Qoder (no tokscale reader at all) and Trae CN / SOLO CN (tokscale syncs
-  // the international build's cloud account; the CN builds' encrypted local
-  // store is read by trae-local-usage.ts and merged unconditionally — its
-  // data can never overlap the cloud sync). Apart from Trae, each is skipped
-  // when tokscale already reports that client, which it would once upstream
+  // Cindy (no tokscale reader at all — its Pi agent uses its own home,
+  // `pi-agent-home`, instead of `~/.pi`), Qoder (no tokscale reader at all)
+  // and Trae CN / SOLO CN (tokscale syncs the international build's cloud
+  // account; the CN builds' encrypted local store is read by
+  // trae-local-usage.ts and merged unconditionally — its data can never
+  // overlap the cloud sync). Apart from Trae, each is skipped when tokscale
+  // already reports that client, which it would once upstream
   // support lands — merging both would double count the same generations.
   const reads: Array<Promise<LocalAgentPayload | null>> = [
     readMiniMaxCodeUsage(homedir()).then((payload) => (payload == null ? null : { client: 'mcode', payload })),
@@ -606,6 +609,14 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
       // disjoint origins, so a user running both the CLI and the IDE was losing
       // the IDE half entirely under the old "skip when tokscale reports it" rule.
       payload == null ? null : { client: 'codebuddy', payload, mergeAlways: true },
+    ),
+    // Cindy runs Pi on its own agent home (`%APPDATA%/Cindy/pi-agent-home` on
+    // Windows), which tokscale's `pi` client never scans (~/.pi only) — a
+    // disjoint store by construction, hence merged unconditionally. The path is
+    // Cindy's appData directory, not ours: `app.getPath('userData')` would point
+    // at this app and find no sessions at all.
+    readCindyUsage(join(app.getPath('appData'), 'Cindy')).then((payload) =>
+      payload == null ? null : { client: 'cindy', payload, mergeAlways: true },
     ),
     readQoderUsage(homedir()).then((payload) => (payload == null ? null : { client: 'qoder', payload })),
     readTraeLocalUsage(homedir(), app.getPath('userData')).then((payload) =>
