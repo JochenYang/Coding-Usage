@@ -403,6 +403,14 @@ export interface TrendBucket {
    * The rate pairs this with `activeTimeMs`, so a day whose clock was dropped
    * contributes neither time nor output — counting its output against other
    * days' time would inflate the figure instead of losing it.
+   *
+   * The pairing is per day, because that is the granularity of the scan's
+   * clock: a client that records no duration at all (the stores the main
+   * process reads directly — qoder, the CodeBuddy IDE, the Trae CN local
+   * database, Cindy's Pi sessions) still contributes its output to the
+   * numerator. On a day shared with a timed client the rate therefore reads
+   * high by that client's share; only per-client durations could correct it,
+   * and no reader provides them.
    */
   measuredOutput: number
   /** Message (call) count in the bucket */
@@ -520,7 +528,9 @@ export interface TrendTotals {
    * thinking, tool calls and idle gaps inside a session, so the figure sits
    * below a provider-reported tok/s. It is also not the raw sum of the scan's
    * `activeTimeMs` — days whose clock cannot be a duration are left out (see
-   * {@link measurableActiveMs}). Null when no usable active time was recorded.
+   * {@link measurableActiveMs}), and clients that record no duration join the
+   * numerator without a denominator (see {@link TrendBucket.measuredOutput}).
+   * Null when no usable active time was recorded.
    */
   weightedTokPerSec: number | null
 }
