@@ -10,7 +10,7 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
-## [Unreleased]
+## [v0.8.1] - 2026-10-31
 
 ### 中文
 - 本地 Agent 用量新增 Cindy：Cindy 的 Pi 运行时使用自己的 agent home（`%APPDATA%/Cindy/pi-agent-home`，Cindy 自己的 userData，不是本应用的）而不是 `~/.pi`，tokscale 的 `pi` 客户端扫不到这部分记录，此前完全不计入。现在由主进程直接读取普通会话与子智能体运行两处的会话文件，按条目 id 去重（fork / clone 会把同一轮生成复制进第二个文件，只算一次），并带入记录里的模型、供应商与成本；其余读取器一样，只读 token 计数与模型 id，不触碰对话内容
