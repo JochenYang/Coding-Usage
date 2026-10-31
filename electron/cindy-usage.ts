@@ -12,7 +12,9 @@ import { join } from 'node:path'
  * payload shaped like a `tokscale graph` result, which the main process merges
  * into the scan.
  *
- * Store layout (verified against Cindy 1.0.x on Windows):
+ * Store layout (verified against Cindy 1.0.x on Windows; the parent directory
+ * is Cindy's Electron userData under `app.getPath('appData')`, so the same two
+ * names apply on macOS and Linux — see `cindyAgentHome`):
  *   - `<Cindy userData>/pi-agent-home/sessions/**\/*.jsonl` — chat sessions,
  *     flat or grouped by working directory depending on how the run was launched
  *   - `<Cindy userData>/pi-agent-home/runtime/pi-subagent-runs/**\/*.jsonl` —
@@ -48,8 +50,28 @@ const CLIENT_ID = 'cindy'
 /** Fallback provider id for a bare model name with no vendor prefix */
 const VENDOR_PROVIDER = 'cindy'
 
-/** Agent home inside the app's userData directory */
+/** Cindy's own Electron userData directory name, inside the shared appData root */
+const CINDY_USER_DATA = 'Cindy'
+
+/** Pi's agent home inside Cindy's userData directory */
 const AGENT_HOME = 'pi-agent-home'
+
+/**
+ * Cindy's Pi agent home for a given appData root.
+ *
+ * The caller supplies `app.getPath('appData')` — Electron resolves it to
+ * `%APPDATA%` on Windows, `~/Library/Application Support` on macOS and
+ * `$XDG_CONFIG_HOME` (or `~/.config`) on Linux, so one call covers every
+ * platform. Both directory names belong to Cindy, not to this app:
+ * `<appData>/Cindy/pi-agent-home`.
+ *
+ * The shape lives here, in one tested function, because getting it wrong fails
+ * silently: the walk finds no sessions and the agent row simply disappears from
+ * every view, with nothing to tell a wrong path from an unused agent.
+ */
+export function cindyAgentHome(appDataRoot: string): string {
+  return join(appDataRoot, CINDY_USER_DATA, AGENT_HOME)
+}
 
 /**
  * Recursion guard for the agent-home walk. Real depths are 2 (flat sessions),
@@ -356,6 +378,13 @@ function buildPayload(records: UsageRecord[]): unknown {
           messages: slice.messages,
         }
       })
+      // No clock. Pi's transcripts carry per-entry timestamps but no session
+      // span, and deriving one from the gap between the first and the last
+      // entry would be a fabricated duration; a day already reported by a
+      // tokscale client would then sum past 24 h and be dropped as unusable
+      // (see `measurableActiveMs` in src/lib/trend-analysis.ts). The cost is
+      // the rate: on a day that also holds a timed client, this output joins
+      // that client's seconds — documented on `measuredOutput` there.
       return { date, totals, tokenBreakdown, clients, intensity: 0, activeTimeMs: 0 }
     })
 
@@ -400,19 +429,18 @@ async function readSessionText(path: string): Promise<string | null> {
 /**
  * Read Cindy's Pi sessions into a `tokscale graph`-shaped payload.
  *
- * `cindyUserData` is Cindy's own Electron userData directory
- * (`%APPDATA%/Cindy` on Windows) — the caller resolves it, this module never
- * guesses an install path. It is deliberately not this app's userData: the two
- * applications keep separate homes.
+ * `agentHome` is the directory to walk — `cindyAgentHome(app.getPath('appData'))`
+ * in production, a temporary directory in tests. The caller resolves the
+ * platform root; this module owns the rest of the layout. It is deliberately
+ * not this app's userData: the two applications keep separate homes.
  *
  * Best-effort by contract — a missing agent home, an unreadable file or a
  * transcript being appended mid-read must never affect the scan. Returns null
  * when Cindy has recorded no usage (or was never run on this machine).
  */
-export async function readCindyUsage(cindyUserData: string): Promise<unknown | null> {
+export async function readCindyUsage(agentHome: string): Promise<unknown | null> {
   try {
-    const root = join(cindyUserData, AGENT_HOME)
-    const files = await collectSessionFiles(root)
+    const files = await collectSessionFiles(agentHome)
     const records: UsageRecord[] = []
     const seen = new Set<string>()
     for (const file of files) {

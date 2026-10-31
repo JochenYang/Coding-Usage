@@ -39,7 +39,7 @@ import {
 import { readMiniMaxCodeUsage } from './minimax-code-usage'
 import { readAntigravityUsage } from './antigravity-usage'
 import { readCodeBuddyUsage } from './codebuddy-usage'
-import { readCindyUsage } from './cindy-usage'
+import { cindyAgentHome, readCindyUsage } from './cindy-usage'
 import { readQoderUsage } from './qoder-usage'
 import { readTraeLocalUsage } from './trae-local-usage'
 import { reconcileProviderAttribution } from './provider-reconcile'
@@ -250,16 +250,21 @@ function createTray(): void {
 
 // Scanned through `graph --client`. Mostly mirrors AGENT_CLIENTS in
 // src/lib/agent-usage.ts (which also drives the renderer's labels/icons), with
-// deliberate differences: `mcode` (MiniMax Code), `antigravity` (IDE install)
-// and `qoder` are absent because tokscale's readers for them are missing or
-// cover a different store — the main process collects those itself
-// (electron/minimax-code-usage.ts, electron/antigravity-usage.ts,
-// electron/qoder-usage.ts) and merges the results, so asking the CLI for them
-// would only add an empty payload. `codebuddy` is the hybrid: the CLI scans
-// the CodeBuddy CLI transcripts (~/.codebuddy/projects) while the CN IDE's
-// own store is read by electron/codebuddy-usage.ts. The two stores are
-// disjoint by origin, so the IDE payload is merged unconditionally — a user
-// running both the CLI and the IDE gets both halves.
+// deliberate differences: `mcode` (MiniMax Code), `antigravity` (IDE install),
+// `qoder` and `cindy` are absent because tokscale has no reader for them (or
+// its reader covers a different store) — the main process collects those
+// itself (electron/minimax-code-usage.ts, electron/antigravity-usage.ts,
+// electron/qoder-usage.ts, plus Cindy's Pi sessions via
+// electron/cindy-usage.ts, which reads Cindy's own agent home instead of the
+// `~/.pi` that tokscale's `pi` client scans) and merges the results, so asking
+// the CLI for those ids would only add an empty payload. `codebuddy` is the
+// hybrid: the CLI scans the CodeBuddy CLI transcripts (~/.codebuddy/projects)
+// while the CN IDE's own store is read by electron/codebuddy-usage.ts. The two
+// stores are disjoint by origin, so the IDE payload is merged unconditionally —
+// a user running both the CLI and the IDE gets both halves. `trae` stays listed
+// for the international build's cloud sync; the CN builds' encrypted local
+// store is read by electron/trae-local-usage.ts and merged unconditionally as
+// well.
 const TOKSCALE_CLIENTS = [
   'codex',
   'claude',
@@ -612,10 +617,11 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
     ),
     // Cindy runs Pi on its own agent home (`%APPDATA%/Cindy/pi-agent-home` on
     // Windows), which tokscale's `pi` client never scans (~/.pi only) — a
-    // disjoint store by construction, hence merged unconditionally. The path is
+    // disjoint store by construction, hence merged unconditionally. The root is
     // Cindy's appData directory, not ours: `app.getPath('userData')` would point
-    // at this app and find no sessions at all.
-    readCindyUsage(join(app.getPath('appData'), 'Cindy')).then((payload) =>
+    // at this app and find no sessions at all. `cindyAgentHome` owns the rest of
+    // the path so the `<appData>/Cindy/pi-agent-home` shape is pinned by a test.
+    readCindyUsage(cindyAgentHome(app.getPath('appData'))).then((payload) =>
       payload == null ? null : { client: 'cindy', payload, mergeAlways: true },
     ),
     readQoderUsage(homedir()).then((payload) => (payload == null ? null : { client: 'qoder', payload })),

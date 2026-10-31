@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { summarizeScan } from '@/lib/agent-usage'
-import { parseSessionTranscript, readCindyUsage } from './cindy-usage'
+import { cindyAgentHome, parseSessionTranscript, readCindyUsage } from './cindy-usage'
 
 /**
  * Cindy's reader has two contracts worth pinning down:
@@ -134,13 +134,41 @@ describe('parseSessionTranscript', () => {
   })
 })
 
+describe('cindyAgentHome', () => {
+  it('resolves <appData>/Cindy/pi-agent-home and reads the sessions placed there', async () => {
+    // Both directory names are Cindy's, not this app's. Pinned literally: a
+    // renamed level would make the reader find nothing and the agent row would
+    // vanish with no error anywhere.
+    expect(cindyAgentHome('/appdata')).toBe(join('/appdata', 'Cindy', 'pi-agent-home'))
+
+    // End-to-end through the path the main process builds: the test never names
+    // the two directory levels below `dir` itself.
+    const home = cindyAgentHome(dir)
+    await mkdir(join(home, 'sessions'), { recursive: true })
+    await writeFile(
+      join(home, 'sessions', 'chat.jsonl'),
+      jsonl(
+        header('s1'),
+        assistant({ id: 'a1', model: 'deepseek/deepseek-v4-flash', provider: 'cindy', input: 30, output: 3, cost: 0.01 }),
+      ),
+      'utf8',
+    )
+
+    const payload = (await readCindyUsage(home)) as {
+      contributions: Array<{ totals: { tokens: number; messages: number } }>
+    }
+    expect(payload.contributions).toHaveLength(1)
+    expect(payload.contributions[0]!.totals).toMatchObject({ tokens: 33, messages: 1 })
+  })
+})
+
 describe('readCindyUsage', () => {
   it('returns null when the agent home has no sessions', async () => {
-    expect(await readCindyUsage(dir)).toBeNull()
+    expect(await readCindyUsage(cindyAgentHome(dir))).toBeNull()
   })
 
   it('aggregates chat and subagent sessions, ignoring non-session jsonl', async () => {
-    const home = join(dir, 'pi-agent-home')
+    const home = cindyAgentHome(dir)
     const sessions = join(home, 'sessions')
     const subagent = join(home, 'runtime', 'pi-subagent-runs', 'task', 'run')
     await mkdir(sessions, { recursive: true })
@@ -165,14 +193,17 @@ describe('readCindyUsage', () => {
     // Not a pi session: must not be summed
     await writeFile(join(sessions, 'export.jsonl'), jsonl({ type: 'export', usage: { input: 9999, output: 9999 } }), 'utf8')
 
-    const payload = await readCindyUsage(dir)
+    const payload = await readCindyUsage(home)
     expect(payload).not.toBeNull()
 
-    const root = payload as { contributions: Array<{ date: string; totals: { tokens: number; cost: number }; clients: Array<Record<string, unknown>> }> }
+    const root = payload as { contributions: Array<{ date: string; totals: { tokens: number; cost: number }; activeTimeMs: number; clients: Array<Record<string, unknown>> }> }
     expect(root.contributions).toHaveLength(1)
     const day = root.contributions[0]
     expect(day.totals.tokens).toBe(1000 + 100 + 500 + 200 + 20)
     expect(day.totals.cost).toBeCloseTo(0.3, 6)
+    // No fabricated duration: Pi records no session span, and a guessed one
+    // would both distort the tok/s rate and push a shared day past 24 h.
+    expect(day.activeTimeMs).toBe(0)
     expect(day.clients).toHaveLength(2)
     expect(day.clients.map((c) => `${c.providerId}/${c.modelId}`).sort()).toEqual([
       'deepseek/deepseek-v4-flash',
@@ -191,14 +222,14 @@ describe('readCindyUsage', () => {
   })
 
   it('counts a generation replayed by a forked transcript once', async () => {
-    const home = join(dir, 'pi-agent-home')
+    const home = cindyAgentHome(dir)
     const sessions = join(home, 'sessions')
     await mkdir(sessions, { recursive: true })
     const shared = assistant({ id: 'shared-1', model: 'deepseek/deepseek-v4-flash', provider: 'cindy', input: 400, output: 40, cost: 0.1 })
     await writeFile(join(sessions, 'parent.jsonl'), jsonl(header('s1'), shared), 'utf8')
     await writeFile(join(sessions, 'fork.jsonl'), jsonl(header('s2'), shared), 'utf8')
 
-    const payload = await readCindyUsage(dir)
+    const payload = await readCindyUsage(home)
     const vm = summarizeScan({ daily: payload })
     const row = vm.clients.find((c) => c.client === 'cindy')!
     expect(row.allTime.tokens).toBe(440)
