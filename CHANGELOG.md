@@ -10,6 +10,18 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.8.2] - 2026-10-31
+
+### 中文
+- 本地 Agent 用量：Cindy 的读取路径收敛为 `cindyAgentHome()` 一处并由测试固定（`<appData>/Cindy/pi-agent-home`）。此前目录拼接分散在主进程与读取器两边、没有断言，改错一级目录的表现是「Cindy 一行凭空消失」且没有任何报错
+- 用量趋势与模型对比的「输出速度」补上口径注释：Cindy、Qoder、CodeBuddy IDE、Trae 国内版这类由主进程直读的客户端只贡献输出、不贡献时长，与有计时的客户端落在同一天时该数值会偏高；日级时长是扫描能提供的唯一粒度，所以这里记录边界而不改写指标
+- README 纠正本地 Agent 的能力描述：覆盖数由「20 种」改为「20 余种」（实际 29 个标识，其中 25 个由 tokscale 扫描），并写明除 tokscale 扫描外主进程还直接读取 Cindy 的 Pi 会话、CodeBuddy IDE、Qoder CLI 与 Trae 国内版本地库
+
+### English
+- Local agent usage: Cindy's path resolution now lives in one function, `cindyAgentHome()`, pinned by a test (`<appData>/Cindy/pi-agent-home`). It used to be split between the main process and the reader with no assertion, so renaming one directory level would have made the Cindy row vanish with no error anywhere
+- The trend and model-comparison "output speed" now documents its measurement: clients the main process reads directly (Cindy, Qoder, the CodeBuddy IDE, Trae CN) contribute output without seconds, so a day shared with a timed client reads high. A per-day clock is the only granularity the scan provides, so the limit is recorded instead of the metric being rewritten
+- README corrects the local-agent description: "20-some" tools instead of "20" (29 ids, 25 of them scanned by tokscale), and it now names the stores the main process reads besides tokscale — Cindy's Pi sessions, the CodeBuddy IDE, the Qoder CLI and Trae CN's local database
+
 ## [v0.8.1] - 2026-10-31
 
 ### 中文
