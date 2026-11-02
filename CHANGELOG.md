@@ -10,7 +10,7 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
-## [Unreleased]
+## [v0.8.3] - 2026-11-02
 
 ### 中文
 - Antigravity 额度接口按当前 Cloud Code 协议重写：User-Agent 改为 `antigravity/hub/<版本>`（版本从官方更新清单读取），旧的 1.x 版本标识会让服务端返回裁剪过的额度摘要、静默丢掉 Gemini 组；同时补上 `loadCodeAssist` 的 project 参数，并在摘要为空时用 `fetchAvailableModels` 的每模型额度重建 5 小时池。`remainingFraction` 省略按 0% 处理，额度耗尽的一档不再从卡片消失
