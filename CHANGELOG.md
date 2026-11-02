@@ -10,6 +10,20 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.8.6] - 2026-11-02
+
+### 中文
+- Cursor 与 GitHub Copilot 的套餐额度改为自动读取本地登录，不用再手动粘贴 token：Copilot 读扩展写的 hosts.json（%LOCALAPPDATA%\github-copilot\hosts.json，macOS/Linux 为 ~/.config/github-copilot/hosts.json），Cursor 先读 cursor-agent 的 auth.json、再读 Cursor 的 state.vscdb（ItemTable 的 cursorAuth/accessToken，TEXT 与 UTF-16 BLOB 两种存储都处理）
+- 两者的会话凭据全程只在主进程使用：Cursor 的 WorkosCursorSessionToken cookie 由 token 里的 JWT 现算，渲染进程只拿到用量数字。Cursor 新版若把 token 用系统钥匙串加密（cursor-safe-storage:v1: 前缀），卡片明确说明本应用读不到并指向服务商页的手动粘贴入口，而不是发一个注定失败的请求
+- 套餐页新增这两张卡片，与 Codex / Claude / Gemini / Grok / Trae / Kimi / Antigravity 并列；未安装对应客户端时显示“未检测到登录”而不是空白
+- 手动粘贴的入口仍然保留：读不到本地登录时（例如 Cursor 用钥匙串加密了 token，或想再加一个账号），可在服务商页添加 Cursor / GitHub Copilot 并粘贴 token 查询；两条路径互不冲突，填了账号就用账号的，没填就走本地登录
+
+### English
+- Cursor and GitHub Copilot plan quota is now read from the client's own login, so no token has to be pasted: Copilot comes from the extension's hosts.json (%LOCALAPPDATA%\github-copilot\hosts.json, or ~/.config/github-copilot/hosts.json on macOS/Linux), Cursor from cursor-agent's auth.json first and then Cursor's state.vscdb (ItemTable row cursorAuth/accessToken, handling both TEXT and UTF-16 BLOB storage)
+- The session credential stays in the main process for both: Cursor's WorkosCursorSessionToken cookie is derived from the token's JWT there, and the renderer only receives usage numbers. When a recent Cursor build seals the token with the OS keychain (cursor-safe-storage:v1: prefix), the card says this app cannot read it and points at the manual paste path instead of sending a request that cannot succeed
+- Both appear as cards on the plans page beside Codex / Claude / Gemini / Grok / Trae / Kimi / Antigravity, and show an honest "no login found" state when the client is not installed
+- The manual path stays available: when the local login cannot be read (a sealed Cursor token, or a second account), add Cursor / GitHub Copilot on the providers page and paste a token. The two paths do not conflict — a configured account uses its own token, otherwise the local login is used
+
 ## [v0.8.5] - 2026-11-02
 
 ### 中文
