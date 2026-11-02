@@ -11,6 +11,8 @@ import { stepfun } from './stepfun'
 import { novita } from './novita'
 import { commandcode } from './commandcode'
 import { ollamaCloud } from './ollama-cloud'
+import { cursor } from './cursor'
+import { copilot } from './copilot'
 
 /** Add a new provider: write an adapter file and register it below */
 export const PROVIDERS: ProviderDef[] = [
@@ -26,6 +28,8 @@ export const PROVIDERS: ProviderDef[] = [
   novita,
   commandcode,
   ollamaCloud,
+  cursor,
+  copilot,
 ]
 
 export function getProvider(id: string): ProviderDef | undefined {

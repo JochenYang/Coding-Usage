@@ -92,6 +92,8 @@ export const enUS: Dict = {
     novita: { name: 'Novita', tagline: 'Pay-as-you-go · USD balance', plan: 'Pay-as-you-go' },
     commandcode: { name: 'Command Code GOAT', tagline: 'Subscription · credits + 5h/weekly windows', plan: 'GOAT' },
     ollamaCloud: { name: 'Ollama Cloud', tagline: 'Subscription · 5h/weekly windows', plan: 'Ollama Cloud' },
+    cursor: { name: 'Cursor', tagline: 'Subscription · total, Auto and API allowances measured separately', plan: 'Cursor' },
+    copilot: { name: 'GitHub Copilot', tagline: 'Subscription · premium request allowance', plan: 'Copilot' },
   },
   provider: {
     balanceLabel: (currency: string) => `Balance (${currency})`,
@@ -135,6 +137,11 @@ export const enUS: Dict = {
     videoWeekly: 'Video bonus · Weekly quota',
     planQuota: 'Plan quota',
     mcpMonthly: 'MCP monthly calls',
+    cursorTotal: 'Plan · total usage',
+    cursorAuto: 'Plan · Auto models',
+    cursorApi: 'Plan · API models',
+    copilotPremium: 'Premium requests',
+    copilotChat: 'Chat requests',
   },
   regions: {
     zhipuCN: 'China · bigmodel.cn',
@@ -412,6 +419,11 @@ export const enUS: Dict = {
     subscriptionTitle: 'Official subscription quota',
     codexNoAuth:
       'No ChatGPT-authenticated Codex login found (~/.codex/auth.json) — official subscription quota unavailable.',
+    codexCreditsUnlimited: 'Pay-as-you-go credits: unlimited',
+    codexBalance: (amount: string) => `Pay-as-you-go balance: ${amount}`,
+    codexResetCredits: (n: number) => `Reset credits available: ${n}`,
+    codexSpendLimit: (pct: number) => `Personal cap: ${pct}% used`,
+    codexSpendLimitReached: 'Personal cap reached',
     claudeNoAuth:
       'No Claude Code login found (~/.claude/.credentials.json) — official subscription quota unavailable.',
     claudeReauth: 'Your Claude login has expired. Run `claude` again in a terminal to sign in.',
@@ -568,6 +580,8 @@ export const enUS: Dict = {
   },
   providerErrors: {
     keyInvalid: 'Invalid key or the request was rejected',
+    cursorTokenShape:
+      'Cursor needs the editor session token (cursor-agent auth.json, or cursorAuth/accessToken in Cursor state.vscdb); the pasted value is not a usable JWT.',
     badResponse: 'Response format changed: available_balance missing',
     volcSignature: 'Volcengine AK/SK signature rejected (check credentials)',
     volcCredFormat: 'Volcengine credentials must be in the AK:SK form',

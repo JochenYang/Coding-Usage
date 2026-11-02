@@ -92,6 +92,8 @@ export interface Dict {
     novita: { name: string; tagline: string; plan: string }
     commandcode: { name: string; tagline: string; plan: string }
     ollamaCloud: { name: string; tagline: string; plan: string }
+    cursor: { name: string; tagline: string; plan: string }
+    copilot: { name: string; tagline: string; plan: string }
   }
   provider: {
     balanceLabel: (currency: string) => string
@@ -135,6 +137,11 @@ export interface Dict {
     videoWeekly: string
     planQuota: string
     mcpMonthly: string
+    cursorTotal: string
+    cursorAuto: string
+    cursorApi: string
+    copilotPremium: string
+    copilotChat: string
   }
   regions: {
     zhipuCN: string
@@ -417,6 +424,11 @@ export interface Dict {
     apiAccounts: string
     subscriptionTitle: string
     codexNoAuth: string
+    codexCreditsUnlimited: string
+    codexBalance: (amount: string) => string
+    codexResetCredits: (n: number) => string
+    codexSpendLimit: (pct: number) => string
+    codexSpendLimitReached: string
     claudeNoAuth: string
     claudeReauth: string
     claudeWindows: {
@@ -562,6 +574,7 @@ export interface Dict {
   }
   providerErrors: {
     keyInvalid: string
+    cursorTokenShape: string
     badResponse: string
     volcSignature: string
     volcCredFormat: string

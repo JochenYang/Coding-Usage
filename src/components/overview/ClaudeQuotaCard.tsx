@@ -87,6 +87,28 @@ export function ClaudeQuotaCard({ className }: { className?: string }) {
               )}
             </div>
           ))}
+
+          {/* Model-scoped allowances from `limits[]`: a per-model weekly cap can
+              be exhausted while every global window above still reads healthy. */}
+          {vm.scoped.map((win) => (
+            <div key={`scoped-${win.label}`}>
+              <div className="flex items-center justify-between text-xs">
+                <span className="truncate text-muted-foreground">{win.label}</span>
+                <span
+                  className={cn(
+                    'shrink-0 tabular-nums',
+                    win.percent >= 100 ? 'text-danger' : win.percent >= 70 ? 'text-warning' : 'text-foreground',
+                  )}
+                >
+                  {Math.round(win.percent)}%
+                </span>
+              </div>
+              <ProgressBar percent={win.percent} size="sm" className="mt-1.5" />
+              {win.resetsAt && (
+                <p className="mt-1 text-[11px] text-subtle">{formatCountdown(win.resetsAt, now, t)}</p>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </section>

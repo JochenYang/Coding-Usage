@@ -91,6 +91,8 @@ export const zhCN: Dict = {
     novita: { name: 'Novita', tagline: '按量计费 · USD 余额', plan: '按量计费' },
     commandcode: { name: 'Command Code GOAT', tagline: '订阅套餐 · 额度 + 5h/周窗口', plan: 'GOAT' },
     ollamaCloud: { name: 'Ollama Cloud', tagline: '订阅套餐 · 5h/周窗口', plan: 'Ollama Cloud' },
+    cursor: { name: 'Cursor', tagline: '订阅套餐 · 总额度与 Auto/API 分开计量', plan: 'Cursor' },
+    copilot: { name: 'GitHub Copilot', tagline: '订阅套餐 · 高级请求余量', plan: 'Copilot' },
   },
   provider: {
     balanceLabel: (currency: string) => `账户余额（${currency}）`,
@@ -136,6 +138,11 @@ export const zhCN: Dict = {
     videoWeekly: '视频赠送 · 周配额',
     planQuota: '套餐额度',
     mcpMonthly: 'MCP 每月次数',
+    cursorTotal: '套餐 · 总用量',
+    cursorAuto: '套餐 · Auto 模型',
+    cursorApi: '套餐 · API 模型',
+    copilotPremium: '高级请求',
+    copilotChat: 'Chat 请求',
   },
   regions: {
     zhipuCN: '国内 bigmodel.cn',
@@ -402,6 +409,11 @@ export const zhCN: Dict = {
     apiAccounts: 'API 账号',
     subscriptionTitle: '官方订阅额度',
     codexNoAuth: '未检测到 Codex 的 ChatGPT 登录（~/.codex/auth.json），官方订阅额度不可用。',
+    codexCreditsUnlimited: '随用随付额度：无限',
+    codexBalance: (amount: string) => `随用随付余额：${amount}`,
+    codexResetCredits: (n: number) => `可用重置次数：${n}`,
+    codexSpendLimit: (pct: number) => `个人限额：已用 ${pct}%`,
+    codexSpendLimitReached: '已达个人限额',
     claudeNoAuth: '未检测到 Claude Code 登录（~/.claude/.credentials.json），官方订阅额度不可用。',
     claudeReauth: 'Claude 登录态已失效，请在终端重新运行 `claude` 完成登录。',
     claudeWindows: {
@@ -553,6 +565,8 @@ export const zhCN: Dict = {
   },
   providerErrors: {
     keyInvalid: 'Key 无效或请求被拒绝',
+    cursorTokenShape:
+      'Cursor 需要的是编辑器里的会话 token（cursor-agent 的 auth.json 或 Cursor 的 state.vscdb 里 cursorAuth/accessToken），粘贴的这段不是可用的 JWT。',
     badResponse: '响应格式变化：缺少 available_balance',
     volcSignature: '火山 AK/SK 签名被拒绝（检查凭据）',
     volcCredFormat: '火山凭据格式应为 AK:SK',

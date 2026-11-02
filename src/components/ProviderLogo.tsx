@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import {
+  Cursor,
   DeepSeek,
+  GithubCopilot,
   Kimi,
   Minimax,
   Novita,
@@ -39,6 +41,9 @@ const ICON_MAP: Record<string, ReactNode> = {
   'novita-color': <Novita.Color />,
   // Ollama ships no .Color variant; .Avatar is its colored brand tile
   'ollama-avatar': <Ollama.Avatar size={16} />,
+  // Neither brand ships a .Color variant; .Avatar is the colored tile
+  'cursor-color': <Cursor.Avatar size={16} />,
+  'copilot-color': <GithubCopilot.Avatar size={16} />,
   // Command Code's official app icon (from commandcode.ai), bundled locally
   'commandcode-avatar': <img src={commandcodeLogo} className="h-full w-full rounded" alt="" />,
 }

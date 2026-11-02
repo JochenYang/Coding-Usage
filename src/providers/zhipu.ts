@@ -20,6 +20,25 @@ interface ZhipuLimit {
   usage?: number
 }
 
+/**
+ * Used percentage for one limit row.
+ *
+ * `percentage` is the documented field, but the monitor API has been seen
+ * omitting it while still reporting the credit counters (`currentValue` consumed
+ * out of `usage` total). Falling back to that ratio keeps the window visible —
+ * dropping the row made an exhausted plan read as "no data".
+ */
+function usedPercent(limit: ZhipuLimit): number | null {
+  if (typeof limit.percentage === 'number' && Number.isFinite(limit.percentage)) {
+    return limit.percentage
+  }
+  const used = limit.currentValue
+  const total = limit.usage
+  if (typeof used !== 'number' || !Number.isFinite(used)) return null
+  if (typeof total !== 'number' || !Number.isFinite(total) || total <= 0) return null
+  return Math.round((used / total) * 100)
+}
+
 export const zhipu: ProviderDef = {
   id: 'zhipu',
   name: 'Z.ai',
@@ -60,12 +79,15 @@ export const zhipu: ProviderDef = {
     const windowNames =
       tokenLimits.length > 1 ? [t.windows.fiveHour, t.windows.weeklyPlan] : [t.windows.planQuota]
     tokenLimits.forEach((l, i) => {
-      if (typeof l.percentage !== 'number') return
+      const percent = usedPercent(l)
+      if (percent == null) return
       metrics.push({
         id: `zhipu-tokens-${i}`,
         label: plan ? `${plan} · ${windowNames[i]}` : windowNames[i],
         kind: 'percent',
-        percent: l.percentage,
+        percent,
+        used: typeof l.currentValue === 'number' ? l.currentValue : undefined,
+        total: typeof l.usage === 'number' ? l.usage : undefined,
         resetsAt: typeof l.nextResetTime === 'number' ? l.nextResetTime : undefined,
       })
     })

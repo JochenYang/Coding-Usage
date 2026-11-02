@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Codex } from '@lobehub/icons'
 import { useT } from '@/i18n/useT'
-import { formatCountdown } from '@/lib/format'
+import { formatAmount, formatCountdown } from '@/lib/format'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
 import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
 import { useData } from '@/lib/data-context'
@@ -53,7 +53,12 @@ export function CodexQuotaCard({ className }: { className?: string }) {
           <Codex.Color />
         </span>
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-foreground">Codex</h2>
+          <div className="flex items-center gap-1.5">
+            <h2 className="text-sm font-semibold text-foreground">Codex</h2>
+            {vm?.available && vm.plan && (
+              <span className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10px] text-subtle">{vm.plan}</span>
+            )}
+          </div>
           <p className="text-[11px] text-subtle">{t.manage.subscriptionTitle}</p>
         </div>
       </div>
@@ -87,6 +92,29 @@ export function CodexQuotaCard({ className }: { className?: string }) {
                   )}
                 </div>
               ),
+          )}
+
+          {/* Facts that live outside the two rate-limit windows: an exhausted
+              credit balance or a personal cap is invisible in a 0% window. */}
+          {(vm.credits || vm.resetCredits != null || vm.individualLimit) && (
+            <div className="space-y-1 border-t border-border/60 pt-2.5 text-[11px] text-subtle">
+              {vm.credits &&
+                (vm.credits.unlimited ? (
+                  <p>{t.manage.codexCreditsUnlimited}</p>
+                ) : vm.credits.balance != null ? (
+                  <p>{t.manage.codexBalance(`$${formatAmount(vm.credits.balance)}`)}</p>
+                ) : null)}
+              {vm.resetCredits != null && <p>{t.manage.codexResetCredits(vm.resetCredits)}</p>}
+              {vm.individualLimit && (
+                <p className={vm.individualLimit.reached ? 'text-warning' : undefined}>
+                  {vm.individualLimit.reached
+                    ? t.manage.codexSpendLimitReached
+                    : vm.individualLimit.percent != null
+                      ? t.manage.codexSpendLimit(Math.round(vm.individualLimit.percent))
+                      : null}
+                </p>
+              )}
+            </div>
           )}
         </div>
       )}
