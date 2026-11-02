@@ -34,27 +34,37 @@ type IslandContextValue = {
 
 const IslandContext = createContext<IslandContextValue | null>(null)
 
-// One glide out of the pill with a light overshoot, identical in both
-// directions: a heavier bounce reads as a pop rather than a morph, and Apple's
-// island settles with barely any rebound.
-const SHELL_SPRING = { type: 'spring', duration: 0.5, bounce: 0.24 } as const
+// One glide out of the pill with a light overshoot. A heavier bounce reads as a
+// pop rather than a morph, and Apple's island settles with barely any rebound.
+const SHELL_SPRING = { type: 'spring', duration: 0.46, bounce: 0.22 } as const
 
-// The collapse is its own gesture — the shell is shrinking *and* fading, so a
-// shorter, almost critically damped spring carries the size back to the pill.
+// Fade-out curve for the collapse: slow at the start holds the words for the
+// first frames, then drops them quickly instead of lingering half-visible.
+const EASE_IN = [0.4, 0, 1, 1] as const
+
+// The collapse uses the same physics, slightly faster and almost critically
+// damped: shrinking *and* fading at once, so it reads as the same gesture
+// played backwards rather than a second, unrelated animation.
 // Exported in milliseconds: the overlay window must not hide before it ends.
-export const ISLAND_COLLAPSE_MS = 300
-const SHELL_EXIT_SPRING = { type: 'spring', duration: ISLAND_COLLAPSE_MS / 1000, bounce: 0.1 } as const
+export const ISLAND_COLLAPSE_MS = 280
+const SHELL_EXIT_SPRING = { type: 'spring', duration: ISLAND_COLLAPSE_MS / 1000, bounce: 0.04 } as const
 
-// Opacity is a fade, not a spring: the pill fades in almost immediately on
-// mount, and fades out only after the shrink is mostly done.
-const ENTER_FADE = { duration: 0.14, ease: EASE_OUT } as const
-const EXIT_FADE = { duration: 0.16, delay: 0.14, ease: EASE_OUT } as const
+// Opacity rides its own short curve in both directions. On the way in the pill
+// is visible from the first frame, so the gesture starts as a shape rather than
+// a light switch; on the way out the fade is held back until the shrink is well
+// under way, otherwise the box empties while it is still large.
+const ENTER_FADE = { duration: 0.16, ease: EASE_OUT } as const
+const EXIT_FADE = { duration: 0.18, delay: 0.06, ease: EASE_IN } as const
 
-// Content travels with the shell but settles a touch springier, and enters a
-// beat late: the shell grows out of the pill first, so the first frames never
-// show content clipped by the still-small pill.
-const CONTENT_SPRING = { type: 'spring', duration: 0.45, bounce: 0.3 } as const
-const CONTENT_DELAY = 0.1
+// Content is a short tween rather than a spring: it has to land *before* the
+// shell finishes growing, and a spring started late (the previous 0.1s delay +
+// 0.45s spring) was still fading text in after the shape had settled, which is
+// what made the open feel like two separate steps.
+const CONTENT_ENTER = { duration: 0.16, ease: EASE_OUT, delay: 0.08 } as const
+// The shell clips its content, so the words must be gone before the pill
+// narrows past them: a long fade leaves a chopped line visible for 100ms+, and
+// the collapse itself is carried by the shape from there.
+const CONTENT_EXIT_MS = 110
 
 // Constant radius — never animated. The browser clamps it to half the shell
 // height, so the pill-to-rounded-rect morph comes for free.
@@ -110,40 +120,34 @@ function Slot({
   instant?: boolean
 }) {
   const reduce = useReducedMotion()
-  // Exit gets sucked up into the pill: it shrinks and fades quickly so the
-  // narrowing shell clips empty space rather than a band of text.
+  // Exit is deliberately short: the shell clips its content, so words that
+  // linger get chopped mid-line as the pill narrows. The shape carries the
+  // collapse and the text simply gets out of the way first. No blur either — a
+  // per-frame filter on an always-on-top transparent window is the most
+  // expensive thing this component could ask the compositor for.
   const exit = instant
     ? { opacity: 0, transition: { duration: 0 } }
     : reduce
-      ? { opacity: 0, filter: 'blur(0px)', transition: { duration: 0.12 } }
+      ? { opacity: 0, transition: { duration: 0.12 } }
       : {
           opacity: 0,
-          scale: 0.86,
-          y: -4,
-          filter: 'blur(0px)',
-          transition: { duration: 0.1, ease: EASE_OUT },
+          scale: 0.92,
+          transition: { duration: CONTENT_EXIT_MS / 1000, ease: EASE_IN },
         }
-  // One spring drives transform, opacity and blur together — content travels
-  // with the shell. Entry waits a beat so the shell has already grown out of the
-  // pill before any clipped content can show; the pill itself enters instantly,
-  // because it only appears while the shell is collapsing.
+  // Entry lands before the shell finishes growing, so the open reads as one
+  // motion instead of "shape first, words later". The pill itself enters
+  // instantly: it only appears while the shell is collapsing.
   const transition = instant
     ? { duration: 0 }
     : reduce
       ? { duration: 0.15 }
-      : { ...CONTENT_SPRING, delay: CONTENT_DELAY }
+      : CONTENT_ENTER
 
   return (
     <motion.div
       key={keyId}
-      initial={
-        instant
-          ? false
-          : reduce
-            ? { opacity: 0, filter: 'blur(0px)' }
-            : { opacity: 0, scale: 0.9, y: -8, filter: 'blur(5px)' }
-      }
-      animate={reduce ? { opacity: 1, filter: 'blur(0px)' } : { opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
+      initial={instant ? false : reduce ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: -3 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={exit}
       transition={transition}
       // Anchored to the pill line: content unfurls downward out of it and is
