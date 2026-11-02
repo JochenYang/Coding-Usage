@@ -433,6 +433,12 @@ export const enUS: Dict = {
       sevenDayOpus: 'Weekly Opus window',
       sevenDaySonnet: 'Weekly Sonnet window',
     },
+    cursorNoAuth:
+      'No Cursor login found (cursor-agent auth.json, or Cursor state.vscdb) — quota unavailable.',
+    cursorSealed:
+      'Cursor keeps its login sealed in the OS keychain, which this app cannot read. Paste a token on the providers page to query the quota.',
+    copilotNoAuth:
+      'No GitHub Copilot login found (%LOCALAPPDATA%\\github-copilot\\hosts.json) — quota unavailable.',
     geminiNoAuth:
       'No Gemini CLI login found (~/.gemini/oauth_creds.json) — official subscription quota unavailable.',
     geminiReauth: 'Your Gemini login has expired. Run `gemini` again to sign in.',

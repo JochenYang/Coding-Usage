@@ -22,6 +22,7 @@ import { fetchGrokUsage } from './grok-usage'
 import { fetchTraeUsage } from './trae-usage'
 import { fetchKimiUsage } from './kimi-usage'
 import { fetchAntigravityUsage } from './antigravity-quota'
+import { fetchCopilotUsage, fetchCursorUsage } from './local-plan-quota'
 import { getPricingMeta, getPricingTable, priceTokens, type PricingMeta } from './model-pricing'
 import { hasClientEntries, mergeGraphPayloads } from './tokscale-merge'
 import {
@@ -1152,6 +1153,21 @@ function registerIpc(): void {
     'grok:usage',
     async (): Promise<QuotaOutcome> =>
       cachedQuotaOutcome('grok', () => fetchGrokUsage(net.fetch, homedir())),
+  )
+
+  // Cursor and GitHub Copilot plan quota, both read from the client's own
+  // on-disk login (see local-plan-quota.ts). Cursor's token may be sealed by
+  // its own safeStorage key, in which case the probe reports `sealed-token`
+  // rather than guessing; a pasted token on the providers page still works.
+  ipcMain.handle(
+    'cursor:usage',
+    async (): Promise<QuotaOutcome> =>
+      cachedQuotaOutcome('cursor', () => fetchCursorUsage(net.fetch, homedir(), process.env)),
+  )
+  ipcMain.handle(
+    'copilot:usage',
+    async (): Promise<QuotaOutcome> =>
+      cachedQuotaOutcome('copilot', () => fetchCopilotUsage(net.fetch, homedir(), process.env)),
   )
 
   // Trae CN credits usage. The login state is an encrypted "tc" blob in the

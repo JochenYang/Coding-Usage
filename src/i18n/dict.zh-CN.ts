@@ -422,6 +422,11 @@ export const zhCN: Dict = {
       sevenDayOpus: 'Opus 周窗口',
       sevenDaySonnet: 'Sonnet 周窗口',
     },
+    cursorNoAuth: '未检测到 Cursor 登录（cursor-agent 的 auth.json 或 Cursor 的 state.vscdb），额度不可用。',
+    cursorSealed:
+      'Cursor 把登录信息加密保存在系统钥匙串里，本应用无法读取。可在服务商页手动粘贴 token 查询额度。',
+    copilotNoAuth:
+      '未检测到 GitHub Copilot 登录（%LOCALAPPDATA%\\github-copilot\\hosts.json），额度不可用。',
     geminiNoAuth: '未检测到 Gemini CLI 登录（~/.gemini/oauth_creds.json），官方订阅额度不可用。',
     geminiReauth: 'Gemini 登录态已失效，请重新运行 `gemini` 完成登录。',
     geminiGroups: {

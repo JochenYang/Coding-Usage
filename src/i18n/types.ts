@@ -437,6 +437,9 @@ export interface Dict {
       sevenDayOpus: string
       sevenDaySonnet: string
     }
+    cursorNoAuth: string
+    cursorSealed: string
+    copilotNoAuth: string
     geminiNoAuth: string
     geminiReauth: string
     geminiGroups: {

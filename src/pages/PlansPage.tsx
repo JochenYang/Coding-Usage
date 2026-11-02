@@ -20,6 +20,7 @@ import { GrokQuotaCard } from '@/components/overview/GrokQuotaCard'
 import { TraeQuotaCard } from '@/components/overview/TraeQuotaCard'
 import { KimiQuotaCard } from '@/components/overview/KimiQuotaCard'
 import { AntigravityQuotaCard } from '@/components/overview/AntigravityQuotaCard'
+import { LocalQuotaCard } from '@/components/overview/LocalQuotaCard'
 import {
   Select,
   SelectContent,
@@ -329,6 +330,8 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
           <TraeQuotaCard />
           <KimiQuotaCard />
           <AntigravityQuotaCard />
+          <LocalQuotaCard kind="cursor" />
+          <LocalQuotaCard kind="copilot" />
         </div>
       </section>
     </div>
