@@ -33,11 +33,12 @@ const WINDOW_LABELS: Record<AntigravityWindowId, (t: Dict) => string> = {
 }
 
 /**
- * Race budget for the main-process probe: it walks the language server's ports
- * and tries two RPCs per port with an 8s timeout each, so a worst case
- * legitimately runs longer than a single request.
+ * Race budget for the main-process probe: it may read the updater manifest, try
+ * two service hosts for the project lookup, the quota summary and the per-model
+ * fallback, each with a 6s timeout, so a worst case legitimately runs longer
+ * than a single request.
  */
-const PROBE_RACE_TIMEOUT_MS = 40_000
+const PROBE_RACE_TIMEOUT_MS = 60_000
 
 /** Failure reason → the sentence the card shows */
 function unavailableMessage(reason: string | null | undefined, t: Dict): string {

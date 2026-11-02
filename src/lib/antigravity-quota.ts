@@ -1,13 +1,16 @@
 /**
  * Antigravity subscription quota view-model. The raw payload comes from the
- * `antigravity:usage` IPC: the main process asks the IDE's own language server
- * over loopback (see electron/antigravity-quota.ts) — no credential crosses the
+ * `antigravity:usage` IPC: the main process asks the Cloud Code API with the
+ * credentials Antigravity stores, falling back to the IDE's loopback service on
+ * older builds (see electron/antigravity-quota.ts) — no credential crosses the
  * IPC boundary, only the quota numbers do.
  *
  * The service answers with a `{ response: { groups: [...] } }` envelope, though
- * the community has also seen `groups` at the top level and under `summary`, so
- * all three are accepted. Each group holds buckets with a `remainingFraction`
+ * `groups` at the top level and under `summary` have also been seen, so all
+ * three are accepted. Each group holds buckets with a `remainingFraction`
  * (0–1, where 1 means the whole allowance is still there) and an ISO `resetTime`.
+ * The fraction is **omitted once the allowance is exhausted**, so a missing
+ * value is read as 0 — dropping it would hide an empty pool from the card.
  *
  * Note the direction: these are REMAINING fractions, matching the IDE's
  * "…Limit Remaining" panel. Every other quota card in this app reports *used*
@@ -83,15 +86,20 @@ function parseResetTime(raw: unknown): number | null {
 
 function readBucket(raw: unknown): AntigravityBucketVM | null {
   if (!isRecord(raw)) return null
+  // A disabled bucket is not something the plan currently grants
+  if (raw.disabled === true) return null
+  // The service omits remainingFraction once the allowance is exhausted, so a
+  // missing fraction means 0% left — not "no data". Dropping the bucket here
+  // used to make an exhausted pool disappear from the card entirely.
   const fraction = raw.remainingFraction
-  if (typeof fraction !== 'number' || !Number.isFinite(fraction)) return null
+  const remaining = typeof fraction === 'number' && Number.isFinite(fraction) ? fraction : 0
   const id = typeof raw.bucketId === 'string' && raw.bucketId !== '' ? raw.bucketId : 'bucket'
   return {
     id,
     window: windowId(raw.window),
     // Clamp: the service has been seen at exactly 1, and a stray >1 would draw
     // a bar past its track
-    remainingPct: Math.max(0, Math.min(100, fraction * 100)),
+    remainingPct: Math.max(0, Math.min(100, remaining * 100)),
     resetsAt: parseResetTime(raw.resetTime),
     note:
       typeof raw.description === 'string' && raw.description !== '' ? raw.description : null,
@@ -102,11 +110,7 @@ function readGroup(raw: unknown): AntigravityGroupVM | null {
   if (!isRecord(raw)) return null
   const serverName = typeof raw.displayName === 'string' ? raw.displayName : ''
   const rawBuckets = Array.isArray(raw.buckets) ? raw.buckets : []
-  const buckets = rawBuckets
-    .map(readBucket)
-    .filter((b): b is AntigravityBucketVM => b !== null)
-    // A disabled bucket is not something the plan currently grants
-    .filter((_b, i) => !(isRecord(rawBuckets[i]) && rawBuckets[i].disabled === true))
+  const buckets = rawBuckets.map(readBucket).filter((b): b is AntigravityBucketVM => b !== null)
   if (buckets.length === 0) return null
   return { id: groupId(serverName, rawBuckets), serverName, buckets }
 }

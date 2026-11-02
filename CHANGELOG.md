@@ -10,6 +10,14 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- Antigravity 额度接口按当前 Cloud Code 协议重写：User-Agent 改为 `antigravity/hub/<版本>`（版本从官方更新清单读取），旧的 1.x 版本标识会让服务端返回裁剪过的额度摘要、静默丢掉 Gemini 组；同时补上 `loadCodeAssist` 的 project 参数，并在摘要为空时用 `fetchAvailableModels` 的每模型额度重建 5 小时池。`remainingFraction` 省略按 0% 处理，额度耗尽的一档不再从卡片消失
+
+### English
+- Rewrite the Antigravity quota probe against the current Cloud Code protocol: the User-Agent now identifies as `antigravity/hub/<version>` (version read from the official updater manifest) because a 1.x build string makes the service return a reduced summary with the Gemini pool silently dropped; the probe also names the `loadCodeAssist` project and rebuilds the 5-hour pools from `fetchAvailableModels` when the summary is empty. An omitted `remainingFraction` reads as 0%, so an exhausted pool no longer disappears from the card
+
 ## [v0.8.2] - 2026-10-31
 
 ### 中文

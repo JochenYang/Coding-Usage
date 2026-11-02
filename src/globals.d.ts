@@ -173,8 +173,9 @@ declare global {
      */
     kimiUsage(apiKey?: string): Promise<{ available: boolean; body?: string; reason?: string }>
     /**
-     * Antigravity subscription quota, read from the IDE's own language server
-     * over loopback (the IDE must be running). The body is the service's JSON
+     * Antigravity subscription quota, read from the Cloud Code API with the
+     * credentials Antigravity stores (the IDE can stay closed; older builds fall
+     * back to their loopback language server). The body is the service's JSON
      * (`{response:{groups:[…]}}`); no credential crosses this boundary.
      */
     antigravityUsage(): Promise<{ available: boolean; body?: string; reason?: string }>

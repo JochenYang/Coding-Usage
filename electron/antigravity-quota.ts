@@ -12,19 +12,32 @@ import { dirname, join } from 'node:path'
  *
  * 1. **Cloud Code (preferred, needs no IDE).** Antigravity keeps its OAuth
  *    credentials in its own SQLite store; the stored access token (refreshed
- *    through Google's token endpoint when stale) authenticates
- *    `v1internal:retrieveUserQuotaSummary` directly. The one non-obvious
- *    requirement is the **User-Agent**: cloudcode-pa answers `403 "You do not
- *    have a valid license of this product"` to a request that does not identify
- *    as Antigravity, which reads like an entitlement problem and is not one —
- *    with `antigravity/… windows/amd64` the very same token returns the quota.
- *    (Verified both ways on a live account.)
+ *    through Google's token endpoint when stale) authenticates the Cloud Code
+ *    API directly. Two parts of the protocol decide whether the answer is
+ *    complete:
  *
- * 2. **The IDE's own language server (fallback, IDE must be running).** A plain
- *    Connect/JSON service behind a self-signed loopback port whose CSRF token
- *    sits in the process command line. Used when the Cloud Code route cannot
- *    answer — e.g. a revoked refresh token — because the IDE may hold a fresher
- *    token than the store does.
+ *    - The **User-Agent** names the Antigravity build,
+ *      `antigravity/hub/<version> <os>/<arch>`, with the version read from the
+ *      official updater manifest. cloudcode-pa answers `403 "You do not have a
+ *      valid license of this product"` without it, and — less obviously — a
+ *      1.x build string gets a *reduced* quota summary: only the third-party
+ *      pool comes back and the Gemini pool is silently left out, which reads
+ *      like an account without Gemini quota. Verified against the live service.
+ *    - The **project** from `loadCodeAssist` (`cloudaicompanionProject`), which
+ *      the IDE names on every quota request.
+ *
+ *    `retrieveUserQuotaSummary` is the panel's source: groups (Gemini / Claude
+ *    and GPT) each with a weekly and a 5-hour bucket. Some accounts answer it
+ *    with no group at all; `fetchAvailableModels` then carries the same
+ *    allowance per model (`quotaInfo.remainingFraction`, where an omitted
+ *    fraction means none is left), so the pools are rebuilt from the models
+ *    that still report one.
+ *
+ * 2. **The IDE's own language server (legacy fallback, IDE must be running).**
+ *    Older IDE builds run a Connect/JSON service behind a self-signed loopback
+ *    port whose CSRF token sits in the process command line. Current builds
+ *    ship no such process, so this route is kept for installs that still have
+ *    one and costs one probe when they do not.
  *
  * Nothing is written on either route and no credential leaves the machine: only
  * the quota JSON comes back, and the refresh result is used in memory for this
@@ -291,14 +304,82 @@ async function refreshAccessToken(refreshToken: string): Promise<string | null> 
 }
 
 /** Cloud Code hosts, daily first: that is the channel the IDE itself uses */
-const QUOTA_HOSTS = ['https://daily-cloudcode-pa.googleapis.com', 'https://cloudcode-pa.googleapis.com']
+const API_HOSTS = ['https://daily-cloudcode-pa.googleapis.com', 'https://cloudcode-pa.googleapis.com']
 const QUOTA_PATH = '/v1internal:retrieveUserQuotaSummary'
+const MODELS_PATH = '/v1internal:fetchAvailableModels'
+const LOAD_ASSIST_PATH = '/v1internal:loadCodeAssist'
 
 /**
- * Identifies the caller as Antigravity. Not cosmetic: cloudcode-pa rejects an
- * otherwise valid token with a 403 licence error when this is missing.
+ * Where the current Antigravity build's version is published.
+ *
+ * The User-Agent has to name a current build: a 1.x version gets a quota summary
+ * with the Gemini pool omitted (verified against the live service), so the
+ * version is read from the same manifest the updater uses instead of being
+ * frozen into this file. The constant below is the offline fallback.
  */
-const USER_AGENT = 'antigravity/1.23.2 windows/amd64'
+const VERSION_URL =
+  'https://antigravity-hub-auto-updater-974169037036.us-central1.run.app/manifest/latest-arm64-mac.yml'
+const FALLBACK_VERSION = '2.28.2'
+const VERSION_TTL_MS = 6 * 60 * 60_000
+
+const UA_PLATFORM: Record<string, string> = { win32: 'win32', darwin: 'darwin', linux: 'linux' }
+const UA_ARCH: Record<string, string> = { x64: 'x64', arm64: 'arm64' }
+
+let cachedVersion: { value: string; at: number } | null = null
+
+/** Current Antigravity version, cached; the updater manifest is the source */
+async function antigravityVersion(): Promise<string> {
+  if (cachedVersion && Date.now() - cachedVersion.at < VERSION_TTL_MS) return cachedVersion.value
+  try {
+    const res = await fetch(VERSION_URL, { signal: AbortSignal.timeout(5_000) })
+    const text = await res.text()
+    const match = text.match(/^version:\s*([0-9.]+)\s*$/m)
+    if (match) {
+      cachedVersion = { value: match[1], at: Date.now() }
+      return match[1]
+    }
+  } catch {
+    // offline or the updater is gone: fall back without caching, so the next
+    // probe tries again rather than pinning a guess for six hours
+  }
+  return FALLBACK_VERSION
+}
+
+/**
+ * Identifies the caller as an Antigravity build.
+ *
+ * Both parts matter: without the header cloudcode-pa answers `403 licence`,
+ * and with a stale version it returns a quota summary that silently omits the
+ * Gemini pool — the exact failure this probe used to show.
+ */
+export function antigravityUserAgent(version: string): string {
+  const platform = UA_PLATFORM[process.platform] ?? process.platform
+  const arch = UA_ARCH[process.arch] ?? process.arch
+  return `antigravity/hub/${version} ${platform}/${arch}`
+}
+
+async function userAgent(): Promise<string> {
+  return antigravityUserAgent(await antigravityVersion())
+}
+
+interface ProjectInfo {
+  project: string
+}
+
+// Keyed by refresh token: switching accounts in the IDE swaps the token, and a
+// project cached for the previous account would 403 every quota request.
+let cachedProject: { key: string; value: ProjectInfo; at: number } | null = null
+const PROJECT_TTL_MS = 60 * 60_000
+
+/** `cloudaicompanionProject` arrives as an id or as `{ id, name }` */
+function projectId(raw: unknown): string {
+  if (typeof raw === 'string') return raw
+  if (raw != null && typeof raw === 'object') {
+    const id = (raw as { id?: unknown }).id
+    if (typeof id === 'string') return id
+  }
+  return ''
+}
 
 /** Header the language server requires on every loopback request */
 const CSRF_HEADER = 'X-Codeium-Csrf-Token'
@@ -307,7 +388,7 @@ const CSRF_HEADER = 'X-Codeium-Csrf-Token'
 const METHODS = ['RetrieveUserQuotaSummary', 'GetUserStatus'] as const
 
 /** Bounds every attempt: these probes are garnish, not critical path */
-const REQUEST_TIMEOUT_MS = 8_000
+const REQUEST_TIMEOUT_MS = 6_000
 
 /** Ports beyond this are noise from other per-process sockets */
 const MAX_PORT_SCAN = 40
@@ -456,34 +537,197 @@ const pickString = (fields: WireField[], n: number): string => {
   return bytes ? bytes.toString('utf8').trim() : ''
 }
 
+interface LoadAssistReply {
+  cloudaicompanionProject?: unknown
+}
+
+/**
+ * The Code Assist project the account runs on.
+ *
+ * The IDE asks this once at start-up and names the project on every later
+ * request. `metadata.ideType` alone is accepted; `metadata.platform` is
+ * validated against the service's own enum and a wrong spelling is a 400, so it
+ * is left out.
+ */
+async function loadCodeAssist(accessToken: string, accountKey: string): Promise<ProjectInfo | null> {
+  if (cachedProject && cachedProject.key === accountKey && Date.now() - cachedProject.at < PROJECT_TTL_MS) {
+    return cachedProject.value
+  }
+  const ua = await userAgent()
+  for (const host of API_HOSTS) {
+    try {
+      const res = await fetch(`${host}${LOAD_ASSIST_PATH}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'User-Agent': ua,
+        },
+        body: JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY' } }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      })
+      if (!res.ok) continue
+      const reply = (await res.json()) as LoadAssistReply
+      const project = projectId(reply.cloudaicompanionProject)
+      if (!project) return null
+      const value: ProjectInfo = { project }
+      cachedProject = { key: accountKey, value, at: Date.now() }
+      return value
+    } catch {
+      // host unreachable: try the next one
+    }
+  }
+  return null
+}
+
+/** Whether a quota summary carries a usable pool; empty groups/buckets are a miss */
+export function hasQuotaGroups(body: string): boolean {
+  try {
+    const parsed = JSON.parse(body) as { groups?: unknown }
+    if (!Array.isArray(parsed.groups)) return false
+    return parsed.groups.some((group) => {
+      if (group == null || typeof group !== 'object') return false
+      const buckets = (group as { buckets?: unknown }).buckets
+      return Array.isArray(buckets) && buckets.length > 0
+    })
+  } catch {
+    return false
+  }
+}
+
 /** Ask Cloud Code for the quota summary with one access token */
-async function fetchQuotaSummary(accessToken: string): Promise<{ ok: boolean; status: number; body: string }> {
+async function fetchQuotaSummary(
+  accessToken: string,
+  project: string,
+): Promise<{ ok: boolean; status: number; body: string }> {
+  // A 200 that carries no usable pool still matters: it means the endpoint
+  // answered, so the caller should try the per-model route rather than treat a
+  // later host's 500 as the result.
+  let empty: { ok: boolean; status: number; body: string } | null = null
   let last = { ok: false, status: 0, body: '' }
-  for (const host of QUOTA_HOSTS) {
+  const ua = await userAgent()
+  const payload = JSON.stringify(project ? { project } : {})
+  for (const host of API_HOSTS) {
     try {
       const res = await fetch(`${host}${QUOTA_PATH}`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
-          'User-Agent': USER_AGENT,
+          'User-Agent': ua,
         },
-        body: '{}',
+        body: payload,
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       })
       const body = await res.text()
-      if (res.ok && body.length > 2) return { ok: true, status: res.status, body }
-      last = { ok: false, status: res.status, body }
+      if (res.ok && hasQuotaGroups(body)) return { ok: true, status: res.status, body }
+      if (res.ok) empty ??= { ok: false, status: res.status, body }
+      else last = { ok: false, status: res.status, body }
     } catch {
       // host unreachable: try the next one
     }
   }
-  return last
+  return empty ?? last
+}
+
+export interface ModelQuota {
+  /** 0..1 remaining; the service omits the field once none is left */
+  remaining: number
+  resetsAt: string
+}
+
+interface ModelsReply {
+  models?: Record<
+    string,
+    { disabled?: boolean; quotaInfo?: { remainingFraction?: unknown; resetTime?: unknown } }
+  >
+}
+
+/**
+ * Per-model allowance, keyed by model id.
+ *
+ * `fetchAvailableModels` is the second half of the protocol: each model carries
+ * its own `quotaInfo` (the 5-hour window; weekly pools only exist in the
+ * summary). A model the account is not served is `disabled` and is skipped; a
+ * missing `remainingFraction` means the allowance is used up, not unknown.
+ */
+async function fetchModelQuotas(
+  accessToken: string,
+  project: string,
+): Promise<Map<string, ModelQuota> | null> {
+  const ua = await userAgent()
+  for (const host of API_HOSTS) {
+    try {
+      const res = await fetch(`${host}${MODELS_PATH}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'User-Agent': ua,
+        },
+        body: JSON.stringify({ project }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      })
+      if (!res.ok) continue
+      const reply = (await res.json()) as ModelsReply
+      if (!reply.models) continue
+      const out = new Map<string, ModelQuota>()
+      for (const [id, model] of Object.entries(reply.models)) {
+        if (model.disabled === true || !model.quotaInfo) continue
+        const fraction = model.quotaInfo.remainingFraction
+        out.set(id, {
+          remaining: typeof fraction === 'number' && Number.isFinite(fraction) ? fraction : 0,
+          resetsAt: typeof model.quotaInfo.resetTime === 'string' ? model.quotaInfo.resetTime : '',
+        })
+      }
+      if (out.size > 0) return out
+    } catch {
+      // host unreachable: try the next one
+    }
+  }
+  return null
+}
+
+/**
+ * Rebuild the summary's pools from per-model quotas.
+ *
+ * Only the 5-hour allowance exists per model; the weekly figure has no
+ * per-model equivalent, so the synthesized body carries the 5-hour bucket
+ * alone. A family's share is the tightest of its models, which is what the
+ * shared pool would report.
+ */
+export function quotaGroupsFromModels(models: Map<string, ModelQuota>): unknown {
+  const families = new Map<string, { remaining: number; resetsAt: string }>()
+  for (const [id, quota] of models) {
+    const family =
+      id.startsWith('claude') || id.startsWith('gpt') ? 'thirdParty' : id.includes('gemini') ? 'gemini' : null
+    if (!family) continue
+    const current = families.get(family)
+    if (!current) {
+      families.set(family, { remaining: quota.remaining, resetsAt: quota.resetsAt })
+      continue
+    }
+    current.remaining = Math.min(current.remaining, quota.remaining)
+    if (quota.resetsAt && (!current.resetsAt || quota.resetsAt < current.resetsAt)) current.resetsAt = quota.resetsAt
+  }
+  const groups = [...families.entries()].map(([family, quota]) => ({
+    displayName: family === 'gemini' ? 'Gemini Models' : 'Claude and GPT models',
+    buckets: [
+      {
+        bucketId: family === 'gemini' ? 'gemini-5h' : '3p-5h',
+        displayName: 'Five Hour Limit Remaining',
+        window: '5h',
+        ...(quota.resetsAt ? { resetTime: quota.resetsAt } : {}),
+        remainingFraction: quota.remaining,
+      },
+    ],
+  }))
+  return { groups, description: '' }
 }
 
 /**
  * Route 1. Uses the stored token when it is still valid, refreshes it when it is
- * not, and reports `auth-required` when Google rejects the refresh token.
+ * not, and reports `refresh-failed` when Google rejects the refresh token.
  */
 async function fetchViaCloudCode(): Promise<{ available: boolean; body?: string; reason?: string }> {
   const creds = await readStoredCredentials()
@@ -501,16 +745,34 @@ async function fetchViaCloudCode(): Promise<{ available: boolean; body?: string;
     }
   }
 
-  const first = await fetchQuotaSummary(access)
+  const info = await loadCodeAssist(access, creds.refreshToken)
+  const project = info?.project ?? ''
+
+  const first = await fetchQuotaSummary(access, project)
   if (first.ok) return { available: true, body: first.body }
+
   // A stale stored token that was not stale by its own clock: refresh once more
   if (first.status === 401 || first.status === 403) {
+    // A different account may be signed in behind the refreshed token
+    cachedProject = null
     const refreshed = await refreshAccessToken(creds.refreshToken)
-    if (refreshed) {
-      const second = await fetchQuotaSummary(refreshed)
-      if (second.ok) return { available: true, body: second.body }
-    }
+    if (!refreshed) return { available: false, reason: `http-${first.status}` }
+    const retryInfo = await loadCodeAssist(refreshed, creds.refreshToken)
+    const retryProject = retryInfo?.project ?? project
+    const retry = await fetchQuotaSummary(refreshed, retryProject)
+    if (retry.ok) return { available: true, body: retry.body }
+    const retryModels = await fetchModelQuotas(refreshed, retryProject)
+    if (retryModels) return { available: true, body: JSON.stringify(quotaGroupsFromModels(retryModels)) }
     return { available: false, reason: `http-${first.status}` }
+  }
+
+  // The summary answered without a pool: the per-model allowance still has one.
+  // Only when it answered at all — a network failure would just be repeated by
+  // the second endpoint.
+  if (first.status === 200) {
+    const models = await fetchModelQuotas(access, project)
+    if (models) return { available: true, body: JSON.stringify(quotaGroupsFromModels(models)) }
+    return { available: false, reason: 'no-groups' }
   }
   return { available: false, reason: first.status ? `http-${first.status}` : 'no-response' }
 }
