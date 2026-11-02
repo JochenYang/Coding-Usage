@@ -25,6 +25,7 @@ interface Entry {
   tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
   cost?: number
   messages?: number
+  priced?: boolean
 }
 
 /** One `tokscale graph` contribution for a day, summing its own entries */
@@ -177,5 +178,35 @@ describe('agent × model cross-cut', () => {
     const row = vm.clients.find((c) => c.client === 'pi')!
     expect(row.today.cacheWrite).toBe(0)
     expect(Number.isNaN(row.today.cacheWrite)).toBe(false)
+  })
+})
+
+describe('price coverage', () => {
+  const pricedScan = (entries: Entry[]): ReturnType<typeof summarizeScan> =>
+    summarizeScan({
+      pricing: { source: 'models.dev', fetchedAt: 1, modelCount: 2 },
+      daily: { contributions: [day(localDay(0), entries)] },
+    })
+
+  it('reports tokens priced outside the official catalogue', () => {
+    const vm = pricedScan([
+      { client: 'pi', modelId: 'unknown', tokens: { input: 100 }, cost: 1, priced: false },
+      { client: 'pi', modelId: 'known', tokens: { input: 50 }, cost: 2, priced: true },
+    ])
+    expect(vm.priceCoverage.monthFallbackTokens).toBe(100)
+    expect(vm.priceCoverage.monthUnknownTokens).toBe(0)
+    expect(vm.pricing).toMatchObject({ source: 'models.dev', modelCount: 2 })
+  })
+
+  it('counts cost-less tokens as unknown so the total reads as a floor', () => {
+    const vm = pricedScan([{ client: 'pi', modelId: 'unknown', tokens: { input: 100 }, cost: 0, priced: false }])
+    expect(vm.priceCoverage.monthFallbackTokens).toBe(100)
+    expect(vm.priceCoverage.monthUnknownTokens).toBe(100)
+  })
+
+  it('does not treat a catalog-priced free model as unknown', () => {
+    const vm = pricedScan([{ client: 'pi', modelId: 'free-model', tokens: { input: 100 }, cost: 0, priced: true }])
+    expect(vm.priceCoverage.monthFallbackTokens).toBe(0)
+    expect(vm.priceCoverage.monthUnknownTokens).toBe(0)
   })
 })

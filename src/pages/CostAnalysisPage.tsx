@@ -3,7 +3,7 @@ import { useData } from '@/lib/data-context'
 import { useT } from '@/i18n/useT'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
-import { formatCompactValue, currencySymbol } from '@/lib/format'
+import { formatAsOf, formatCompactValue, currencySymbol } from '@/lib/format'
 import { convertAmount, type FxRates } from '@/lib/rates'
 
 /** Cost formatter honoring the settings display currency (source data is USD) */
@@ -50,12 +50,30 @@ function CostList({
   )
 }
 
-/** Cost analysis: current-month spend by provider and by model (official per-model pricing) */
+/** Cost analysis: current-month spend by provider and by model */
 export function CostAnalysisPage() {
   const t = useT()
   const { agentUsage, settings, fxRates } = useData()
   const costText = makeCostText(settings.displayCurrency, fxRates)
-  const hasCost = agentUsage.monthTotal.costUsd > 0
+  const pricing = agentUsage.pricing
+  const coverage = agentUsage.priceCoverage
+  const hasCost =
+    agentUsage.monthTotal.costUsd > 0 || coverage.monthUnknownTokens > 0 || coverage.monthFallbackTokens > 0
+  const pricingSourceLabel = pricing
+    ? pricing.source === 'models.dev'
+      ? t.overview.pricingSourceModelsDev
+      : pricing.source === 'openrouter'
+        ? t.overview.pricingSourceOpenRouter
+        : t.overview.pricingSourceBuiltin
+    : ''
+  const pricingDate =
+    pricing == null
+      ? ''
+      : pricing.source === 'builtin'
+        ? pricing.generatedAt
+          ? t.overview.pricingGeneratedAt(pricing.generatedAt)
+          : ''
+        : t.overview.pricingUpdatedAt(formatAsOf(pricing.fetchedAt))
 
   if (!hasCost) {
     return (
@@ -86,6 +104,21 @@ export function CostAnalysisPage() {
             {t.overview.monthCol} · {formatCompactValue(agentUsage.monthTotal.tokens)} tokens
           </span>
         </div>
+        {pricing && (
+          <div className="mt-2 text-[11px] text-subtle">
+            {[pricingSourceLabel, pricingDate, t.overview.pricingModelCount(pricing.modelCount)]
+              .filter(Boolean)
+              .join(' · ')}
+          </div>
+        )}
+        {coverage.monthUnknownTokens > 0 && (
+          <div className="mt-2 text-[11px] text-warning">
+            {t.overview.costKnownFloor(formatCompactValue(coverage.monthUnknownTokens))}
+          </div>
+        )}
+        {coverage.monthUnknownTokens === 0 && coverage.monthFallbackTokens > 0 && (
+          <div className="mt-2 text-[11px] text-subtle">{t.overview.costFallbackPricing}</div>
+        )}
       </section>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

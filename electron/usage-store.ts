@@ -37,8 +37,9 @@ import { join } from 'node:path'
  *   a day that keeps stored rows takes the larger of the two — a day tokscale
  *   later trims keeps its old figure, which understates tok/s rather than
  *   overstating it.
- * - Prices are not recomputed. A stored row keeps the cost that was priced when
- *   it was scanned; a later pricing-table update does not reach back into it.
+ * - The store itself does not reprice. A stored row keeps the cost from the scan
+ *   that wrote it; the main process reprices the merged history with the current
+ *   price table before returning it to the renderer.
  */
 
 const DB_FILE = 'usage-history.db'
@@ -76,7 +77,7 @@ interface ClientEntry {
   tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
   cost?: number
   messages?: number
-  /** Set when the main process repriced this entry from the OpenRouter catalog */
+  /** Set when the main process repriced this entry from the shared price table */
   priced?: boolean
 }
 

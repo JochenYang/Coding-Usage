@@ -541,7 +541,7 @@ function buildPayload(records: UsageRecord[]): unknown {
         tokenBreakdown.cacheRead += slice.cacheRead
         tokenBreakdown.cacheWrite += slice.cacheWrite
         // cost 0 on purpose: the main process prices entries from the
-        // OpenRouter catalog like every other locally read client.
+        // shared price table like every other locally read client.
         return { client: CLIENT_ID, modelId, providerId: PROVIDER_ID, tokens, cost: 0, messages: slice.messages }
       })
       return { date, totals, tokenBreakdown, clients, intensity: 0, activeTimeMs: 0 }

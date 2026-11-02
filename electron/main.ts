@@ -22,7 +22,7 @@ import { fetchGrokUsage } from './grok-usage'
 import { fetchTraeUsage } from './trae-usage'
 import { fetchKimiUsage } from './kimi-usage'
 import { fetchAntigravityUsage } from './antigravity-quota'
-import { getPricingTable, priceTokens } from './model-pricing'
+import { getPricingMeta, getPricingTable, priceTokens, type PricingMeta } from './model-pricing'
 import { hasClientEntries, mergeGraphPayloads } from './tokscale-merge'
 import {
   closeUsageStore,
@@ -315,7 +315,10 @@ interface TokScanResult {
   /** Client ids whose per-client scan failed in the degraded fallback path */
   skippedClients?: string[]
   /** Per-client failure reason, keyed by client id (mirrors skippedClients) */
-  skippedDetails?: Record<string, string>  /** Epoch ms when the scan was requested — kept stable across cache hits so
+  skippedDetails?: Record<string, string>
+  /** Which price table priced this scan and when it was fetched */
+  pricing?: PricingMeta
+  /** Epoch ms when the scan was requested — kept stable across cache hits so
    *  the renderer can show an honest as-of time instead of re-stamping "now" */
   scannedAt?: number
 }
@@ -660,7 +663,7 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
     const costs = await overrideCosts(withLocalAgents(daily))
     // Decode last: the cost override and the provider attribution read the
     // encoded ids, whose router prefix is ASCII either way.
-    return { daily: decodeNonAsciiIds(reconcileProviderAttribution(costs)) }
+    return { daily: decodeNonAsciiIds(reconcileProviderAttribution(costs)), pricing: getPricingMeta() }
   }
 
   const merged = await scanPerClientWithFallback(baseArgs)
@@ -672,13 +675,14 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
     // card, so serve those rather than surfacing nothing at all.
     if (localAgents.length > 0) {
       const costs = await overrideCosts(mergeGraphPayloads(localAgents.map((entry) => entry.payload)))
-      return { daily: decodeNonAsciiIds(reconcileProviderAttribution(costs)) }
+      return { daily: decodeNonAsciiIds(reconcileProviderAttribution(costs)), pricing: getPricingMeta() }
     }
     throw new Error('tokscale scan failed for every client')
   }
   const costs = await overrideCosts(withLocalAgents(merged.daily))
   return {
     daily: decodeNonAsciiIds(reconcileProviderAttribution(costs)),
+    pricing: getPricingMeta(),
     skippedClients: merged.skippedClients,
     skippedDetails: merged.skippedDetails,
   }
@@ -729,12 +733,12 @@ async function scanPerClientWithFallback(
 }
 
 /**
- * Replace tokscale's per-entry cost with our own OpenRouter-catalog pricing
- * wherever the model is known, then fold the delta back into the day total so
- * the renderer's "other" derivation (totals minus clients) stays balanced.
- * Unknown models keep tokscale's cost untouched. Repriced entries are marked
- * `priced: true` so the renderer can tell "catalog-priced at 0" apart from
- * "no catalog price" when labeling unpriced models.
+ * Replace tokscale's per-entry cost with our own price table wherever the model
+ * is known, then fold the delta back into the day total so the renderer's
+ * "other" derivation (totals minus clients) stays balanced. Unknown models keep
+ * tokscale's cost untouched. Repriced entries are marked `priced: true` so the
+ * renderer can tell "catalog-priced at 0" apart from "no catalog price" when
+ * labeling unpriced models.
  */
 async function overrideCosts(daily: unknown): Promise<unknown> {
   try {
@@ -745,8 +749,9 @@ async function overrideCosts(daily: unknown): Promise<unknown> {
         clients?: Array<{
           cost?: number
           modelId?: unknown
+          messages?: number
           tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
-          /** Set when this entry was repriced from the OpenRouter catalog */
+          /** Set when this entry was repriced from the shared price table */
           priced?: boolean
         }>
       }>
@@ -757,13 +762,20 @@ async function overrideCosts(daily: unknown): Promise<unknown> {
       let dayDelta = 0
       for (const e of c.clients) {
         if (typeof e.modelId !== 'string' || e.tokens == null) continue
-        const computed = priceTokens(table, e.modelId, e.tokens)
+        const computed = priceTokens(
+          table,
+          e.modelId,
+          e.tokens,
+          typeof e.messages === 'number' ? e.messages : undefined,
+        )
+        // A re-scan may see a model the new table no longer prices: clear the
+        // old flag rather than presenting a stale catalogue match as current.
+        e.priced = computed != null
         if (computed == null) continue
         dayDelta += computed - (typeof e.cost === 'number' ? e.cost : 0)
         e.cost = Math.round(computed * 1e6) / 1e6
         // Mark catalog-priced entries so the renderer can tell "priced at 0"
         // (e.g. free-tier models) apart from "no catalog price" downstream.
-        e.priced = true
       }
       if (dayDelta !== 0 && typeof c.totals?.cost === 'number') {
         c.totals.cost = Math.round((c.totals.cost + dayDelta) * 1e6) / 1e6
@@ -1181,14 +1193,24 @@ function registerIpc(): void {
    * longer reports — its transcript was deleted or rotated away — is served from
    * history, so today / month / all-time survive the source disappearing. An
    * empty scan therefore still returns stored history instead of nothing.
+   *
+   * History is repriced with the current table before it is returned: a stored
+   * row keeps the cost from the scan that wrote it, and a later price-source
+   * switch would otherwise mix old OpenRouter and new models.dev numbers in one
+   * total.
    */
-  function persistScanHistory(daily: unknown): unknown {
+  async function persistScanHistory(daily: unknown): Promise<unknown> {
     const merged = mergeScanIntoStore(extractContributions(daily))
     if (merged.length === 0) return daily
+    const repriced = (await overrideCosts({ contributions: merged })) as {
+      contributions?: unknown
+    }
     // Recompute summary/years so the payload cannot contradict the rows it now
     // carries. The renderer only reads `contributions`, but a stale summary is
     // a trap for the next reader.
-    return mergeGraphPayloads([{ contributions: merged }])
+    return mergeGraphPayloads([
+      { contributions: Array.isArray(repriced.contributions) ? repriced.contributions : merged },
+    ])
   }
 
   /** Upper bound on a purge range: ~100 years, far past any real history */
@@ -1222,7 +1244,7 @@ function registerIpc(): void {
         // asked. Same anchor as the cache window (`at`) above.
         const stamped: TokScanResult = {
           ...result,
-          daily: persistScanHistory(result.daily),
+          daily: await persistScanHistory(result.daily),
           scannedAt: now,
         }
         tokScanCache = { at: now, result: stamped }
@@ -1233,8 +1255,12 @@ function registerIpc(): void {
         // as-of label cannot claim the data is fresh.
         const stored = readStoredContributions()
         if (stored.length > 0) {
+          const repriced = (await overrideCosts({ contributions: stored })) as { contributions?: unknown }
           return {
-            daily: mergeGraphPayloads([{ contributions: stored }]),
+            daily: mergeGraphPayloads([
+              { contributions: Array.isArray(repriced.contributions) ? repriced.contributions : stored },
+            ]),
+            pricing: getPricingMeta(),
             scannedAt: getUsageStoreUpdatedAt() ?? now,
           }
         }

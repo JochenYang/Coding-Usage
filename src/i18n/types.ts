@@ -281,6 +281,14 @@ export interface Dict {
     colActions: string
     colModel: string
     unpriced: string
+    pricingSourceModelsDev: string
+    pricingSourceOpenRouter: string
+    pricingSourceBuiltin: string
+    pricingUpdatedAt: (value: string) => string
+    pricingGeneratedAt: (value: string) => string
+    pricingModelCount: (n: number) => string
+    costKnownFloor: (tokens: string) => string
+    costFallbackPricing: string
     heatmapTitle: string
     heatmapDaily: string
     heatmapWeekly: string

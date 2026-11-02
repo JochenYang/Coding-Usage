@@ -10,6 +10,18 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- 本地 Agent 成本改以 models.dev 官方厂商价为主：只取厂商自有店面，过滤第三方与 coding-plan/token-plan 的零价条目；OpenRouter 仅在 models.dev 拉取失败时兜底。内置快照重新生成（251 个模型，2026-11-02），旧的 OpenRouter 价格缓存升级后自动失效
+- 计价补齐 cache read/write 默认倍率（input × 0.1 / × 1.25）、长上下文分档、fast/flex 倍率与常见路由前缀匹配；长上下文分档只在单条消息聚合时启用，避免把整日多请求误按高价档计费。历史用量在每次扫描时按当前价格表重新计价，避免新旧价源混算；tokscale 只提供单一 cacheWrite 桶，1h 缓存写入暂按 5m/默认价计
+- 成本页显示价格来源、更新时间与覆盖模型数，并增加「已知成本下限」和兜底价格提示；缺价 token 不再静默按 0 混入总额
+
+### English
+- Local-agent cost now uses models.dev official vendor prices: only vendor-owned storefronts are accepted, filtering third-party and coding-plan/token-plan zero-price listings; OpenRouter is only a fallback when models.dev cannot be fetched. The builtin snapshot is regenerated (251 models, 2026-11-02), and the old OpenRouter price cache is invalidated on upgrade
+- Pricing now fills cache read/write defaults (input × 0.1 / × 1.25), long-context tiers, fast/flex multipliers and common route-prefix matching; long-context tiers apply only to single-message aggregates so a busy day is not billed at the high-context rate. History is repriced against the current table on every scan so old and new price sources cannot mix; tokscale exposes one cacheWrite bucket, so 1h cache writes use the 5m/default rate
+- The cost page shows the price source, update time and model count, plus a known-cost floor and fallback-price note; unpriced tokens are no longer silently folded into the total as zero
+
 ## [v0.8.3] - 2026-11-02
 
 ### 中文

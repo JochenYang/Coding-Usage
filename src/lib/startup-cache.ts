@@ -1,5 +1,5 @@
 import type { ProviderResult } from '../types'
-import { AGENT_CLIENTS, type AgentUsageVM } from './agent-usage'
+import { AGENT_CLIENTS, readPricingMeta, type AgentUsageVM } from './agent-usage'
 
 /**
  * Startup cache for the two slow-to-compute surfaces (provider fetch results
@@ -162,6 +162,13 @@ export function loadCachedAgentUsage(): AgentUsageVM | null {
       ...parsed,
       skippedClients: Array.isArray(parsed.skippedClients) ? parsed.skippedClients : null,
       modelDaily: normalizeModelRows(parsed.modelDaily),
+      pricing: readPricingMeta(parsed.pricing),
+      priceCoverage: {
+        monthUnknownTokens:
+          typeof parsed.priceCoverage?.monthUnknownTokens === 'number' ? parsed.priceCoverage.monthUnknownTokens : 0,
+        monthFallbackTokens:
+          typeof parsed.priceCoverage?.monthFallbackTokens === 'number' ? parsed.priceCoverage.monthFallbackTokens : 0,
+      },
       clients: normalizeClientRows(parsed.clients),
       todayTotal: withCacheWrite(parsed.todayTotal),
       monthTotal: withCacheWrite(parsed.monthTotal),

@@ -166,6 +166,22 @@ export interface ModelDailySeriesVM {
   total: number[]
 }
 
+/** Price table that produced this scan's cost figures */
+export interface PricingMetaVM {
+  source: 'models.dev' | 'openrouter' | 'builtin'
+  fetchedAt: number
+  generatedAt?: string
+  modelCount: number
+}
+
+/** Token coverage of the price table for the current month */
+export interface PriceCoverageVM {
+  /** Tokens whose model had no price and no usable cost from the scan */
+  monthUnknownTokens: number
+  /** Tokens priced outside our catalogue (tokscale's own fallback) */
+  monthFallbackTokens: number
+}
+
 export interface AgentUsageVM {
   clients: AgentClientVM[]
   /** Unclassified contributions (missing/synthetic client ids) — keeps the
@@ -191,6 +207,10 @@ export interface AgentUsageVM {
   scannedAt: number | null
   error: string | null
   loading?: boolean
+  /** Which price table priced this scan; null on old cached payloads */
+  pricing: PricingMetaVM | null
+  /** Month token coverage of the price table */
+  priceCoverage: PriceCoverageVM
 }
 
 function zero(): AgentPeriodVM {
@@ -220,7 +240,7 @@ interface GraphContribution {
     tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; reasoning?: number }
     cost?: number
     messages?: number
-    /** Set by the main process when repriced from the OpenRouter catalog */
+    /** Set by the main process when repriced from the shared price table */
     priced?: boolean
   }[]
 }
@@ -333,6 +353,7 @@ function emptyVM(
   error: string | null,
   skippedClients: string[] | null = null,
   skippedDetails?: Record<string, string>,
+  pricing: PricingMetaVM | null = null,
 ): AgentUsageVM {
   return {
     clients: AGENT_CLIENTS.map((c) => ({
@@ -356,6 +377,8 @@ function emptyVM(
     skippedDetails,
     scannedAt: null,
     error,
+    pricing,
+    priceCoverage: { monthUnknownTokens: 0, monthFallbackTokens: 0 },
   }
 }
 
@@ -371,6 +394,22 @@ function addPeriod(a: AgentPeriodVM, b: AgentPeriodVM): AgentPeriodVM {
   }
 }
 
+/** Narrow the price-table descriptor attached by the main process */
+export function readPricingMeta(value: unknown): PricingMetaVM | null {
+  if (value == null || typeof value !== 'object') return null
+  const meta = value as Record<string, unknown>
+  const source = meta.source
+  if (source !== 'models.dev' && source !== 'openrouter' && source !== 'builtin') return null
+  if (typeof meta.fetchedAt !== 'number' || !Number.isFinite(meta.fetchedAt)) return null
+  if (typeof meta.modelCount !== 'number' || !Number.isFinite(meta.modelCount)) return null
+  return {
+    source,
+    fetchedAt: meta.fetchedAt,
+    ...(typeof meta.generatedAt === 'string' ? { generatedAt: meta.generatedAt } : {}),
+    modelCount: meta.modelCount,
+  }
+}
+
 /**
  * Turn the raw `tokscale:scan` IPC payload (one `graph` data set with
  * `contributions[]`) into the view model. Never throws: malformed input falls
@@ -379,7 +418,15 @@ function addPeriod(a: AgentPeriodVM, b: AgentPeriodVM): AgentPeriodVM {
  */
 export function summarizeScan(raw: unknown): AgentUsageVM {
   if (!raw || typeof raw !== 'object') return emptyVM(null)
-  const root = raw as { daily?: unknown; error?: string; skippedClients?: unknown; skippedDetails?: unknown; scannedAt?: unknown }
+  const root = raw as {
+    daily?: unknown
+    error?: string
+    skippedClients?: unknown
+    skippedDetails?: unknown
+    scannedAt?: unknown
+    pricing?: unknown
+  }
+  const pricing = readPricingMeta(root.pricing)
   const skippedClients = Array.isArray(root.skippedClients)
     ? root.skippedClients.filter((c): c is string => typeof c === 'string')
     : null
@@ -391,7 +438,7 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
           ),
         )
       : undefined
-  if (typeof root.error === 'string' && root.error) return emptyVM(root.error, skippedClients, skippedDetails)
+  if (typeof root.error === 'string' && root.error) return emptyVM(root.error, skippedClients, skippedDetails, pricing)
 
   const daily = (root.daily ?? {}) as { contributions?: unknown }
   const contribs: GraphContribution[] = (Array.isArray(daily.contributions) ? daily.contributions : [])
@@ -400,7 +447,7 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
     )
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
 
-  if (contribs.length === 0) return emptyVM('no data', skippedClients, skippedDetails)
+  if (contribs.length === 0) return emptyVM('no data', skippedClients, skippedDetails, pricing)
 
   // Buckets anchor to the REAL local date, not "the last row": a dataset that
   // ends yesterday (no usage today yet) must show 0 for today, not relabel
@@ -412,6 +459,11 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
   let todayTotal = zero()
   let monthTotal = zero()
   let allTimeTotal = zero()
+  // Month-level price coverage: tokens not repriced from our table, and the
+  // subset of those with no usable cost at all (the displayed total is then a
+  // known-cost floor rather than a full bill).
+  let monthFallbackTokens = 0
+  let monthUnknownTokens = 0
   let otherAll: AgentPeriodVM = zero()
   let otherMonth: AgentPeriodVM = zero()
   let otherToday: AgentPeriodVM = zero()
@@ -464,6 +516,10 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
       for (const e of c.clients ?? []) {
         const period = entryPeriod(e)
         dayFromClients = addPeriod(dayFromClients, period)
+        if (isMonthDay && e.priced !== true) {
+          monthFallbackTokens += period.tokens
+          if (!(numberOr(e.cost) > 0)) monthUnknownTokens += period.tokens
+        }
         const owner = typeof e.client === 'string' && e.client ? e.client : '__other__'
         // Unclassified entries take the same route as the historical branch:
         // straight into the "other" buckets. They stay out of dayFromClients
@@ -506,6 +562,10 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
     } else {
       for (const e of c.clients ?? []) {
         const period = entryPeriod(e)
+        if (isMonthDay && e.priced !== true) {
+          monthFallbackTokens += period.tokens
+          if (!(numberOr(e.cost) > 0)) monthUnknownTokens += period.tokens
+        }
         const owner = typeof e.client === 'string' && e.client ? e.client : '__other__'
         if (owner === '__other__') {
           otherAll = addPeriod(otherAll, period)
@@ -640,6 +700,8 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
         ? root.scannedAt
         : null,
     error: null,
+    pricing,
+    priceCoverage: { monthUnknownTokens, monthFallbackTokens },
   }
 }
 
