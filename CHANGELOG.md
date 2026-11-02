@@ -14,9 +14,13 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 
 ### 中文
 - Antigravity 额度接口按当前 Cloud Code 协议重写：User-Agent 改为 `antigravity/hub/<版本>`（版本从官方更新清单读取），旧的 1.x 版本标识会让服务端返回裁剪过的额度摘要、静默丢掉 Gemini 组；同时补上 `loadCodeAssist` 的 project 参数，并在摘要为空时用 `fetchAvailableModels` 的每模型额度重建 5 小时池。`remainingFraction` 省略按 0% 处理，额度耗尽的一档不再从卡片消失
+- 告警中心、概览「近期告警」、账户页与侧边栏的相对时间不再只显示分钟：超过 60 分钟显示「x 小时 x 分钟前」，超过 24 小时显示「x 天 x 小时前」，两个月前的旧告警不再显示成 `78776 分钟前`
+- 告警中心「已恢复」徽标从标题行移到右侧状态区，与时间文本共用一条垂直居中的线（两者此前相差 8px）
 
 ### English
 - Rewrite the Antigravity quota probe against the current Cloud Code protocol: the User-Agent now identifies as `antigravity/hub/<version>` (version read from the official updater manifest) because a 1.x build string makes the service return a reduced summary with the Gemini pool silently dropped; the probe also names the `loadCodeAssist` project and rebuilds the 5-hour pools from `fetchAvailableModels` when the summary is empty. An omitted `remainingFraction` reads as 0%, so an exhausted pool no longer disappears from the card
+- Relative times in the alerts center, the overview "Recent alerts" card, the accounts page and the sidebar step up past minutes: over 60 minutes reads "x h x min ago", over 24 hours "x d x h ago", so an old alert no longer says "78776 min ago"
+- The alerts center's "Resolved" badge moved from the title line to the right-hand status group, sharing one vertically centred line with the time text (the two were 8px apart)
 
 ## [v0.8.2] - 2026-10-31
 

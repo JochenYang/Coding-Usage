@@ -19,6 +19,7 @@ import { alertDetail, alertTitle } from '@/lib/alert-text'
 import { resolveThresholds } from '@/lib/alerts'
 import type { AlertThresholds } from '@/types'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
+import { formatAgoShort } from '@/lib/format'
 
 export interface AlertsPageProps {
   className?: string
@@ -81,23 +82,21 @@ function AlertRow({ alert, now, onRead }: AlertRowProps) {
           }
         </span>
         <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1.5">
-            <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
-              {alertTitle(alert, t)}
-            </span>
-            {alert.resolved && (
-              <span className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10px] text-subtle">
-                {t.manage.alertResolved}
-              </span>
-            )}
+          <span className="block truncate text-xs font-medium text-foreground">
+            {alertTitle(alert, t)}
           </span>
           {detail && <span className="block text-[11px] text-muted-foreground">{detail}</span>}
         </span>
-        {/* Clock skew can make the diff negative; that still counts as "just now" */}
-        <span className="shrink-0 text-[11px] text-subtle">
-          {now - alert.firstSeenAt < 60_000
-            ? t.overview.agoJust
-            : t.overview.agoShort(Math.floor((now - alert.firstSeenAt) / 60_000))}
+        {/* Status and time share one centred line; the resolved badge used to sit
+            on the title's baseline and read a few pixels above the time. */}
+        <span className="flex shrink-0 items-center gap-2">
+          {alert.resolved && (
+            <span className="rounded-full bg-muted px-1.5 py-px text-[10px] leading-4 text-subtle">
+              {t.manage.alertResolved}
+            </span>
+          )}
+          {/* Clock skew can make the diff negative; that still counts as "just now" */}
+          <span className="text-[11px] text-subtle">{formatAgoShort(now - alert.firstSeenAt, t)}</span>
         </span>
       </button>
     </li>

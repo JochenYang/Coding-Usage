@@ -119,6 +119,8 @@ export interface Dict {
     countdownDaysHours: (d: number, h: number) => string
     agoSeconds: (s: number) => string
     agoMinutes: (m: number) => string
+    agoHoursMinutes: (h: number, m: number) => string
+    agoDaysHours: (d: number, h: number) => string
     expiresToday: string
     expiresInDays: (n: number) => string
     expiresOverdueDays: (n: number) => string
@@ -177,6 +179,8 @@ export interface Dict {
     allNormal: string
     updatedJustNow: string
     updatedAgo: (m: number) => string
+    updatedHoursMinutes: (h: number, m: number) => string
+    updatedDaysHours: (d: number, h: number) => string
     never: string
   }
   pages: {
@@ -310,6 +314,8 @@ export interface Dict {
     alertBalanceDetail: (s: string) => string
     agoJust: string
     agoShort: (m: number) => string
+    agoHoursMinutes: (h: number, m: number) => string
+    agoDaysHours: (d: number, h: number) => string
     searchPlan: string
     allPlans: string
     allAccounts: string

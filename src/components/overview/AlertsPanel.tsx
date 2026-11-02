@@ -4,6 +4,7 @@ import type { AlertItem, AlertKind, AlertLevel } from '@/lib/alerts'
 import { alertDetail, alertTitle } from '@/lib/alert-text'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
 import { useT } from '@/i18n/useT'
+import { formatAgoShort } from '@/lib/format'
 
 export interface AlertsPanelProps {
   alerts: AlertItem[]
@@ -53,9 +54,7 @@ function AlertRow({ alert, now }: { alert: AlertItem; now: number }) {
       </div>
       {/* Clock skew can make the diff negative; that still counts as "just now" */}
       <span className="shrink-0 text-[11px] text-subtle">
-        {now - alert.firstSeenAt < 60_000
-          ? t.overview.agoJust
-          : t.overview.agoShort(Math.floor((now - alert.firstSeenAt) / 60_000))}
+        {formatAgoShort(now - alert.firstSeenAt, t)}
       </span>
     </li>
   )

@@ -74,8 +74,13 @@ export function Sidebar({ view, onNavigate }: { view: View; onNavigate: (v: View
 
   const updatedLabel = (() => {
     if (lastUpdated == null) return t.status.never
-    const mins = Math.floor((Date.now() - lastUpdated) / 60_000)
-    return mins < 1 ? t.status.updatedJustNow : t.status.updatedAgo(mins)
+    const elapsed = Date.now() - lastUpdated
+    if (elapsed < 60_000) return t.status.updatedJustNow
+    const mins = Math.floor(elapsed / 60_000)
+    if (mins < 60) return t.status.updatedAgo(mins)
+    const hours = Math.floor(mins / 60)
+    if (hours < 24) return t.status.updatedHoursMinutes(hours, mins % 60)
+    return t.status.updatedDaysHours(Math.floor(hours / 24), hours % 24)
   })()
 
   return (

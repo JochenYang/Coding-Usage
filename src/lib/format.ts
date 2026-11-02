@@ -35,12 +35,31 @@ export function currencySymbol(code: string): string {
   }
 }
 
-/** Relative time: "x minutes ago" / "x 秒前更新". */
+/**
+ * Compact "time since" label for alert rows: just now / minutes / hours and
+ * minutes / days and hours. A long-lived alert must not read as "78776 分钟前".
+ */
+export function formatAgoShort(elapsedMs: number, t: Dict): string {
+  const min = Math.max(0, Math.floor(elapsedMs / 60_000))
+  if (min < 1) return t.overview.agoJust
+  if (min < 60) return t.overview.agoShort(min)
+  const hours = Math.floor(min / 60)
+  if (hours < 24) return t.overview.agoHoursMinutes(hours, min % 60)
+  const days = Math.floor(hours / 24)
+  return t.overview.agoDaysHours(days, hours % 24)
+}
+
+/** Relative time: "x minutes ago" / "x 秒前更新", stepping up to hours and days. */
 export function formatAgo(fetchedAt: number | undefined, now: number, t: Dict): string {
   if (!fetchedAt) return ''
   const sec = Math.max(0, Math.floor((now - fetchedAt) / 1000))
   if (sec < 60) return t.time.agoSeconds(sec)
-  return t.time.agoMinutes(Math.floor(sec / 60))
+  const min = Math.floor(sec / 60)
+  if (min < 60) return t.time.agoMinutes(min)
+  const hours = Math.floor(min / 60)
+  if (hours < 24) return t.time.agoHoursMinutes(hours, min % 60)
+  const days = Math.floor(hours / 24)
+  return t.time.agoDaysHours(days, hours % 24)
 }
 
 /**
