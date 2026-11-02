@@ -10,7 +10,7 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
-## [Unreleased]
+## [v0.8.4] - 2026-11-02
 
 ### 中文
 - 本地 Agent 成本改以 models.dev 官方厂商价为主：只取厂商自有店面，过滤第三方与 coding-plan/token-plan 的零价条目；OpenRouter 仅在 models.dev 拉取失败时兜底。内置快照重新生成（251 个模型，2026-11-02），旧的 OpenRouter 价格缓存升级后自动失效
