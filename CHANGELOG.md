@@ -10,6 +10,22 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.8.5] - 2026-11-02
+
+### 中文
+- 套餐额度补上两家新来源，填写 token 即可查询：Cursor（/api/usage-summary，用 token 里的 JWT 现算 WorkosCursorSessionToken cookie）与 GitHub Copilot（copilot_internal/user，把「剩余百分比」换算成已用）；两者作为服务商接入，支持多账号与套餐筛选
+- Codex 卡片补上接口已返回但此前未解析的信息：计划类型、随用随付余额、可用重置次数与个人限额；窗口时间同时接受 reset_at 与 resets_at（ISO 形式此前会被误读成 2026 这个数字）
+- Claude 卡片补上 limits[] 里的按模型周限额，模型级额度耗尽不再显示成一切正常
+- Z.ai 套餐额度在接口只给 currentValue / usage 而不给 percentage 时按两者比值反推，不再静默丢掉整条窗口
+- 灵动岛入场与退场统一成同一段物理：内容在壳长完前落定、收缩时文字先退净再让胶囊收尾，并去掉透明置顶窗口上逐帧的模糊滤镜；收缩时长由 300ms 调整为 280ms
+
+### English
+- Two new plan-quota sources, both keyed by a pasted token: Cursor (/api/usage-summary, with the WorkosCursorSessionToken cookie derived from the token's JWT) and GitHub Copilot (copilot_internal/user, converting the reported remaining percentage into used). Both are providers, so multi-account and plan filtering work the same way
+- The Codex card now reads what the endpoint already returned: plan type, pay-as-you-go balance, reset credits and the personal spend cap. Window times accept reset_at and resets_at, the ISO form of which used to be misread as the number 2026
+- The Claude card now shows the model-scoped weekly limits from limits[], so an exhausted per-model allowance no longer looks like a healthy account
+- Z.ai plan windows derive their percentage from currentValue / usage when the API omits percentage, instead of silently dropping the window
+- The dynamic island open and close now run as one gesture: content lands before the shell finishes growing, text clears before the pill finishes collapsing, and the per-frame blur filter is gone from the transparent overlay; the collapse is 280ms instead of 300ms
+
 ## [v0.8.4] - 2026-11-02
 
 ### 中文
