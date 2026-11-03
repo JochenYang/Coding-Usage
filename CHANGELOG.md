@@ -10,6 +10,20 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.8.7] - 2026-11-03
+
+### 中文
+- 套餐计划页的卡片可以拖动调整顺序，官方订阅额度那九张卡同样支持；顺序保存在本地设置里，重载、重启后保持，导入导出也一并带上。键盘也能排序：聚焦卡片后用方向键移动，屏幕阅读器会播报新位置
+- 筛选状态下拖动只重排当前可见的卡片，被筛掉的卡片保持原位置；新增或删除账号不会打乱已排好的顺序
+- 修复拖动时卡片不跟手、整体偏移的问题：换位会移动卡片的 DOM 节点并让浏览器释放指针捕获（改为在 window 上监听），悬停动画与拖拽共用同一个位移值互相覆盖（悬停改为阴影提示），位置基准用了不含滚动量的 offsetLeft/offsetTop（改为按视口矩形减去自身位移计算）
+- 修复套餐计划页出现两条竖向滚动条：屏幕阅读器的播报区用了绝对定位且没有定位祖先，把文档撑高；改为 fixed，不再参与布局
+
+### English
+- Cards on the plans page can be dragged into your own order, including all nine official-subscription cards. The order is saved in local settings and survives reloads and restarts, and is carried by settings export/import. Reordering also works from the keyboard: focus a card and use the arrow keys, with the new position announced to screen readers
+- While a filter is active, dragging reorders only the visible cards; filtered-out cards keep the slots they already occupied, and adding or removing an account does not disturb an arrangement you already made
+- Fixed the dragged card drifting away from the pointer and landing offset: reordering moves the card's DOM node, which makes the browser release pointer capture (now listened for on window), the hover animation and the drag shared one offset value and overrode each other (hover now shifts a shadow instead), and the position baseline used offsetLeft/offsetTop, which ignore the ancestor's scroll (now the viewport rect minus the element's own transform)
+- Fixed the plans page showing two vertical scrollbars: the screen-reader live region was absolutely positioned with no positioned ancestor, which pushed the document taller than the viewport; it is now fixed and takes no part in layout
+
 ## [v0.8.6] - 2026-11-02
 
 ### 中文
