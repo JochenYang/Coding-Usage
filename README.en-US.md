@@ -23,8 +23,8 @@
 ## What it does
 
 - **Real local agent usage**: [tokscale](https://github.com/junhoyeo/tokscale) scans local session logs, and the main process reads several stores tokscale cannot reach (Cindy's Pi sessions, the CodeBuddy IDE, the Qoder CLI, Trae CN's local database), covering 20-some mainstream tools — Codex, Claude Code, Kimi Code, OpenCode, Gemini CLI, Cursor, GitHub Copilot, Qwen Code, Trae, Cline, Roo Code, Cindy and more. Only tools with data are listed; today / month / all-time columns with an "as of" timestamp. Aggregate numbers only — message content never leaves your machine
-- **Provider plans & balances**: multi-account management for 10 providers (table below), each with its own official-endpoint adapter; balances aggregate into the display currency, with a hover breakdown when several pay-as-you-go providers coexist
-- **Official subscription quotas**: three cards for Codex (ChatGPT login), Claude Code and Gemini CLI read only the local login state, showing 5-hour / weekly / per-model windows with reset countdowns — credentials stay inside the main process, never reaching the renderer or disk
+- **Provider plans & balances**: multi-account management for 14 providers (table below), each with its own official-endpoint adapter; balances aggregate into the display currency, with a hover breakdown when several pay-as-you-go providers coexist
+- **Official subscription quotas**: cards for Codex, Claude Code, Gemini CLI, Grok, Trae CN, Antigravity, Kimi Code, Cursor and GitHub Copilot read the local login (or a pasted token on demand), showing 5-hour / weekly / per-model windows with reset countdowns — credentials stay inside the main process, never reaching the renderer or disk
 - **Alerts**: window-reset, high-usage and low-balance rules with adjustable thresholds in the alerts center; hover the top-bar bell for a preview (opening marks them read), with a full alerts center; pushable to WeCom group robots, WeChat (iLink), Feishu / Lark and Telegram
 - **Desktop experience**: tray-resident, close dialog (minimize to tray or quit), launch on login, light/dark/system themes, zh-CN/en-US locales, auto-update via GitHub Releases
 
@@ -42,6 +42,10 @@
 | **OpenRouter** | Account balance | Remaining = total credits − usage (USD) |
 | **StepFun** | Account balance | Account balance (CNY) |
 | **Novita** | Account balance | Available balance (USD) |
+| **Command Code GOAT** | Plan quota | Credits + 5h / weekly windows |
+| **Ollama Cloud** | Plan quota | 5h / weekly windows |
+| **Cursor** | Plan quota | Total, Auto and API measured separately; local login or pasted token |
+| **GitHub Copilot** | Plan quota | Premium request allowance; extension login or pasted token |
 
 ## Privacy & Security Boundaries
 
@@ -72,14 +76,19 @@ npm run dist:win   # Package Windows installers (NSIS + portable)
 
 ## Releasing
 
-Push a `v*` tag (e.g. `v0.1.0`) to trigger the release workflow: a draft release is created → Windows build (tsc → build → electron-builder `--publish always`) → bilingual release notes generated from `CHANGELOG.md` into the draft; review and publish manually. Maintain changes in `CHANGELOG.md` (`### 中文` / `### English` entries kept one-to-one); preview locally with `node scripts/gen-release-notes.mjs v0.1.0`.
+Push a `v*` tag; the release workflow builds all three platforms and generates bilingual release
+notes, which you review and publish as Latest. Version rules, the full sequence and local preview:
+[docs/development.md](./docs/development.md#发布). Changes are tracked in [CHANGELOG.md](./CHANGELOG.md).
 
 ## Adding a New Provider
 
-1. Create an adapter in `src/providers/` implementing `ProviderDef` (`buildRequest` + `parseResponse`)
-2. Register it in `src/providers/registry.ts` and add i18n keys in all three `src/i18n/` files
-3. Under Electron the main process connects directly (no proxy); browser mode is covered by `src/lib/query.ts`
-4. Brand icons come from `@lobehub/icons` (register the slug in `src/components/ProviderLogo.tsx`)
+Core steps (implement `ProviderDef` → register in `registry.ts` → add i18n keys → icon → end-to-end
+verification) are in [docs/development.md](./docs/development.md#新增-provider).
+
+## Documentation
+
+- Agent entry point and hard rules: [AGENTS.md](./AGENTS.md)
+- Documentation index: [docs/README.md](./docs/README.md) (architecture, development, UI spec, plans, archive)
 
 ## Tech Stack
 

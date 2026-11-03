@@ -2,221 +2,82 @@
 
 > Project-level guidance for `coding-usage`. Inherits priority and conventions from the user-level AGENTS.md. This file only adds project-specific hard constraints and collaboration details. In case of conflict, higher-priority directives take precedence.
 
-## Project Overview
+## Project at a glance
 
-A pure static React 19 + Vite 7 + TypeScript strict usage dashboard. Tech stack:
+- **Goal**: monitor AI provider usage, balances and plan quotas locally. No uploads, no proxying, no key custody.
+- **Stack**: React 19 + Vite 7 + TypeScript 5 strict; Tailwind CSS v4 (`@theme` tokens);
+  `motion/react` + self-built `src/components/beui/*`; Electron (electron-vite); vitest.
+- **Entry points**: `src/main.tsx` (renderer) → `src/App.tsx` (hash router); `electron/main.ts`
+  (windows / tray / IPC); `electron/preload.ts` (`window.desktopBridge`).
+- **Do not modify**: historical entries in `CHANGELOG.md` (append only); `.devflow/` (work records,
+  git-ignored); `dist/` and `dist-electron/` (build output).
 
-- **Styling**: Tailwind CSS v4 (`@theme` token driven)
-- **Animation / Interaction**: `motion/react` + self-built `src/components/beui/*` (Switch / Loader / Drawer / Select / Popover)
-- **Icons**: `lucide-react` (unified linear) + `lobehub icons` CDN (Provider brands) + inline SVG (SiliconFlow)
-- **State**: React 19 hooks + `localStorage`, no third-party state library
-- **Build**: Vite 7 + TypeScript 5 strict
-- **Runtime**: Browser (`dist/` via `vite build`) or desktop (`electron-vite` + Electron). Under Electron, provider APIs are fetched from the main process via `net:fetch` IPC (no CORS restrictions, no third-party proxy); in the browser they are called directly with a corsproxy.io fallback.
+## Reading order
 
-Supported Providers: OpenCode Zen Go, Zhipu GLM (Z.ai), Kimi / Moonshot, DeepSeek, SiliconFlow, OpenRouter, MiniMax Token Plan. Each provider supports multiple accounts. API keys live in `localStorage`: under Electron they are safeStorage-encrypted into `coding-usage.settings.v3` (keys prefixed `enc:v3:` in the store, decrypted in memory after mount); without a bridge they stay plain text under v2. Automatic v1→v2 and v2→v3 migration.
+1. Project overview: [README.md](./README.md) (English: [README.en-US.md](./README.en-US.md))
+2. Architecture facts: [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) — read before changing a module
+3. Development and operations: [docs/development.md](./docs/development.md) — commands, tests, release, adding a provider
+4. UI / component spec: [docs/DESIGN_SYSTEM.md](./docs/DESIGN_SYSTEM.md) — read before touching UI
+5. Documentation index: [docs/README.md](./docs/README.md)
+6. Current plans: [docs/plans/](./docs/plans/) (no plan in progress right now)
 
-## Directory Structure
+## Hard rules
 
-```
-electron/
-  main.ts                # Electron main: windows, tray, IPC (net:fetch / safe:* / tokscale:scan), auto-update
-  preload.ts             # contextBridge exposing window.desktopBridge (typed in src/globals.d.ts)
-  kimi-usage.ts          # Kimi Code quota probe: local CLI state + loopback / remote usage endpoints; the token stays in main
-  codebuddy-usage.ts     # CodeBuddy CN IDE message-store usage reader (tokscale graph-shaped payload)
-  qoder-usage.ts         # Qoder CLI transcript usage reader (tokscale graph-shaped payload)
-  trae-usage.ts          # Trae CN credits probe: decrypts the IDE's tc login blob in-memory; JWT stays in main
-  trae-local-usage.ts    # Trae CN / SOLO CN local usage: SQLCipher key scan of the running IDE + page-level decrypt of chat_turn token_usage
-src/
-  App.tsx                # Shell host: view router (hash) + account editor session
-  main.tsx               # ReactDOM entry
-  types.ts               # Shared type definitions
-  components/
-    layout/              # AppShell / Sidebar (nav + status card) / TopBar (agent filter / auto-refresh / bell / settings)
-    common/              # ProgressBar / Badge / SearchInput / PageHeader / StatCard / EmptyState / Tooltip
-    charts/              # Self-built SVG: LineChart / DonutChart / StackedBarLineChart / MultiSeriesChart / ModelCompareChart, shared ChartLegend + ChartTooltip
-    overview/            # KpiRow / TrendCard / DistributionCard / AttentionList / AlertsPanel / LocalUsageCard / KimiQuotaCard
-    account/             # AccountDrawer (single-account editor: alias / key / region / enable / test)
-    beui/                # Self-built components: drawer / loader / switch / select / popover / confirm-dialog
-    ProviderLogo.tsx     # Brand logo via bundled @lobehub/icons (offline) + letter fallback
-    GitHubIcon.tsx       # GitHub mark inline SVG (lucide-react dropped brand icons)
-    LocaleSwitcher.tsx   # Language switcher
-  pages/                 # OverviewPage + 11 management/analysis pages (see router.ts VIEWS)
-  providers/             # Provider adapters (implementing ProviderDef)
-    registry.ts          # PROVIDERS list + getProvider
-    opencode / zhipu / kimi / deepseek / siliconflow / openrouter / minimax
-  lib/
-    cn.ts                # clsx + tailwind-merge
-    format.ts            # Countdown / amount / currency symbol / relative time
-    metric-helpers.ts    # UNLIMITED_KEY shared constant
-    ease.ts                # Single motion authority for easing curves: EASE_OUT / EASE_IN_OUT
-    query.ts             # fetchUsage + transportFetch (main-process bridge under Electron, plain fetch in browser)
-    storage.ts           # loadSettings / persistSettings (v3 encrypt+verify) / v1→v2→v3 migration
-    router.ts            # View union + hash sync (no router library)
-    data-context.tsx     # App-wide state: settings / results / alerts / agent usage / refresh scheduler
-    startup-cache.ts     # Startup replay of provider results + the agent-usage VM, with old-field repair
-    overview.ts          # Overview view-model builders (pure, testable)
-    snapshots.ts         # Local time-series store (trends / today consumption)
-    alerts.ts            # Alert derivation engine (window reset / high usage / low balance)
-    rates.ts             # Static FX rates for cross-currency totals
-    chart-math.ts        # Shared SVG chart geometry: rounded ticks / compact path data / monotone smoothing
-    trend-analysis.ts    # Trend bucketing + per-model daily series for the trends page (pure, DOM-free)
-    agent-usage.ts       # Local AI agent scanner: validates + aggregates tokscale output
-    kimi-quota.ts        # Kimi Code quota view-model: percent windows fed by the kimi:usage IPC
-    hooks/               # Shared React hooks (keyboard chart navigation, dismiss gestures, gestures)
-  i18n/                  # Locale dictionaries (zh-CN, en-US) + LocaleProvider + useT
-```
+- **Credentials**: never hardcode or print keys, tokens or cookies. Plaintext lives only in the main
+  process; never logged, never written to disk in plaintext. The renderer sees a mask by default and
+  fetches one plaintext value over a dedicated IPC only on request.
+- **Network**: renderer traffic must not go through a third-party proxy; the only exception is the
+  browser-mode corsproxy.io fallback. Under Electron every provider request goes through the
+  `net:fetch` IPC bridge.
+- **Dependencies**: do not copy third-party npm packages into `src/`; use `package.json`.
+- **Deletion**: `Grep` for references first; never delete code that is still in use.
+- **Types**: `npx tsc --noEmit` must be clean before merge; never use `// @ts-ignore`.
+- **Design**: do not use the user's screenshots as style references; adjust UI against the current
+  code and the `src/index.css` tokens.
+- **i18n**: all user-facing copy goes through `src/i18n/dict.*.ts`; `zh-CN` and `en-US` must keep
+  identical key structures (details in [development.md](./docs/development.md#国际化)).
+- **Docs**: one fact, one place; any change to behaviour, commands, interfaces or architecture
+  boundaries must update the matching document — code-only changes do not count as done. Adding or
+  moving a document means updating this reading order and [docs/README.md](./docs/README.md).
+- **Never** overwrite this file with an empty one: it is the collaboration entry point, not a placeholder.
 
-## Local agent usage (tokscale)
+### Commits and releases
 
-The overview "Local agent usage" card and the agents page read real consumption
-from local session logs (Codex / Kimi Code / OpenCode) via the
-[`tokscale`](https://github.com/junhoyeo/tokscale) CLI (`tokscale@^4.14.0`,
-platform binary ships as optional dependency). The scan happens in the Electron
-main process (`tokscale:scan` IPC — the `graph` subcommand over all configured
-clients with `--since 2020-01-01 --no-spinner`, plus a best-effort `trae sync` —
-with a 5-min in-process cache and one shared in-flight round-trip); aggregation
-lives in `src/lib/agent-usage.ts`. Renderer scans ride the shared refresh cycle
-(mount / manual buttons / auto-refresh tick, silent attempts throttled just past
-the cache window) instead of a hidden timer. DSH's versioned `session.v3.*`
-transcripts — invisible to tokscale's filename-based scanner — are hard-linked
-to the canonical discovery names before every scan (`electron/dsh-aliases.ts`,
-highest versioned name present wins: `session.v4.*` over `session.v3.*`, also
-covering the SkillSpace internal build that shares the same `~/.dsh` home).
-WorkBuddy AI's transcripts live under `~/.workbuddy-ai` — a home tokscale never
-scans — and are hard-linked into the scanned `~/.workbuddy` before every scan
-(`electron/workbuddy-aliases.ts`). Four stores tokscale cannot reach are read
-by the main process directly and merged: CodeBuddy CN IDE per-message JSON files
-(`electron/codebuddy-usage.ts`; the CLI transcripts under `~/.codebuddy/projects`
-stay on the tokscale path, merged with a double-count guard), Cindy's Pi sessions
-(`electron/cindy-usage.ts`; Cindy keeps its agent home at
-`%APPDATA%/Cindy/pi-agent-home` — Cindy's own userData, not this app's — instead
-of `~/.pi`, so tokscale's `pi` client never sees them; records are deduplicated
-by entry id because a fork/clone replays its branch into a second transcript),
-Qoder CLI
-transcripts (`electron/qoder-usage.ts`; Qoder CN bills in credits and reports
-all-zero token counters, so credits-billed turns count as messages with honest
-zero tokens) and the Trae CN / SOLO CN SQLCipher 4 store
-(`electron/trae-local-usage.ts`): a C# helper compiled once into userData scans
-the running IDE's process memory for the page-HMAC-verified key (the key never
-touches disk), the snapshot database is decrypted page-by-page with node:crypto
-and `chat_turn.context.token_usage` is aggregated per day — the IDE must be
-running, so the last aggregate (token counters only) is replayed from a userData
-cache when it is not. That merge is unconditional: tokscale's `trae` sync serves
-the international cloud account and can never overlap the CN local store.
-Everything stays local — only aggregated
-numbers are rendered, never message content. Packaging requires the
-`asarUnpack` entries in `electron-builder.yml` (spawning from inside the asar
-is impossible).
-
-`AgentUsageVM.clients[]` carries a per-agent `models[]` cross-cut in addition to
-the today / month / all-time periods: the card expands an agent into the models
-it actually called. This is the only place that attribution exists — the flat
-`todayByModel` / `monthCostByModel` views merge entries from every agent, so the
-same model id arriving from OpenCode and from Kimi Code is indistinguishable
-there. Rows sort by all-time tokens and are therefore a subset of the agent's
-own totals (an entry with no model id produces no row). `src/lib/startup-cache.ts`
-repairs `clients[].models` on read and drops rows whose client id this build no
-longer knows: a cache written before the field existed, or by another version
-with a client since removed, would otherwise throw during render and blank the
-window.
-
-`AgentPeriodVM` keeps all four token tiers (`input` / `output` / `cacheRead` /
-`cacheWrite`) plus `tokens`, and the four always sum to `tokens`. Any new tier
-must be added to `makePeriod`, `addPeriod`, `subtract` and `zero()` together, or
-the breakdown printed under an agent name stops matching the total beside it —
-a wrong-looking number rather than a crash, which is why
-`src/lib/agent-usage.test.ts` asserts the sum.
-
-## Development Commands
-
-```bash
-npm install
-npm run dev        # electron-vite dev (Electron app with HMR)
-npm run dev:web    # vite dev server, http://localhost:5173 (browser path)
-npm run build      # electron-vite build → dist-electron/ (main+preload CJS) + dist/ (renderer)
-npm run build:web  # vite build → dist/ only (browser path, no regression)
-npm run preview    # Preview web dist/
-npm run dist:win   # electron-vite build && electron-builder --win (NSIS + portable)
-```
-
-Packaging config lives in `electron-builder.yml` (appId, win targets, GitHub publish for electron-updater). The renderer is served by the electron-vite dev server in Electron dev mode (`ELECTRON_RENDERER_URL`) and loaded from `dist/index.html` when packaged.
-
-## Adding a New Provider
-
-1. Create `<id>.ts` (or `<id>.tsx`) in `src/providers/`, exporting an object implementing `ProviderDef` (`src/types.ts:46`): `buildRequest(key, regionId?)` + `async parseResponse(json, ctx?)`.
-2. Append a line to the `PROVIDERS` array in `src/providers/registry.ts:11`. For multi-region support, declare `regions` in the adapter and use `regionId` to select the baseUrl in `buildRequest`.
-3. CORS is a non-issue under Electron (main-process fetch); in the browser `src/lib/query.ts` falls back to corsproxy.io automatically. Do not add any other third-party proxy.
-4. For brand logos: prefer `lobehub` slug. For white-on-white logos, set `logoDarkInvert: true` in `types.ts:51`. Inline SVGs go in `src/components/logos/`.
-5. UI copy (name / tagline / region labels) goes through `src/i18n/dict.*.ts` provider sections; do not hardcode Chinese/English strings in adapter files for frontend rendering.
-6. Run `npx tsc --noEmit`, then test end-to-end with real keys written to `localStorage` before committing.
-
-## Design Tokens
-
-- All colors use `var(--color-*)` CSS variables, injected by Tailwind via `@theme`. Add new tokens in `src/index.css` first, then use utility classes.
-- Theme switching is done via `:root.dark` (or `html.dark`) redefining the same CSS variables. Do not hardcode hex values in components with `dark:`.
-- Provider brand gradients: keep the `accent: 'from-xxx to-xxx'` Tailwind class fragment; no need to parse into CSS variables.
-- Chart colours are tokens too: `--color-chart-1..8` is the series palette, and `--color-stack-cache` / `-input` / `-output` are the three tiers of a single hue used by the stacked bars. Palette slots come from `modelSlots()` in `src/lib/trend-analysis.ts`: one slot per model, so the filter chips, the split legend and the comparison rows all agree, with the models a chart actually draws placed first so the at-most-eight curves on one plot never share a colour.
-- `cn()` (`src/lib/cn.ts:5`) merges classes and resolves conflicts. Use clsx syntax for conditional classes.
-
-## Animation Conventions
-
-- All animations use `motion/react`. Self-built components are in `src/components/beui/`.
-- Single motion authority for easing curves is `src/lib/ease.ts` (`EASE_OUT` / `EASE_IN_OUT`); components import from `@/lib/ease` rather than re-declaring a curve.
-- Springs are declared next to the gesture that owns them rather than centralised in `ease.ts`: the drawer's panel spring is `stiffness:220 / damping:26 / mass:0.9` and its exit spring `stiffness:260 / damping:30` (`src/components/beui/drawer.tsx:32,34`); the switch thumb and the tooltip carry their own too.
-- Easing curves: `EASE_OUT = [0.16, 1, 0.3, 1]` (panel transitions); `EASE_IN_OUT = [0.45, 0, 0.55, 1]` (Loader rhythm).
-- Must support `useReducedMotion()`: degrades to opacity pulse when the user enables "reduce motion" in their system.
-
-## Code Style
-
-- TypeScript strict mode. Avoid `any`. External data (JSON / localStorage / fetch) must be validated or narrowed at runtime.
-- React function components + hooks. No class components, no extra state libraries.
-- Naming: components PascalCase, hooks camelCase (`useXxx`), utils camelCase, types PascalCase, constants UPPER_SNAKE.
-- All comments must be in English (both JSDoc and `//`). Explain design intent, constraints, and non-obvious exceptions; do not paraphrase clear code.
-- Chinese characters are allowed in user-facing copy (Provider name / tagline / region label / error messages), but only in i18n dicts or placeholder attributes. Never hardcode Chinese UI strings in component JSX.
-- Indentation: 2 spaces. Two JSX quote styles co-exist (most use `'`, beui components use `"`); follow the surrounding file's style.
-- Import order: not enforced, but suggested: third-party → `@/...` → relative → `import type`.
-
-## Internationalization (i18n)
-
-- All user-facing copy must go through `src/i18n/dict.*.ts` dictionaries, consumed via `useT()` (`src/i18n/useT.ts`).
-- Both `zh-CN` and `en-US` must have identical key structures. The `Dict` type enforces this to prevent missing/extra keys.
-- `zh-CN` is the source of truth. `en-US` must be kept in sync by the dictionary maintainer. Do not use `dict[locale][key] ?? 'Chinese fallback'` in components.
-- Exception: `<input placeholder>` text may be hardcoded (placeholder is not a critical i18n path), but add a comment explaining why.
-
-## Prohibited
-
-- Do not hardcode API keys, tokens, cookies, or any credentials. The main process must not log or persist keys beyond their safeStorage-encrypted form.
-- Do not delete any code that is still in use. First `Grep` to confirm no references, or leave a commented-out version.
-- Do not copy third-party npm dependencies into `src/`. Use `package.json`.
-- Do not skip type checking. Every merge must pass `npx tsc --noEmit`.
-- Do not use the user's screenshots as design references for style imitation. UI adjustments should be based on the current code and `index.css` tokens to avoid style drift.
-- Do not route renderer traffic through third-party proxies other than the existing corsproxy.io browser fallback; under Electron all provider requests must go through the `net:fetch` IPC bridge.
-- Do not overwrite this AGENTS.md with an empty file. It is a collaboration document, not a placeholder.
-
-## Verification Workflow
-
-- **UI changes**: Use `playwright-cli` to take screenshots (empty state / single card / settings drawer / Dark mode / mobile 375px); deliver screenshots alongside the visible UI changes.
-- **API changes**: Use real keys written to `localStorage` (`coding-usage.settings.v3` under Electron, v2 in the browser) to run `fetchUsage` end-to-end, verifying ok / error statuses through both transports (bridge fetch and plain fetch).
-- **Type / compile**: `npx tsc --noEmit` must pass with zero errors. Do not use `// @ts-ignore`.
-- **Regression**: Changes touching `src/lib/storage.ts` or `src/lib/query.ts` must additionally verify the v1→v2→v3 migration paths: encrypted v3 load + hydration, plaintext fallback when safeStorage is unavailable, and verify-then-delete of the legacy v2 key.
-- **Styling**: When modifying `@theme` tokens, confirm visual consistency across light / dark / system modes. Prefer using browser DevTools to inspect computed values over relying on class names alone.
-
-## Collaboration with Other Sub-agents
-
-- **subagent-A**: Owns `src/components/ThemeProvider.tsx` (theme implementation). Excluded from this file's scope.
-- **subagent-B**: Owns `src/i18n/**` and `src/components/LocaleSwitcher.tsx`. Excluded from this file's scope.
-- **This agent (Builder)**: Owns doc comments in `src/**/*.ts(x)` and this AGENTS.md file. Does not touch the above three.
-- When parallel editing and `old_string not found` occurs, re-read the file to confirm its current state before retrying.
-
-## Git & Commits
-
-- Commit format: `<type>(<scope>): <subject>`; subject in English imperative, lowercase, no period, ≤ 50 characters.
-- Each commit should focus on a single purpose. Split unrelated refactoring into separate commits.
-- Do not push, force-push, rebase, tag, or release without explicit authorization.
-- Once a release IS authorized, own the whole flow end to end: bump the version + finalize the CHANGELOG → commit (`chore(release): vX.Y.Z`) → tag + push → wait for the release workflow → verify the draft's bilingual notes and installers → publish it as Latest (`gh release edit vX.Y.Z --draft=false`). Never leave the release as a draft for manual publishing.
+- Commit format: `<type>(<scope>): <subject>`; subject in English imperative, lowercase, no period, ideally ≤ 50 characters.
+- One purpose per commit; split unrelated refactors into separate commits.
+- **Without explicit authorization: do not commit, push, tag, release, or rewrite history.**
+- Once a release IS authorized, own it end to end: bump the version + finalize the CHANGELOG →
+  `chore(release): vX.Y.Z` → tag and push → wait for the workflow → verify the draft's bilingual
+  notes and installers → publish as Latest. Details in [development.md](./docs/development.md#发布).
 
 ### Version numbering
 
-- Every release is exactly three parts, `vX.Y.Z`, and the patch steps by one: `v0.8.0` is followed by `v0.8.1`. This holds regardless of what the release contains — a new feature, a bug fix and a refactor all take the same step. While the major version is 0 there is no "a feature bumps the minor" rule: SemVer's `minor` clause is scoped to `x > 0`, and it does not apply here.
-- The patch is a single digit: `Z` counts 0–9, so stepping past 9 carries into the minor instead of widening the patch. `v0.8.9` is followed by `v0.9.0`, never `v0.8.10`. The carry repeats one position up (`v0.9.9` → `v1.0.0`).
-- History: `v0.5.10` was tagged before the single-digit rule existed, and `v0.7.1` → `v0.8.0` was cut by reading SemVer's minor clause as applicable to a 0.y.z project. Neither is reversible — the sequence continues from `v0.8.0`.
+- Exactly three parts, `vX.Y.Z`, and the patch steps by one — a feature, a fix and a refactor all take
+  the same step. While the major version is 0 there is no "a feature bumps the minor" rule.
+- The patch is a single digit (0–9): `v0.8.9` is followed by `v0.9.0`, never `v0.8.10`; the carry
+  repeats one position up (`v0.9.9` → `v1.0.0`).
+- History: `v0.5.10` predates the single-digit rule, and `v0.7.1` → `v0.8.0` came from misreading
+  SemVer's minor clause. Neither is reversible; the sequence continues from `v0.8.0`.
+
+## Command index
+
+| Purpose | Command |
+|---|---|
+| Install | `npm install` |
+| Desktop dev (HMR) | `npm run dev` |
+| Renderer only | `npm run dev:web` |
+| Full build | `npm run build` |
+| Browser-only build | `npm run build:web` |
+| Type check | `npx tsc --noEmit` |
+| Unit tests | `npm test` |
+| Windows packaging | `npm run dist:win` |
+
+Command side effects, build-output relationships and the verification flow are in
+[development.md](./docs/development.md#命令).
+
+## Definition of done
+
+- Code, tests and docs agree; `npx tsc --noEmit` and `npm test` pass.
+- No link points at a document that does not exist; every document touched by the change is updated.
+- Plans, reviews and work logs stay out of the current-fact documents; no empty checklist documents
+  created just to match a template.

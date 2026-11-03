@@ -23,8 +23,8 @@
 ## 它能做什么
 
 - **本地 Agent 真实用量**：经 [tokscale](https://github.com/junhoyeo/tokscale) 扫描本机会话日志，加上主进程直接读取的几类本地存储（如 Cindy 的 Pi 会话、CodeBuddy IDE、Qoder CLI、Trae 国内版本地库），覆盖 Codex、Claude Code、Kimi Code、OpenCode、Gemini CLI、Cursor、GitHub Copilot、Qwen Code、Trae、Cline、Roo Code、Cindy 等 20 余种主流工具——只显示检测到数据的工具，今日 / 本月 / 累计三栏 + 「数据截至」时间标注；仅聚合数字上屏，永远不读取消息内容
-- **服务商套餐与余额**：多账号管理 10 家服务商（见下表），每家独立适配官方端点；余额按显示币种聚合，多家并存时悬停可看逐家明细
-- **官方订阅额度**：Codex（ChatGPT 登录）、Claude Code、Gemini CLI 三张订阅卡只读本机登录态，展示 5 小时 / 每周 / 逐模型配额窗口与重置倒计时——凭据始终留在主进程内存，不进渲染层、不落磁盘
+- **服务商套餐与余额**：多账号管理 14 家服务商（见下表），每家独立适配官方端点；余额按显示币种聚合，多家并存时悬停可看逐家明细
+- **官方订阅额度**：Codex、Claude Code、Gemini CLI、Grok、Trae CN、Antigravity、Kimi Code、Cursor、GitHub Copilot 的订阅卡只读本机登录态（或按需粘贴 token），展示 5 小时 / 每周 / 逐模型配额窗口与重置倒计时——凭据始终留在主进程内存，不进渲染层、不落磁盘
 - **告警体系**：窗口即将重置、用量过高、低余额三类规则，阈值在告警中心可调；顶栏铃铛悬停预览（打开即视为已读），告警中心集中管理；可推送到企业微信群机器人、微信（iLink）、飞书 / Lark、Telegram
 - **桌面体验**：托盘常驻、关窗可选「最小化到托盘 / 退出」、开机自启、深浅色主题（跟随系统）、中英双语、自动更新（GitHub Releases）
 
@@ -42,6 +42,10 @@
 | **OpenRouter** | 账户余额 | 剩余 = 累计充值 − 已用（USD） |
 | **StepFun** | 账户余额 | 账户余额（CNY） |
 | **Novita** | 账户余额 | 可用余额（USD） |
+| **Command Code GOAT** | 套餐配额 | 额度 + 5h / 周窗口 |
+| **Ollama Cloud** | 套餐配额 | 5h / 周窗口 |
+| **Cursor** | 套餐配额 | 总额度与 Auto / API 分开计量；读本地登录或粘贴 token |
+| **GitHub Copilot** | 套餐配额 | 高级请求余量；读扩展本地登录或粘贴 token |
 
 ## 隐私与安全边界
 
@@ -72,14 +76,19 @@ npm run dist:win   # 打包 Windows 安装包（NSIS + portable）
 
 ## 发布
 
-推 `v*` tag（如 `v0.1.0`）触发 release workflow：预建 draft release → Windows 构建（tsc → build → electron-builder `--publish always`）→ 从 `CHANGELOG.md` 生成双语 release notes 写入草稿，人工核对后发布。变更记录在 `CHANGELOG.md` 维护（`### 中文` / `### English` 条目一一对应），本地可用 `node scripts/gen-release-notes.mjs v0.1.0` 预览。
+推 `v*` tag 触发 release workflow 构建三平台并生成双语 release notes，核对后发布为 Latest。
+版本号规则、完整步骤与本地预览见 [docs/development.md](./docs/development.md#发布)。
+变更记录在 [CHANGELOG.md](./CHANGELOG.md) 维护。
 
 ## 新增 Provider
 
-1. 在 `src/providers/` 新建 adapter，实现 `ProviderDef`（`buildRequest` + `parseResponse`）
-2. 在 `src/providers/registry.ts` 注册，`src/i18n/` 三处补文案键
-3. Electron 下主进程直连无需代理；浏览器模式由 `src/lib/query.ts` 兜底
-4. 品牌图标用 `@lobehub/icons`（`src/components/ProviderLogo.tsx` 注册 slug）
+核心步骤（实现 `ProviderDef` → 注册 `registry.ts` → i18n 三处补键 → 图标 → 端到端验证）见
+[docs/development.md](./docs/development.md#新增-provider)。
+
+## 文档
+
+- Agent 入口与硬规则：[AGENTS.md](./AGENTS.md)
+- 文档索引：[docs/README.md](./docs/README.md)（架构事实 / 开发与操作 / UI 规范 / 计划 / 归档）
 
 ## 技术栈
 

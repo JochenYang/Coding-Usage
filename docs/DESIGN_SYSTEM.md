@@ -4,14 +4,17 @@
 > 与 `src/components/**`（组件实现）。本文档是其可读映射，发现与源码不一致时以源码为准，
 > 并回更新本文档。
 > 定位：为个人开发者在桌面端长时间监控多家 AI 供应商用量时，提供冷静、高密度、可信的数据仪表盘。
+>
+> 状态：current · 更新触发：视觉方向、Token、组件规格或动效约定变化时。
 
 ## 0. Discovery Notes（系统现状快照）
 
 - 系统现状：**有成体系系统**。Tailwind v4 `@theme` 语义 Token 被全站消费（`bg-card` / `text-muted-foreground`
   等），`.dark` 类切换主题，共享组件集中在 `common/`、`beui/`、`charts/`、`layout/`。
-- Source of Truth：`src/index.css:6-65`（全部颜色 Token + 明暗两套映射）；动效唯一权威 `src/lib/ease.ts`。
-- 缺口：图表分类色板（`lib/overview.ts:192`）非主题感知（SVG `stroke` 属性无法消费 CSS 变量，
-  已收敛为单源常量 + 文档化为例外，见 §10）。
+- Source of Truth：`src/index.css` 的 `@theme` 块（全部颜色 Token + 明暗两套映射，`.dark` 覆盖）；
+  动效的缓动权威是 `src/lib/ease.ts`，弹簧按手势就近声明（见 §7）。
+- 缺口：图表分类色板（`src/lib/overview.ts` 的 `DIST_COLORS` / `DIST_OTHER_COLOR`）非主题感知
+  （SVG `stroke` 属性无法消费 CSS 变量，已收敛为单源常量 + 文档化为例外，见 §10）。
 - 冲突记录：已解决。动效曾分裂为 `motion-presets.ts` / `ease.ts` / `drawer.tsx` 三套；
   现已合并至 `ease.ts`（`motion-presets.ts` 删除，6 处引用改道；`EASE_OUT` 两处值原本相同，
   零运行时变化），`AGENTS.md` 动效段已同步修订。
@@ -179,3 +182,16 @@ Accessibility 五条（组件评审 + 实现后各走查一次）：焦点可见
 3. 局部样式被复制第二次时回收进共享组件，或显式记录为例外（含理由与位置）。
 4. 提交前：`npx tsc --noEmit` 零错误；复扫硬编码（新增命中 = 0）；UI 改动附截图
    （空态 / 单卡 / 抽屉 / 暗色 / 375px）。
+
+## 12. 样式工程约定
+
+- **Token 入口**：所有颜色用 `var(--color-*)`，经 Tailwind `@theme` 注入；新增 token 先写
+  `src/index.css`，再在组件用语义类名。主题切换靠 `:root.dark` 重定义同一批变量，组件里不得用
+  `dark:` 硬编码颜色值。
+- **组件类名合并**：用 `cn()`（`src/lib/cn.ts`，clsx + tailwind-merge）合并与消解冲突，条件类名走 clsx 语法。
+- **图表色板**：`--color-chart-1..8` 是系列色板；`--color-stack-cache` / `-input` / `-output` 是
+  堆叠柱的同一色相三级。槽位由 `src/lib/trend-analysis.ts` 的 `modelSlots()` 分配（一模型一槽），
+  保证筛选 chip、拆分图例与对比行颜色一致，且一屏最多八条曲线不撞色。
+- **动效实现**：统一用 `motion/react`；自建组件在 `src/components/beui/`。缓动只从
+  `@/lib/ease` 取（`EASE_OUT` / `EASE_IN_OUT`），弹簧写在使用它的手势组件里；所有动效必须读
+  `useReducedMotion()` 并降级为透明度脉冲或静止。

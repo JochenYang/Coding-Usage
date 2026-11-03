@@ -1,6 +1,6 @@
 # 死代码清理与趋势分析修正 + 历史累计总耗量
 
-- Status: active
+- Status: completed（已归档）
 - Plan date: 2026-10-10
 
 ## Goal

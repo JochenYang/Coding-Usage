@@ -1,5 +1,7 @@
 # Token Monitor 接口调研（集成参考）
 
+> **状态：historical**（历史调研快照，仅作参考，不作为当前事实；上游接口可能已变化）。
+
 > 调研对象：[Javis603/token-monitor](https://github.com/Javis603/token-monitor)（MIT）。原本地快照 `token-monitor/` 已在调研完成后删除，文中所有 `文件:行号` 引用对应上游 commit `c493a20`（feat(kimi): integrate Kimi Work usage and project attribution, #453），需要复核时重新 clone 该 commit 即可。
 > 目的：为 coding-usage 桌面化改造与后续集成提供接口契约依据。
 > 结论以 **源码核对** 为准（标注 `文件:行号`），上游自带文档（`docs/API.md`、`worker/README.md`）为辅助；两者冲突处见 §10。核对基准日期：2026-08。
