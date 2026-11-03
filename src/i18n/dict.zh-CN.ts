@@ -475,6 +475,8 @@ export const zhCN: Dict = {
     thresholdLowLabel: '余额预警',
     planFilterEmpty: '没有符合当前筛选的套餐账号',
     planFilterReset: '清除筛选',
+    reorderHint: '拖动卡片可调整顺序；聚焦卡片后用方向键移动',
+    reorderPosition: (position: number, total: number) => `已移动到第 ${position} 位，共 ${total} 张`,
   },
   common: {
     clearSearch: '清空搜索',

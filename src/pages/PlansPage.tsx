@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { CreditCard } from 'lucide-react'
 import type { PlanCardVM, PlanWindowVM } from '@/lib/overview'
 import { buildPlanCards } from '@/lib/overview'
@@ -8,6 +8,8 @@ import { useNowTick } from '@/lib/hooks/use-now-tick'
 import { useLocale } from '@/i18n/LocaleProvider'
 import { useData } from '@/lib/data-context'
 import { PageHeader } from '@/components/common/PageHeader'
+import { SortableGrid } from '@/components/common/SortableGrid'
+import { applyPlanOrder, mergeVisibleOrder } from '@/lib/plan-order'
 import { EmptyState } from '@/components/common/EmptyState'
 import { Badge } from '@/components/common/Badge'
 import { ProgressBar } from '@/components/common/ProgressBar'
@@ -212,7 +214,7 @@ function PlanGridCard({ card, now }: { card: PlanCardVM; now: number }) {
  */
 export function PlansPage({ onAddAccount }: PlansPageProps) {
   const t = useT()
-  const { sections, results, settings } = useData()
+  const { sections, results, settings, updateSettings } = useData()
   const [planFilter, setPlanFilter] = useState(ALL_PLANS)
   const [accountFilter, setAccountFilter] = useState(ALL_ACCOUNTS)
   const now = useNowTick()
@@ -221,6 +223,10 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
     () => buildPlanCards(sections, results, settings.alertThresholds.highUsagePct),
     [sections, results, settings.alertThresholds],
   )
+
+  // Saved drag order first; cards the order has never seen keep their natural
+  // place at the end (accounts are added and removed all the time)
+  const ordered = useMemo(() => applyPlanOrder(cards, settings.planOrder), [cards, settings.planOrder])
 
   // Distinct plan labels across the whole registry (not only fetched accounts),
   // so the plan select lists everything a user could add, first-seen order.
@@ -234,12 +240,44 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
 
   const filtered = useMemo(
     () =>
-      cards.filter((card) => {
+      ordered.filter((card) => {
         if (planFilter !== ALL_PLANS && providerPlan(t, card.providerId) !== planFilter) return false
         if (accountFilter !== ALL_ACCOUNTS && card.accountName !== accountFilter) return false
         return true
       }),
-    [cards, planFilter, accountFilter, t],
+    [ordered, planFilter, accountFilter, t],
+  )
+
+  // A drop reorders only what the filters show; the hidden cards keep the slots
+  // they already occupied, so clearing a filter does not reshuffle the grid.
+  const onOrderChange = useCallback(
+    (visibleKeys: string[]) => {
+      const full = ordered.map((card) => card.key)
+      updateSettings({ ...settings, planOrder: mergeVisibleOrder(full, visibleKeys) })
+    },
+    [ordered, settings, updateSettings],
+  )
+
+  // The official subscription cards have no accounts, so their order is simply
+  // the saved key list with unknown keys appended.
+  const subscriptionCards = useMemo(() => {
+    const all: Array<{ key: string; node: ReactNode }> = [
+      { key: 'codex', node: <CodexQuotaCard /> },
+      { key: 'claude', node: <ClaudeQuotaCard /> },
+      { key: 'gemini', node: <GeminiQuotaCard /> },
+      { key: 'grok', node: <GrokQuotaCard /> },
+      { key: 'trae', node: <TraeQuotaCard /> },
+      { key: 'kimi', node: <KimiQuotaCard /> },
+      { key: 'antigravity', node: <AntigravityQuotaCard /> },
+      { key: 'cursor', node: <LocalQuotaCard kind="cursor" /> },
+      { key: 'copilot', node: <LocalQuotaCard kind="copilot" /> },
+    ]
+    return applyPlanOrder(all, settings.subscriptionOrder)
+  }, [settings.subscriptionOrder])
+
+  const onSubscriptionOrderChange = useCallback(
+    (keys: string[]) => updateSettings({ ...settings, subscriptionOrder: keys }),
+    [settings, updateSettings],
   )
 
   // No fetched cards at all: plain empty state with the same picker in the slot
@@ -313,26 +351,32 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((card) => (
-            <PlanGridCard key={card.key} card={card} now={now} />
-          ))}
-        </div>
+        <>
+          {filtered.length > 1 && (
+            <p className="mb-2 text-[11px] text-subtle">{t.manage.reorderHint}</p>
+          )}
+          <SortableGrid
+            items={filtered}
+            ariaLabel={t.manage.reorderHint}
+            announce={(position, total) => t.manage.reorderPosition(position, total)}
+            className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
+            renderItem={(card) => <PlanGridCard card={card} now={now} />}
+            onOrderChange={onOrderChange}
+          />
+        </>
       )}
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-foreground">{t.manage.subscriptionTitle}</h2>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <CodexQuotaCard />
-          <ClaudeQuotaCard />
-          <GeminiQuotaCard />
-          <GrokQuotaCard />
-          <TraeQuotaCard />
-          <KimiQuotaCard />
-          <AntigravityQuotaCard />
-          <LocalQuotaCard kind="cursor" />
-          <LocalQuotaCard kind="copilot" />
-        </div>
+        <p className="text-[11px] text-subtle">{t.manage.reorderHint}</p>
+        <SortableGrid
+          items={subscriptionCards}
+          ariaLabel={t.manage.reorderHint}
+          announce={(position, total) => t.manage.reorderPosition(position, total)}
+          className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
+          renderItem={(item) => item.node}
+          onOrderChange={onSubscriptionOrderChange}
+        />
       </section>
     </div>
   )

@@ -130,6 +130,10 @@ export interface Settings {
   integrations: IntegrationsSettings
   /** Alert engine thresholds (reset horizon / high-usage pct / per-currency low-balance floors) */
   alertThresholds: AlertThresholds
+  /** Plan-card keys in the order the user dragged them into; unknown keys are appended */
+  planOrder: string[]
+  /** Official subscription-card keys in the user's order; unknown keys are appended */
+  subscriptionOrder: string[]
 }
 
 export interface ProviderResult {

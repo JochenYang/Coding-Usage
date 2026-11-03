@@ -488,6 +488,8 @@ export interface Dict {
     thresholdLowLabel: string
     planFilterEmpty: string
     planFilterReset: string
+    reorderHint: string
+    reorderPosition: (position: number, total: number) => string
   }
   common: {
     clearSearch: string

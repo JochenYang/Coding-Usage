@@ -488,6 +488,8 @@ export const enUS: Dict = {
     thresholdLowLabel: 'Low balance below',
     planFilterEmpty: 'No plan accounts match the current filters',
     planFilterReset: 'Clear filters',
+    reorderHint: 'Drag a card to reorder it, or focus one and use the arrow keys',
+    reorderPosition: (position: number, total: number) => `Moved to position ${position} of ${total}`,
   },
   common: {
     clearSearch: 'Clear search',

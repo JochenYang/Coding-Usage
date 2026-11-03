@@ -17,6 +17,8 @@ const DEFAULT_SETTINGS: Settings = {
   displayCurrency: 'CNY',
   usageDisplayMode: 'all',
   desktopIsland: true,
+  planOrder: [],
+  subscriptionOrder: [],
   alertThresholds: { ...DEFAULT_ALERT_THRESHOLDS, lowBalance: { ...DEFAULT_ALERT_THRESHOLDS.lowBalance } },
   integrations: {
     alertPush: false,
@@ -61,6 +63,15 @@ function migrate(raw: unknown): Settings {
     displayCurrency: typeof obj.displayCurrency === 'string' ? obj.displayCurrency : 'CNY',
     usageDisplayMode: obj.usageDisplayMode === 'no-cache' ? 'no-cache' : 'all',
     desktopIsland: obj.desktopIsland !== false,
+    // A card order saved by another build may hold keys this one no longer
+    // renders; keeping them is harmless (they are filtered out at render) and
+    // lets the order survive a provider being removed and added back.
+    planOrder: Array.isArray(obj.planOrder)
+      ? obj.planOrder.filter((key): key is string => typeof key === 'string')
+      : [],
+    subscriptionOrder: Array.isArray(obj.subscriptionOrder)
+      ? obj.subscriptionOrder.filter((key): key is string => typeof key === 'string')
+      : [],
     alertThresholds: resolveThresholds(obj.alertThresholds),
     integrations: {
       alertPush: intg?.alertPush === true,

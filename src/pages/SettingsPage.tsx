@@ -166,6 +166,8 @@ function migrateSettings(
   displayCurrency: string | null
   integrations: IntegrationsSettings | null
   alertThresholds: AlertThresholds | null
+  planOrder: string[] | null
+  subscriptionOrder: string[] | null
 } | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const obj = raw as Record<string, unknown>
@@ -200,6 +202,13 @@ function migrateSettings(
     displayCurrency: typeof obj.displayCurrency === 'string' ? obj.displayCurrency : null,
     integrations,
     alertThresholds: obj.alertThresholds != null ? resolveThresholds(obj.alertThresholds) : null,
+    // null (absent) rather than [] so an older export keeps the local order
+    planOrder: Array.isArray(obj.planOrder)
+      ? obj.planOrder.filter((key): key is string => typeof key === 'string')
+      : null,
+    subscriptionOrder: Array.isArray(obj.subscriptionOrder)
+      ? obj.subscriptionOrder.filter((key): key is string => typeof key === 'string')
+      : null,
   }
 }
 
@@ -323,6 +332,13 @@ export function SettingsPage({ className }: SettingsPageProps) {
       desktopIsland: settings.desktopIsland,
       integrations: migrated.integrations ?? settings.integrations,
       alertThresholds: migrated.alertThresholds ?? settings.alertThresholds,
+      // An export made before the order existed carries no list; keeping null
+      // distinct from [] is what lets it leave the local order alone.
+      planOrder: migrated.planOrder && migrated.planOrder.length > 0 ? migrated.planOrder : settings.planOrder,
+      subscriptionOrder:
+        migrated.subscriptionOrder && migrated.subscriptionOrder.length > 0
+          ? migrated.subscriptionOrder
+          : settings.subscriptionOrder,
     })
     mergeSnapshots(wrapper.snapshots)
   }
