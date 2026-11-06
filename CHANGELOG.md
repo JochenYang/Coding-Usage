@@ -10,7 +10,7 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
-## [Unreleased]
+## [v0.8.9] - 2026-11-06
 
 ### 中文
 - 本地 Agent 用量：Cindy 的读取器现在会找出机器上所有 Cindy 构建的 agent home（国内版 `%APPDATA%/Cindy`、国际版 `%APPDATA%/CindyGlobal`），并各自成为用量卡里的独立一行（`Cindy` / `Cindy Global`）。此前只认 `Cindy` 一个目录，换成国际版的用户那一行直接没有数据
