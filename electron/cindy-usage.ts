@@ -2,7 +2,7 @@ import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 
 /**
- * Cindy (`cindy`) local usage reader.
+ * Cindy (`cindy` / `cindy-global`) local usage reader.
  *
  * Cindy runs its coding agent on Pi, but with its own agent home:
  * `<Cindy userData>/pi-agent-home` instead of `~/.pi`. tokscale's native `pi`
@@ -12,9 +12,9 @@ import { join } from 'node:path'
  * payload shaped like a `tokscale graph` result, which the main process merges
  * into the scan.
  *
- * Store layout (verified against Cindy 1.0.x on Windows; the parent directory
- * is Cindy's Electron userData under `app.getPath('appData')`, so the same two
- * names apply on macOS and Linux — see `cindyAgentHome`):
+ * Store layout (verified against Cindy 1.0.x and 1.5.x on Windows; the parent
+ * directory is Cindy's Electron userData under `app.getPath('appData')`, so the
+ * same two directory levels apply on macOS and Linux — see `cindyBuilds`):
  *   - `<Cindy userData>/pi-agent-home/sessions/**\/*.jsonl` — chat sessions,
  *     flat or grouped by working directory depending on how the run was launched
  *   - `<Cindy userData>/pi-agent-home/runtime/pi-subagent-runs/**\/*.jsonl` —
@@ -23,6 +23,14 @@ import { join } from 'node:path'
  * candidate file is gated on the pi session header (see
  * `parseSessionTranscript`): other `.jsonl` files that happen to sit in the
  * agent home are not usage and must never be summed.
+ *
+ * Two Cindy builds exist and each keeps its own userData directory (`Cindy` for
+ * the domestic build, `CindyGlobal` for the international one), so one machine
+ * can hold two agent homes. Each build feeds its own client row — one product,
+ * two builds, and a user running both wants to know which one spent what — but a
+ * session copied from one home to the other (the international build ships a
+ * local-profile migration) must still be counted once, which is why the
+ * entry-id dedup below runs across builds, not per build.
  *
  * Usage is recorded per entry, the same way Pi accounts for a session:
  *   - `message` entries whose `message.role` is `assistant` carry
@@ -44,33 +52,76 @@ import { join } from 'node:path'
  * parsed — lines are skipped unless they can carry usage.
  */
 
-/** Client id this module feeds; must exist in AGENT_CLIENTS (src/lib/agent-usage.ts) */
-const CLIENT_ID = 'cindy'
-
-/** Fallback provider id for a bare model name with no vendor prefix */
-const VENDOR_PROVIDER = 'cindy'
-
-/** Cindy's own Electron userData directory name, inside the shared appData root */
-const CINDY_USER_DATA = 'Cindy'
-
-/** Pi's agent home inside Cindy's userData directory */
-const AGENT_HOME = 'pi-agent-home'
+/**
+ * Client id per Cindy build; must exist in AGENT_CLIENTS (src/lib/agent-usage.ts).
+ * The two builds get their own row: a user running both wants to see which one
+ * spent what, and merging them made the split unrecoverable after the fact.
+ */
+const DOMESTIC_CLIENT_ID = 'cindy'
+const INTERNATIONAL_CLIENT_ID = 'cindy-global'
 
 /**
- * Cindy's Pi agent home for a given appData root.
+ * Fallback provider id for a bare model name with no vendor prefix. Provider
+ * naming is shared by both builds, so it does not follow the client id.
+ */
+const VENDOR_PROVIDER = 'cindy'
+
+/**
+ * Cindy's Electron userData directory names inside the shared appData root, and
+ * the client row each one feeds: `Cindy` is the domestic build, `CindyGlobal`
+ * the international one. Neither is this app's userData directory.
+ */
+const KNOWN_USER_DATA_DIRS: ReadonlyArray<readonly [name: string, client: string]> = [
+  ['Cindy', DOMESTIC_CLIENT_ID],
+  ['CindyGlobal', INTERNATIONAL_CLIENT_ID],
+]
+
+/** Prefix shared by every Cindy-family userData directory, case-insensitive */
+const USER_DATA_PREFIX = /^cindy/i
+
+/** Pi's agent home inside a Cindy userData directory */
+const AGENT_HOME = 'pi-agent-home'
+
+/** One installed Cindy build: the row it feeds and the agent home to walk */
+export interface CindyBuild {
+  client: string
+  agentHome: string
+}
+
+/**
+ * Cindy's builds for a given appData root, one per installed build.
  *
  * The caller supplies `app.getPath('appData')` — Electron resolves it to
  * `%APPDATA%` on Windows, `~/Library/Application Support` on macOS and
  * `$XDG_CONFIG_HOME` (or `~/.config`) on Linux, so one call covers every
- * platform. Both directory names belong to Cindy, not to this app:
- * `<appData>/Cindy/pi-agent-home`.
+ * platform.
  *
- * The shape lives here, in one tested function, because getting it wrong fails
- * silently: the walk finds no sessions and the agent row simply disappears from
- * every view, with nothing to tell a wrong path from an unused agent.
+ * The directory names are discovered by prefix rather than hard-coded: the
+ * international build did not exist when the reader was written, and a build
+ * that renames its userData directory would otherwise make its row vanish with
+ * no error anywhere (the walk finds no sessions and a wrong path is
+ * indistinguishable from an unused agent). A directory the table does not know
+ * (`CindyNext`, …) feeds the domestic row, so unknown builds are still counted
+ * somewhere instead of being dropped. `KNOWN_USER_DATA_DIRS` is the fallback
+ * when the appData root cannot be listed at all.
  */
-export function cindyAgentHome(appDataRoot: string): string {
-  return join(appDataRoot, CINDY_USER_DATA, AGENT_HOME)
+export async function cindyBuilds(appDataRoot: string): Promise<CindyBuild[]> {
+  const known = new Map(KNOWN_USER_DATA_DIRS.map(([name, client]) => [name.toLowerCase(), client]))
+  let names: string[]
+  try {
+    const entries = await readdir(appDataRoot, { withFileTypes: true })
+    names = entries.filter((entry) => entry.isDirectory() && USER_DATA_PREFIX.test(entry.name)).map((e) => e.name)
+  } catch {
+    names = []
+  }
+  const dirs = names.length > 0 ? names : KNOWN_USER_DATA_DIRS.map(([name]) => name)
+  // Sorted so the walk order does not depend on directory-listing order: the
+  // domestic home sorts first, which makes its copy of a session keep the row
+  // when the international build has a migrated duplicate of it.
+  return [...new Set(dirs)].sort().map((name) => ({
+    client: known.get(name.toLowerCase()) ?? DOMESTIC_CLIENT_ID,
+    agentHome: join(appDataRoot, name, AGENT_HOME),
+  }))
 }
 
 /**
@@ -88,6 +139,8 @@ interface UsageRecord {
    * this is what keeps one generation from being counted twice.
    */
   key: string
+  /** Client row this generation belongs to (one per installed build) */
+  clientId: string
   tsMs: number
   providerId: string
   modelId: string
@@ -97,6 +150,9 @@ interface UsageRecord {
   cacheWrite: number
   costUsd: number
 }
+
+/** Usage found in one transcript, before it is attributed to an installed build */
+type TranscriptRecord = Omit<UsageRecord, 'clientId'>
 
 interface Slice {
   input: number
@@ -149,6 +205,14 @@ const VENDOR_PROVIDER_ALIASES: Record<string, string> = {
 }
 
 /**
+ * Model-id prefixes that name a routing directive instead of a vendor. The
+ * international build records gateway models as `auto/<model>` ("let the
+ * gateway pick"), so `auto` must not become a provider row of its own: those
+ * generations belong to the channel that served them.
+ */
+const ROUTING_PREFIXES = new Set(['auto'])
+
+/**
  * Provider id for a Pi provider field. `custom_provider:<name>` routing
  * prefixes are stripped, and the ChatGPT-subscription channel collapses onto
  * its vendor so one account cannot split across two rows of the provider
@@ -164,14 +228,17 @@ function normalizeProvider(raw: string): string {
 /**
  * `vendor/model` → provider + model. Pi records gateway models with their
  * vendor prefix (`deepseek/deepseek-v4-flash`, `moonshotai/kimi-k3.1-pro`), so
- * the prefix names the real vendor; a bare id keeps the channel provider.
+ * the prefix names the real vendor; a routing prefix or a bare id keeps the
+ * channel provider. The prefix is stripped from the model id either way, so the
+ * same model requested through two builds lands on one row and one price.
  */
 function splitVendorModel(model: string, provider: string): { providerId: string; modelId: string } {
   const slash = model.indexOf('/')
   if (slash <= 0) return { providerId: normalizeProvider(provider), modelId: model }
   const prefix = model.slice(0, slash).trim()
+  const vendor = prefix && !ROUTING_PREFIXES.has(prefix.toLowerCase())
   return {
-    providerId: prefix ? (VENDOR_PROVIDER_ALIASES[prefix] ?? prefix) : normalizeProvider(provider),
+    providerId: vendor ? (VENDOR_PROVIDER_ALIASES[prefix] ?? prefix) : normalizeProvider(provider),
     modelId: model.slice(slash + 1),
   }
 }
@@ -223,7 +290,7 @@ function entryTsMs(entry: Record<string, unknown>, message: Record<string, unkno
  *
  * Exported for unit tests; the reader below is the only production caller.
  */
-export function parseSessionTranscript(text: string, source = ''): UsageRecord[] | null {
+export function parseSessionTranscript(text: string, source = ''): TranscriptRecord[] | null {
   const lines = text.split('\n')
   let header: Record<string, unknown> | null = null
   for (const line of lines) {
@@ -238,7 +305,7 @@ export function parseSessionTranscript(text: string, source = ''): UsageRecord[]
   }
   if (!header || str(header.type) !== 'session') return null
 
-  const records: UsageRecord[] = []
+  const records: TranscriptRecord[] = []
   // The model that last answered in this transcript. Compaction and branch
   // summaries bill a generation but name no model, so this is their only
   // honest attribution.
@@ -315,8 +382,9 @@ export function parseSessionTranscript(text: string, source = ''): UsageRecord[]
 
 /** Fold the flat records into `tokscale graph`-shaped contributions */
 function buildPayload(records: UsageRecord[]): unknown {
-  // Grouped by provider AND model: two vendors can serve the same model name,
-  // and the cost breakdown attributes by provider.
+  // Grouped by client, provider AND model: the two builds are two rows, two
+  // vendors can serve the same model name, and the cost breakdown attributes by
+  // provider.
   const days = new Map<string, Map<string, Slice>>()
   for (const record of records) {
     const day = localDay(record.tsMs)
@@ -326,7 +394,7 @@ function buildPayload(records: UsageRecord[]): unknown {
       days.set(day, slices)
     }
     const { providerId, modelId } = splitVendorModel(record.modelId, record.providerId)
-    const key = `${providerId}\u0000${modelId}`
+    const key = `${record.clientId}\u0000${providerId}\u0000${modelId}`
     const hit = slices.get(key) ?? {
       input: 0,
       output: 0,
@@ -350,7 +418,7 @@ function buildPayload(records: UsageRecord[]): unknown {
       const totals = { tokens: 0, cost: 0, messages: 0 }
       const tokenBreakdown = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
       const clients = [...slices.entries()].map(([key, slice]) => {
-        const [providerId, modelId] = key.split('\u0000')
+        const [client, providerId, modelId] = key.split('\u0000')
         const tokens = {
           input: slice.input,
           output: slice.output,
@@ -370,7 +438,7 @@ function buildPayload(records: UsageRecord[]): unknown {
         tokenBreakdown.cacheRead += slice.cacheRead
         tokenBreakdown.cacheWrite += slice.cacheWrite
         return {
-          client: CLIENT_ID,
+          client,
           modelId,
           providerId,
           tokens,
@@ -429,31 +497,37 @@ async function readSessionText(path: string): Promise<string | null> {
 /**
  * Read Cindy's Pi sessions into a `tokscale graph`-shaped payload.
  *
- * `agentHome` is the directory to walk — `cindyAgentHome(app.getPath('appData'))`
- * in production, a temporary directory in tests. The caller resolves the
- * platform root; this module owns the rest of the layout. It is deliberately
- * not this app's userData: the two applications keep separate homes.
+ * `appDataRoot` is the platform application-data root —
+ * `app.getPath('appData')` in production, a temporary directory in tests. The
+ * installed builds below it are resolved by `cindyBuilds`, so a machine running
+ * both the domestic and the international build is read in full, each build into
+ * its own client row.
  *
  * Best-effort by contract — a missing agent home, an unreadable file or a
  * transcript being appended mid-read must never affect the scan. Returns null
  * when Cindy has recorded no usage (or was never run on this machine).
  */
-export async function readCindyUsage(agentHome: string): Promise<unknown | null> {
+export async function readCindyUsage(appDataRoot: string): Promise<unknown | null> {
   try {
-    const files = await collectSessionFiles(agentHome)
     const records: UsageRecord[] = []
+    // Shared across builds: a session migrated from the domestic build to the
+    // international one replays the same entries and must be counted once. The
+    // domestic home is walked first (see `cindyBuilds`), so migrated history
+    // stays on the row of the build that actually produced it.
     const seen = new Set<string>()
-    for (const file of files) {
-      const text = await readSessionText(file)
-      if (text == null) continue
-      const parsed = parseSessionTranscript(text, file)
-      if (!parsed) continue
-      for (const record of parsed) {
-        // Same generation replayed by a fork/clone of the session: keep the
-        // first, drop the copy.
-        if (seen.has(record.key)) continue
-        seen.add(record.key)
-        records.push(record)
+    for (const build of await cindyBuilds(appDataRoot)) {
+      for (const file of await collectSessionFiles(build.agentHome)) {
+        const text = await readSessionText(file)
+        if (text == null) continue
+        const parsed = parseSessionTranscript(text, file)
+        if (!parsed) continue
+        for (const record of parsed) {
+          // Same generation replayed by a fork/clone of the session: keep the
+          // first, drop the copy.
+          if (seen.has(record.key)) continue
+          seen.add(record.key)
+          records.push({ ...record, clientId: build.client })
+        }
       }
     }
     return records.length > 0 ? buildPayload(records) : null

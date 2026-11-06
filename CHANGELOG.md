@@ -10,6 +10,20 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- 本地 Agent 用量：Cindy 的读取器现在会找出机器上所有 Cindy 构建的 agent home（国内版 `%APPDATA%/Cindy`、国际版 `%APPDATA%/CindyGlobal`），并各自成为用量卡里的独立一行（`Cindy` / `Cindy Global`）。此前只认 `Cindy` 一个目录，换成国际版的用户那一行直接没有数据
+- 目录名改为按 `Cindy` 前缀扫描，构建改名不会再让这一行静默消失；认不出的构建名归到国内版那一行，不会被丢掉。跨构建按 entry id 去重：国际版首次启动迁移过来的会话只算一次，并留在实际产生它的那一行
+- 网关的 `auto/<模型>` 模型 id（国际版的路由写法）不再把 `auto` 当成厂商：前缀剥掉后归到实际提供服务的 provider，同一个模型在国内版和国际版里落到一行、同一份价格
+- 供应商分布里表里没有的 provider id 改为可读写法：`-` / `_` 分隔的 slug 按词首字母大写显示（`little-jochen` → `Little Jochen`），没有分隔符的 id 保持原样，不凭空造名
+
+### English
+- Local agent usage: the Cindy reader now discovers every installed Cindy build's agent home (`%APPDATA%/Cindy` for the domestic build, `%APPDATA%/CindyGlobal` for the international one) and gives each its own row on the usage card (`Cindy` / `Cindy Global`). It used to know only `Cindy`, so a user who moved to the international build saw no data on that row at all
+- Build userData directories are now found by the `Cindy` prefix instead of a hard-coded name, so a renamed build can no longer make the row vanish silently; a build name the table does not know feeds the domestic row instead of being dropped. Entry ids are deduplicated across builds, so a session migrated over on the international build's first run is counted once and stays on the row that produced it
+- Gateway model ids of the form `auto/<model>` (the international build's routing spelling) no longer turn `auto` into a provider: the prefix is stripped and the generation is attributed to the provider that actually served it, so one model lands on one row and one price across both builds
+- Provider ids the label table has not learned yet now read as words: a `-` / `_` slug is title-cased (`little-jochen` → `Little Jochen`), while an id with no separator is left exactly as it is — no name is invented
+
 ## [v0.8.8] - 2026-11-06
 
 ### 中文

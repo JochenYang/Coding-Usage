@@ -66,8 +66,10 @@ const AGENT_ICONS: Partial<Record<AgentClientId, ReactNode>> = {
   // Same story for ZCode: lobehub carries no mark, bundle the install-dir icon
   zcode: <img src={zcodeLogo} className="h-5 w-5 rounded" alt="" />,
   // Cindy's app icon (from its install dir, committed at 512px): lobehub has
-  // no mark for it either
+  // no mark for it either. Both builds share the product mark — they are one
+  // application, told apart by the row label.
   cindy: <img src={cindyLogo} className="h-5 w-5 rounded" alt="" />,
+  'cindy-global': <img src={cindyLogo} className="h-5 w-5 rounded" alt="" />,
   // XiaomiMiMo ships no Color variant — its Avatar tile fills the slot
   micode: <XiaomiMiMo.Avatar size={16} />,
   // Pi Agent's mark is a black glyph with no Color variant either
@@ -107,6 +109,7 @@ const AGENT_LABELS: Record<AgentClientId, string> = {
   mcode: 'MiniMax Code',
   antigravity: 'Antigravity',
   cindy: 'Cindy',
+  'cindy-global': 'Cindy Global',
 }
 
 interface PeriodColumnProps {

@@ -40,7 +40,7 @@ import {
 import { readMiniMaxCodeUsage } from './minimax-code-usage'
 import { readAntigravityUsage } from './antigravity-usage'
 import { readCodeBuddyUsage } from './codebuddy-usage'
-import { cindyAgentHome, readCindyUsage } from './cindy-usage'
+import { readCindyUsage } from './cindy-usage'
 import { readQoderUsage } from './qoder-usage'
 import { readTraeLocalUsage } from './trae-local-usage'
 import { reconcileProviderAttribution } from './provider-reconcile'
@@ -620,12 +620,15 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
       payload == null ? null : { client: 'codebuddy', payload, mergeAlways: true },
     ),
     // Cindy runs Pi on its own agent home (`%APPDATA%/Cindy/pi-agent-home` on
-    // Windows), which tokscale's `pi` client never scans (~/.pi only) — a
+    // Windows, `%APPDATA%/CindyGlobal/pi-agent-home` for the international
+    // build), which tokscale's `pi` client never scans (~/.pi only) — a
     // disjoint store by construction, hence merged unconditionally. The root is
-    // Cindy's appData directory, not ours: `app.getPath('userData')` would point
-    // at this app and find no sessions at all. `cindyAgentHome` owns the rest of
-    // the path so the `<appData>/Cindy/pi-agent-home` shape is pinned by a test.
-    readCindyUsage(cindyAgentHome(app.getPath('appData'))).then((payload) =>
+    // the platform appData directory, not ours: `app.getPath('userData')` would
+    // point at this app and find no sessions at all. `cindyBuilds` owns the rest
+    // of the path and finds every installed build; the payload already names its
+    // own client per build (`cindy` / `cindy-global`), so the `client` here is
+    // only the id the skip rule would look for.
+    readCindyUsage(app.getPath('appData')).then((payload) =>
       payload == null ? null : { client: 'cindy', payload, mergeAlways: true },
     ),
     readQoderUsage(homedir()).then((payload) => (payload == null ? null : { client: 'qoder', payload })),

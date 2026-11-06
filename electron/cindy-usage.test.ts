@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { summarizeScan } from '@/lib/agent-usage'
-import { cindyAgentHome, parseSessionTranscript, readCindyUsage } from './cindy-usage'
+import { cindyBuilds, parseSessionTranscript, readCindyUsage } from './cindy-usage'
 
 /**
  * Cindy's reader has two contracts worth pinning down:
@@ -14,6 +14,10 @@ import { cindyAgentHome, parseSessionTranscript, readCindyUsage } from './cindy-
  * 2. One generation is counted once. A fork/clone replays the same entries
  *    (ids included) into a second transcript, so the reader deduplicates by
  *    entry id rather than by file.
+ * 3. Every installed Cindy build is read, and each build is its own row: the
+ *    domestic build (`Cindy`) and the international one (`CindyGlobal`) each
+ *    keep their own agent home, and a session migrated between them still
+ *    counts once.
  *
  * The aggregation assertions go through `summarizeScan` because that is the
  * only consumer of the payload shape: a payload that does not survive it is
@@ -134,16 +138,43 @@ describe('parseSessionTranscript', () => {
   })
 })
 
-describe('cindyAgentHome', () => {
-  it('resolves <appData>/Cindy/pi-agent-home and reads the sessions placed there', async () => {
+/** Agent home of one installed build (`Cindy` = domestic, `CindyGlobal` = international) */
+function agentHome(root: string, build = 'Cindy'): string {
+  return join(root, build, 'pi-agent-home')
+}
+
+describe('cindyBuilds', () => {
+  it('resolves one row and one agent home per installed build under <appData>', async () => {
     // Both directory names are Cindy's, not this app's. Pinned literally: a
     // renamed level would make the reader find nothing and the agent row would
     // vanish with no error anywhere.
-    expect(cindyAgentHome('/appdata')).toBe(join('/appdata', 'Cindy', 'pi-agent-home'))
+    await mkdir(agentHome(dir, 'Cindy'), { recursive: true })
+    await mkdir(agentHome(dir, 'CindyGlobal'), { recursive: true })
+    expect(await cindyBuilds(dir)).toEqual([
+      { client: 'cindy', agentHome: agentHome(dir, 'Cindy') },
+      { client: 'cindy-global', agentHome: agentHome(dir, 'CindyGlobal') },
+    ])
+  })
 
+  it('gives an unknown Cindy-family directory the domestic row instead of dropping it', async () => {
+    await mkdir(agentHome(dir, 'CindyNext'), { recursive: true })
+    expect((await cindyBuilds(dir)).map((b) => `${b.client}:${b.agentHome}`)).toEqual([
+      `cindy:${agentHome(dir, 'CindyNext')}`,
+    ])
+  })
+
+  it('falls back to the known build names when appData cannot be listed', async () => {
+    const missing = join(dir, 'missing')
+    expect(await cindyBuilds(missing)).toEqual([
+      { client: 'cindy', agentHome: join(missing, 'Cindy', 'pi-agent-home') },
+      { client: 'cindy-global', agentHome: join(missing, 'CindyGlobal', 'pi-agent-home') },
+    ])
+  })
+
+  it('reads the sessions placed in a build home', async () => {
     // End-to-end through the path the main process builds: the test never names
     // the two directory levels below `dir` itself.
-    const home = cindyAgentHome(dir)
+    const home = agentHome(dir)
     await mkdir(join(home, 'sessions'), { recursive: true })
     await writeFile(
       join(home, 'sessions', 'chat.jsonl'),
@@ -154,7 +185,7 @@ describe('cindyAgentHome', () => {
       'utf8',
     )
 
-    const payload = (await readCindyUsage(home)) as {
+    const payload = (await readCindyUsage(dir)) as {
       contributions: Array<{ totals: { tokens: number; messages: number } }>
     }
     expect(payload.contributions).toHaveLength(1)
@@ -163,12 +194,12 @@ describe('cindyAgentHome', () => {
 })
 
 describe('readCindyUsage', () => {
-  it('returns null when the agent home has no sessions', async () => {
-    expect(await readCindyUsage(cindyAgentHome(dir))).toBeNull()
+  it('returns null when no build home has sessions', async () => {
+    expect(await readCindyUsage(dir)).toBeNull()
   })
 
   it('aggregates chat and subagent sessions, ignoring non-session jsonl', async () => {
-    const home = cindyAgentHome(dir)
+    const home = agentHome(dir)
     const sessions = join(home, 'sessions')
     const subagent = join(home, 'runtime', 'pi-subagent-runs', 'task', 'run')
     await mkdir(sessions, { recursive: true })
@@ -193,7 +224,7 @@ describe('readCindyUsage', () => {
     // Not a pi session: must not be summed
     await writeFile(join(sessions, 'export.jsonl'), jsonl({ type: 'export', usage: { input: 9999, output: 9999 } }), 'utf8')
 
-    const payload = await readCindyUsage(home)
+    const payload = await readCindyUsage(dir)
     expect(payload).not.toBeNull()
 
     const root = payload as { contributions: Array<{ date: string; totals: { tokens: number; cost: number }; activeTimeMs: number; clients: Array<Record<string, unknown>> }> }
@@ -222,17 +253,114 @@ describe('readCindyUsage', () => {
   })
 
   it('counts a generation replayed by a forked transcript once', async () => {
-    const home = cindyAgentHome(dir)
+    const home = agentHome(dir)
     const sessions = join(home, 'sessions')
     await mkdir(sessions, { recursive: true })
     const shared = assistant({ id: 'shared-1', model: 'deepseek/deepseek-v4-flash', provider: 'cindy', input: 400, output: 40, cost: 0.1 })
     await writeFile(join(sessions, 'parent.jsonl'), jsonl(header('s1'), shared), 'utf8')
     await writeFile(join(sessions, 'fork.jsonl'), jsonl(header('s2'), shared), 'utf8')
 
-    const payload = await readCindyUsage(home)
+    const payload = await readCindyUsage(dir)
     const vm = summarizeScan({ daily: payload })
     const row = vm.clients.find((c) => c.client === 'cindy')!
     expect(row.allTime.tokens).toBe(440)
     expect(row.allTime.costUsd).toBeCloseTo(0.1, 6)
+  })
+
+  it('gives the domestic and the international build a row each', async () => {
+    // The international build installs beside the domestic one and keeps its own
+    // agent home; a reader that only knew `Cindy` reported nothing at all for a
+    // user who moved to the international build, and folding the two together
+    // made "which build spent this" unanswerable.
+    const cn = join(agentHome(dir, 'Cindy'), 'sessions')
+    const global = join(agentHome(dir, 'CindyGlobal'), 'sessions')
+    await mkdir(cn, { recursive: true })
+    await mkdir(global, { recursive: true })
+    await writeFile(
+      join(cn, 'cn.jsonl'),
+      jsonl(
+        header('s1'),
+        assistant({ id: 'cn-1', model: 'deepseek/deepseek-v4-flash', provider: 'cindy', input: 100, output: 10, cost: 0.02 }),
+      ),
+      'utf8',
+    )
+    await writeFile(
+      join(global, 'global.jsonl'),
+      jsonl(
+        header('s2'),
+        assistant({ id: 'g-1', model: 'openai/gpt-6-sol', provider: 'openai-codex', input: 200, output: 20, cost: 0.5 }),
+      ),
+      'utf8',
+    )
+
+    const payload = await readCindyUsage(dir)
+    const vm = summarizeScan({ daily: payload })
+    const domestic = vm.clients.find((c) => c.client === 'cindy')!
+    const international = vm.clients.find((c) => c.client === 'cindy-global')!
+    expect(domestic.today.tokens).toBe(110)
+    expect(domestic.today.costUsd).toBeCloseTo(0.02, 6)
+    expect(domestic.models.map((m) => m.model)).toEqual(['deepseek-v4-flash'])
+    expect(international.today.tokens).toBe(220)
+    expect(international.today.costUsd).toBeCloseTo(0.5, 6)
+    expect(international.models.map((m) => m.model)).toEqual(['gpt-6-sol'])
+    // The day total still equals the sum of its rows: a split that leaked into
+    // the "unclassified" bucket would quietly inflate every headline figure.
+    expect(vm.todayTotal.tokens).toBe(110 + 220)
+    expect(vm.other).toBeNull()
+  })
+
+  it('attributes a routing-prefixed gateway model to its channel', async () => {
+    // The international build records gateway models as `auto/<model>` on the
+    // provider that served them; `auto` is a routing directive, not a vendor, so
+    // it must not become a provider row — and the prefix is stripped so the same
+    // model priced and named identically to the domestic build's reports.
+    const sessions = join(agentHome(dir, 'CindyGlobal'), 'sessions')
+    await mkdir(sessions, { recursive: true })
+    await writeFile(
+      join(sessions, 'gateway.jsonl'),
+      jsonl(
+        header('s1'),
+        assistant({
+          id: 'g-1',
+          model: 'auto/deepseek-v4.1-flash',
+          provider: 'little-jochen',
+          input: 10,
+          output: 2,
+          cost: 0,
+        }),
+      ),
+      'utf8',
+    )
+
+    const payload = (await readCindyUsage(dir)) as {
+      contributions: Array<{ clients: Array<{ providerId: string; modelId: string }> }>
+    }
+    expect(payload.contributions[0]!.clients).toHaveLength(1)
+    expect(payload.contributions[0]!.clients[0]).toMatchObject({
+      providerId: 'little-jochen',
+      modelId: 'deepseek-v4.1-flash',
+    })
+  })
+
+  it('counts a session migrated between builds once, on the build that ran it', async () => {
+    // The international build copies the domestic profile over on first run, so
+    // the same transcript can sit in both agent homes; the dedup must span them
+    // (once, not twice) and the domestic home is walked first so the generation
+    // stays on the row that actually produced it.
+    const shared = assistant({ id: 'migrated-1', model: 'deepseek/deepseek-v4-flash', provider: 'cindy', input: 70, output: 7, cost: 0.01 })
+    for (const build of ['Cindy', 'CindyGlobal']) {
+      const sessions = join(agentHome(dir, build), 'sessions')
+      await mkdir(sessions, { recursive: true })
+      await writeFile(join(sessions, 'chat.jsonl'), jsonl(header(`s-${build}`), shared), 'utf8')
+    }
+
+    const payload = await readCindyUsage(dir)
+    const vm = summarizeScan({ daily: payload })
+    const domestic = vm.clients.find((c) => c.client === 'cindy')!
+    const international = vm.clients.find((c) => c.client === 'cindy-global')!
+    expect(domestic.allTime.tokens).toBe(77)
+    expect(domestic.allTime.costUsd).toBeCloseTo(0.01, 6)
+    expect(international.exists).toBe(false)
+    expect(vm.allTimeTotal.tokens).toBe(77)
   })
 })

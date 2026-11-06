@@ -32,6 +32,10 @@ import { displayProviderName } from './provider-labels'
  *     (`%APPDATA%/Cindy/pi-agent-home` on Windows), which tokscale's `pi`
  *     client never scans (it only reads `~/.pi`)
  *     → electron/cindy-usage.ts
+ *   - `cindy-global`: the international build of Cindy (`CindyGlobal`) keeps a
+ *     second agent home; it is one product but a separate row, read by the same
+ *     module
+ *     → electron/cindy-usage.ts
  * `codebuddy` is the hybrid: tokscale scans the CLI transcripts and the CN
  * IDE store comes from electron/codebuddy-usage.ts, merged with a
  * double-count guard (see electron/main.ts).
@@ -66,6 +70,7 @@ export const AGENT_CLIENTS = [
   'micode',
   'pi',
   'cindy',
+  'cindy-global',
   'mcode',
 ] as const
 export type AgentClientId = (typeof AGENT_CLIENTS)[number]

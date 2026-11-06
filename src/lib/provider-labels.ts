@@ -3,8 +3,9 @@
  * `providerId`. The main process reconciles hardcoded parser defaults (e.g.
  * `moonshot` for every Kimi Code session) to the real router prefix from the
  * model id; this table turns those raw prefixes into display labels. Unknown
- * prefixes keep their raw id so nothing is silently dropped — extend the map
- * here when a new router shows up in the provider distribution.
+ * prefixes are shown in readable form (kebab/snake slugs become words) so a
+ * provider id nothing here has learned yet still looks like a name instead of a
+ * config key — extend the map when a router needs a name the slug cannot spell.
  */
 
 const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
@@ -65,7 +66,30 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   'eve-internal': 'EVE (internal)',
 }
 
-/** Display label for a tokscale provider id (raw id when unmapped) */
+/**
+ * Readable form of a slug id the table does not know.
+ *
+ * Provider ids arrive as config keys: kebab or snake case (`little-jochen`,
+ * `some_vendor`), or all-lowercase runs when the vendor picked one
+ * (`tokenrouter`). A slug with separators is turned into words — that is how a
+ * gateway vendor's own name reads (`Little Jochen`), without this table having
+ * to learn every vendor a gateway will ever add. An id with nothing to split on
+ * is left alone rather than guessed at, so a name is never invented.
+ */
+function titleCaseSlug(id: string): string {
+  if (!/[-_]/.test(id)) return id
+  return id
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((word) => word[0]!.toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+/**
+ * Display label for a tokscale provider id: the mapped name, else the id in
+ * readable form. Nothing is dropped either way — an id this table has not
+ * learned yet still reaches the provider distribution, just formatted.
+ */
 export function displayProviderName(providerId: string): string {
-  return PROVIDER_DISPLAY_NAMES[providerId] ?? providerId
+  return PROVIDER_DISPLAY_NAMES[providerId] ?? titleCaseSlug(providerId)
 }
