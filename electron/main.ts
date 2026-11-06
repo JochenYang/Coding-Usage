@@ -61,7 +61,7 @@ import {
   startIlinkSession,
   stopIlinkSession,
 } from './weixin-session'
-import { initIslandWindow, islandHide, islandSetClickThrough, islandShow } from './island-window'
+import { initIslandWindow, islandHide, islandRendererReady, islandSetClickThrough, islandShow } from './island-window'
 import {
   listAgentProviderModels,
   readAgentConfig,
@@ -986,6 +986,10 @@ function registerIpc(): void {
     if (Array.isArray(alerts)) islandShow(alerts)
   })
   ipcMain.handle('island:hide', (): void => islandHide())
+  // The overlay says its listener is live; batches held back during load are
+  // delivered then (see island-window.ts: the window may be created fresh on
+  // any alert once the idle one has been released)
+  ipcMain.handle('island:ready', (): void => islandRendererReady())
   ipcMain.handle('island:clickthrough', (_event, clickThrough: unknown): void => {
     islandSetClickThrough(clickThrough === true)
   })

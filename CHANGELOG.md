@@ -13,9 +13,15 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 ## [Unreleased]
 
 ### 中文
+- 灵动岛浮层隐藏后不再常驻一个渲染进程：隐藏 30 秒后销毁窗口，下一条告警按需重建。实测释放 113 MB 工作集 / 38–55 MB 私有内存，重建到告警可见约 220 ms；该进程此前会一直挂在后台（JS 堆不足 10 MB，其余全是 Chromium 的单进程底座）
+- 修复浮层的首条告警可能丢失：待发告警原来在页面加载完成时回放，此时渲染层还没订阅监听器；改为渲染层就绪（新增 `island:ready`）后再投递，重建出来的窗口也能收到第一条告警
+- 三张按 20px 显示的 Agent 品牌图标改用 128px 源图（原为 512 / 1024px），资源体积 1,020 KB → 62 KB，显示效果不变
 - 发布说明的页脚不再只写「Windows」：改为列出 Windows（NSIS / 便携版）、macOS（dmg / zip，含未签名的首次打开提示）与 Linux（AppImage）三平台；本地预览时的 CRLF 也会归一成 LF，与 workflow 生成的正文一致
 
 ### English
+- The island overlay no longer keeps a renderer process alive after it hides: the window is destroyed 30 seconds after it goes away and recreated on the next alert. Measured: releases 113 MB of working set / 38–55 MB of private memory, with about 220 ms from recreate to a visible alert; the process used to sit in the background for the whole session (its JS heap is under 10 MB — the rest is Chromium's per-process baseline)
+- Fixed the overlay dropping its first alert: pending batches were replayed when the page finished loading, before the renderer had subscribed; they are now delivered once the surface reports it is listening (new `island:ready`), so a freshly created window receives its first alert too
+- The three agent brand icons drawn at 20px now ship 128px sources instead of 512 / 1024px ones: 1,020 KB → 62 KB of assets, identical on screen
 - The release-notes footer no longer claims Windows only: it now lists all three platforms — Windows (NSIS / portable), macOS (dmg / zip, with the unsigned first-launch note) and Linux (AppImage) — and a local preview normalizes CRLF to LF so it matches the body the workflow generates
 
 ## [v0.8.9] - 2026-11-06

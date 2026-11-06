@@ -50,13 +50,19 @@ export function IslandSurface() {
     void bridge.islandClickThrough(true)
     // Append (dedup by id) so an island that is already up absorbs new
     // arrivals instead of restarting — same rule as the in-app island.
-    return bridge.onIslandAlert((alerts) => {
+    const unsubscribe = bridge.onIslandAlert((alerts) => {
       const fresh = alerts.filter(isValidAlert)
       setBatch((current) => {
         const seen = new Set(current.map((a) => a.id))
         return [...current, ...fresh.filter((a) => !seen.has(a.id))]
       })
     })
+    // The listener is live: a batch the main process held back while this window
+    // was loading can be delivered now. Raised after subscribing, so nothing can
+    // slip between the two (the overlay window is created on demand and may be
+    // brand new, which makes this race the normal case rather than an edge).
+    void bridge.islandReady()
+    return unsubscribe
   }, [])
 
   // Mirror the newest arrival and open; a new batch during a collapse reopens

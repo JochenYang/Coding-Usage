@@ -18,6 +18,7 @@ const desktopBridge: DesktopBridge = {
   ilinkSessionStop: () => ipcRenderer.invoke('ilink:session-stop'),
   islandShow: (alerts) => ipcRenderer.invoke('island:show', alerts),
   islandHide: () => ipcRenderer.invoke('island:hide'),
+  islandReady: () => ipcRenderer.invoke('island:ready'),
   islandClickThrough: (clickThrough) => ipcRenderer.invoke('island:clickthrough', clickThrough),
   islandOpenMain: () => ipcRenderer.invoke('island:open-main'),
   onIslandAlert: (callback) => {

@@ -107,6 +107,8 @@ declare global {
     islandOpenMain(): Promise<void>
     /** Overlay surface: subscribe to relayed alert batches */
     onIslandAlert(callback: (alerts: AlertItem[]) => void): () => void
+    /** Overlay surface: its listener is live, so a batch held back can be delivered */
+    islandReady(): Promise<void>
     /** Main window: fired when the overlay body is clicked */
     onOpenAlerts(callback: () => void): () => void
     /** Encrypt via safeStorage; returns an `enc:v3:<base64>` blob, or null when encryption is unavailable */
