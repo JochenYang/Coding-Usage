@@ -10,6 +10,16 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.8.8] - 2026-11-06
+
+### 中文
+- 修复 Antigravity 用量把历史会话算到「今天」的问题：本地会话库里缺少逐行时间戳的行，原先按数据库文件（含 -wal / -shm 附属文件）的修改时间归档；而 Antigravity 打开或关闭时会做 checkpoint，刷新这些时间，于是没在用它也每天显示新增用量。现在这类行改按会话文件的创建时间归档，完全不再参考附属文件；连创建时间都取不到的行直接跳过，不再落到 1970-01-01
+- 补充回归测试：有逐行时间戳时按其日期归档；无时间戳时按创建时间归档且不受文件 mtime 影响；重复 response id 只计一次
+
+### English
+- Fixed Antigravity usage being credited to "today": rows in a local conversation database that carry no per-row timestamp were dated by the database file's mtime, including its `-wal` / `-shm` sidecars — and Antigravity rewrites those on every checkpoint when it opens or closes, so a dormant account showed fresh usage every day. Such rows are now dated to the conversation file's creation time and never consult the sidecars; a row with no usable date at all is skipped instead of landing on 1970-01-01
+- Added regression tests: timestamped rows keep their own dates, timestamp-less rows use the creation date and ignore the file mtime, and a repeated response id is counted once
+
 ## [v0.8.7] - 2026-11-03
 
 ### 中文
