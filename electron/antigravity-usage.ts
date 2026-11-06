@@ -187,10 +187,18 @@ function parseGeneration(blob: Buffer, fallbackMs: number): ParseOutcome {
   // dropped (see the pricing note in main.ts); the internal id is the fallback.
   const display = strField(chat, 21) || strField(chat, 19) || 'unknown'
   const modelId = display.replace(/\s*\([^)]*\)\s*$/, '').trim() || 'unknown'
+  // A row's own timestamp is authoritative. When the schema carries none, the
+  // data files' mtime is the only signal — see newestMtimeMs for why the `-shm`
+  // sidecar must not be one: it is touched on every open and would move old rows
+  // onto "today" each day.
+  const tsMs = readTimestamp(chat) || fallbackMs
+  // No timestamp and no readable data-file time: dropping the row beats inventing
+  // a date (an epoch-0 bucket would surface as 1970-01-01).
+  if (tsMs <= 0) return { drifted: false }
   return {
     drifted: false,
     record: {
-      tsMs: readTimestamp(chat) || fallbackMs,
+      tsMs,
       modelId,
       input,
       output: outputText + thinking,
@@ -213,18 +221,29 @@ async function listConversationDbs(root: string): Promise<string[]> {
   }
 }
 
-/** Newest mtime of the database and its WAL sidecars — recent writes land there */
-async function newestMtimeMs(path: string): Promise<number> {
-  let newest = 0
-  for (const candidate of [path, `${path}-wal`, `${path}-shm`]) {
-    try {
-      const info = await stat(candidate)
-      if (info.mtimeMs > newest) newest = info.mtimeMs
-    } catch {
-      // sidecar absent
-    }
+/**
+ * Date source for a conversation that stores no per-row timestamps.
+ *
+ * Creation time, not mtime: Antigravity checkpoints its databases when it opens
+ * or closes, which rewrites the file's mtime (and both `-wal`/`-shm` sidecars)
+ * without adding a single generation. Using any of those made every row of such
+ * a conversation land on "the last day Antigravity was opened", so a dormant
+ * account showed fresh usage every day. Creation time is stable across launches
+ * and at least marks when the conversation began.
+ *
+ * Exported so the fallback rule can be asserted directly: a file whose mtime is
+ * "now" but whose creation is old must date its rows to the creation time.
+ */
+export function conversationStartMs(info: { birthtimeMs: number; mtimeMs: number }): number {
+  return info.birthtimeMs > 0 ? info.birthtimeMs : info.mtimeMs
+}
+
+async function conversationFileTimeMs(path: string): Promise<number> {
+  try {
+    return conversationStartMs(await stat(path))
+  } catch {
+    return 0
   }
-  return newest
 }
 
 async function readConversation(path: string, records: UsageRecord[], seen: Set<string>): Promise<number> {
@@ -236,7 +255,8 @@ async function readConversation(path: string, records: UsageRecord[], seen: Set<
     const rows = db
       .prepare('SELECT data FROM gen_metadata WHERE data IS NOT NULL ORDER BY idx')
       .all() as Array<{ data: Uint8Array | null }>
-    const fallbackMs = await newestMtimeMs(path)
+    // No per-row timestamp: place the rows on the conversation's own start date.
+    const fallbackMs = await conversationFileTimeMs(path)
     for (const row of rows) {
       if (!row.data) continue
       const blob = Buffer.from(row.data.buffer, row.data.byteOffset, row.data.byteLength)
