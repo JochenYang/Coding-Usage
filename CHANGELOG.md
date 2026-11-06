@@ -10,6 +10,14 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- 发布说明的页脚不再只写「Windows」：改为列出 Windows（NSIS / 便携版）、macOS（dmg / zip，含未签名的首次打开提示）与 Linux（AppImage）三平台；本地预览时的 CRLF 也会归一成 LF，与 workflow 生成的正文一致
+
+### English
+- The release-notes footer no longer claims Windows only: it now lists all three platforms — Windows (NSIS / portable), macOS (dmg / zip, with the unsigned first-launch note) and Linux (AppImage) — and a local preview normalizes CRLF to LF so it matches the body the workflow generates
+
 ## [v0.8.9] - 2026-11-06
 
 ### 中文

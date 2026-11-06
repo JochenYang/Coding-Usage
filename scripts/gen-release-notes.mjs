@@ -21,7 +21,9 @@ if (!tag || !/^v\d/.test(tag)) {
 }
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const changelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf8')
+// Normalized to LF so a local Windows checkout (CRLF) renders the same body the
+// release workflow generates from its LF blob.
+const changelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf8').replace(/\r\n/g, '\n')
 
 const sectionRe = /^## \[(.+?)\].*$/gm
 const sections = []
@@ -69,6 +71,6 @@ ${en}
 </details>
 
 ---
-安装包见下方 Release 附件（Windows）。
-Installers are attached below (Windows).
+安装包见下方 Release 附件：Windows（NSIS 安装版 / 便携版）、macOS（dmg / zip，未签名，首次打开请右键 App →「打开」）、Linux（AppImage，\`chmod +x\` 后运行）。
+Installers are attached below: Windows (NSIS installer / portable), macOS (dmg / zip, unsigned — right-click the App → Open on first launch) and Linux (AppImage, \`chmod +x\` then run).
 `)
