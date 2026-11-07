@@ -10,12 +10,12 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
-## [Unreleased]
+## [v0.9.1] - 2026-11-07
 
 ### 中文
 - 订阅额度卡与套餐卡全部改为铺满所在网格单元，同一行的卡片等高；留白处不再是一块空区：有可补的信息先补（只有余额的卡写供应商 tagline），剩下的用品牌单色字形压一枚 6% 淡水印（样式已在 `DESIGN_SYSTEM.md` §1.1 记为明确的例外）
 - 订阅额度卡的对齐：Antigravity 卡有多个模型分组时改为占两列并排展示，不再把一个格子拉成两倍高、让同行其他卡片半空着；只有一组或没数据时仍是单格（窄屏下全部单列）
-- 套餐卡的对齐：只有余额没有用量窗口的卡片（如 DeepSeek）现在填满所在网格单元，余额块贴底，与同行的 MiniMax 卡等高；以前它会在被拉伸的格子里缩短，给人一种行不齐的感觉
+- 套餐卡的对齐：只有余额没有用量窗口的卡片（如 DeepSeek）现在填满所在网格单元，卡头下面补一行供应商 tagline、余额块在剩余高度里居中，与同行的 MiniMax 卡等高；以前它会在被拉伸的格子里缩短，给人一种行不齐的感觉
 - 本地 Agent 用量支持 Qoder 国际版：`~/.qoder` 的会话归到独立的一行「Qoder Global」，国内版仍读 `~/.qoder-cn`。国际版不返回 token，只有 `credits`，所以这一行按 credits 记账（行内明细与模型行都标出 Credits），token 列显示 `—` 而不是伪 0
 - 计划页新增 Qoder 国际版的官方额度卡：主进程解 IDE 本地登录（`auth.v1.dat`，Windows 走 DPAPI）后调 `openapi.qoder.sh` 的用量接口，卡片显示已用/总量与百分比；凭据只在主进程内存，不进渲染层、不落盘。macOS/Linux 无法读该登录，卡片明确提示而不是谎报「未登录」
 - 修复历史库回填丢失 credits 的问题：旧扫描不再上报的 credits 计费客户端被保留时，其 credits 现在也计入当日合计，否则「未分类」口径会把差额吞掉、头部数字偏小
@@ -24,7 +24,7 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 ### English
 - Every subscription-quota card and plan card now fills its grid cell, so cards in one row are the same height; the leftover space is no longer a void — real information goes in first (a balance-only card carries its provider tagline), and whatever is left gets the brand's mono glyph as a 6% watermark (recorded as an explicit exception in `DESIGN_SYSTEM.md` §1.1)
 - Subscription-card alignment: the Antigravity card now spans two columns and lays its model groups side by side when it has more than one, instead of stretching one cell to twice the height and leaving its row neighbours half empty; with a single group or no data it keeps one cell (everything is a single column on narrow screens)
-- Plan-card alignment: a card that carries only a balance and no usage windows (DeepSeek, for instance) now fills its grid cell with the balance block pinned to the bottom, matching the height of its row neighbours; it used to shrink inside the stretched cell and make the row look unfinished
+- Plan-card alignment: a card that carries only a balance and no usage windows (DeepSeek, for instance) now fills its grid cell — its provider tagline goes under the header and the balance block centres in the remaining height — matching the height of its row neighbours; it used to shrink inside the stretched cell and make the row look unfinished
 - Local agent usage now covers Qoder's international build: sessions under `~/.qoder` get their own "Qoder Global" row while the domestic build keeps reading `~/.qoder-cn`. The international build returns no tokens — only `credits` — so that row is accounted in credits (the row detail and its model rows both label Credits) and the token columns show `—` instead of a fake 0
 - The plans page gains an official quota card for Qoder's international build: the main process reads the IDE's local login (`auth.v1.dat`, DPAPI on Windows) and calls `openapi.qoder.sh`'s usage endpoint, and the card shows used/total plus a percentage. The credential stays in main-process memory, never reaching the renderer or disk. macOS and Linux cannot read that login, and the card says so instead of claiming "not signed in"
 - Fixed carried-over history dropping credits: when a credits-billed client the fresh scan no longer reports is kept from the store, its credits now join the day total too — otherwise the "unclassified" derivation would absorb the difference and the headline would under-report
