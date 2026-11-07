@@ -10,6 +10,18 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- DSH（DeepSeek Harness）用量改为主进程自行读取，不再交给 tokscale：后者的 DSH 解析器遇到一个解析不了的事件会把**整份会话丢弃**且不报错（本机实测：一个 21 MB、3,020 次调用、约 12.6 亿 token 的会话因末尾一个事件被整份跳过）。新读取器逐帧解压追加式 zstd、逐行容错，并**同时读 DSH 应用自己的用量插件存储**（`~/.dsh/storages/dsh-app-plugin-usage/usage.jsonl`）——转录只能覆盖仍在磁盘的会话，被应用清理掉的会话只剩那份记录；**完整**的转录对该会话有最终权威，**不完整**的转录（坏帧、撕裂行）则与账本按 `sessionId#seq` 逐事件并集，不会因为一段尾巴坏了就丢掉整会话。实测本机 DSH 由 tokscale 的 23.3 亿回到 **112.6 亿 token / 36,151 次调用**，与应用内用量插件（去重后 112.5 亿）一致
+- DSH 读取器的计数修正：真实 v4 的 **fork** 边界是 `session/end-seed` 的 `data.inherited`（不是 `header.seedLength`，忽略它会把父会话前缀重算一遍）；`compaction/summary` 的 provider/model 在 `data` 上而非 `data.message.source`，否则这些调用会落到 `dsh/unknown` 而无法定价；同一 message id 的递增快照取最终值；两个来源改为**逐事件合并**——转录知道的每个 `sessionId#seq`（已计、继承、被取代，以及“早期零计数快照但同代已有最终快照”的那些）都记为已占用，账本只补转录真没覆盖到的事件，既不会重复也不会因为一段坏尾巴 / 截断丢掉整会话。已解析会话按 inode/ctime/mtime/size 缓存，重复扫从 ~5.3 秒降到 ~0.15 秒
+- 随之移除 `electron/dsh-aliases.ts`：不再需要把版本化转录硬链接成 tokscale 认的名字
+
+### English
+- DSH (DeepSeek Harness) usage is now read by the main process instead of tokscale: tokscale's DSH reader discards an **entire transcript** when it meets one event it cannot parse, silently (measured here: a 21 MB session with 3,020 calls and ~1.26 B tokens was skipped wholesale because of one event near its end). The new reader decodes the append-only zstd frames one by one, tolerates unparsable lines, and **also reads the DSH app's own usage-plugin store** (`~/.dsh/storages/dsh-app-plugin-usage/usage.jsonl`) — transcripts only cover sessions still on disk, while sessions the app has deleted survive only in that store. The two sources are merged **event by event**: every `sessionId#seq` a transcript can account for (counted, inherited, superseded by a later snapshot) is claimed, and the store only contributes events no transcript covers — so nothing is counted twice and neither a damaged tail nor a truncated transcript can discard a session. Measured here, DSH goes from tokscale's 2.33 B to **11.26 B tokens / 36,151 calls**
+- Three counting fixes in that reader: the real v4 fork boundary is `session/end-seed` with `data.inherited` (not `header.seedLength`, which double-billed a child session's inherited prefix); a `compaction/summary` names its channel on `data`, not on `data.message.source`, so those calls no longer land in `dsh/unknown` where they could not be priced; and a repeated message id keeps its final snapshot. The two sources are now merged **event by event**: every `sessionId#seq` a transcript can account for is claimed — counted, inherited, superseded by a later snapshot, or an early counter-less snapshot of a generation that later reports — and the store only contributes events no transcript covers — so nothing is counted twice and neither a damaged tail nor a truncated transcript can discard a session. Parsed sessions are cached by inode/ctime/mtime/size, taking a repeat scan from ~5.3 s to ~0.15 s
+- `electron/dsh-aliases.ts` is gone with it: versioned transcripts no longer need hard-linked canonical names for tokscale
+
 ## [v0.9.2] - 2026-11-07
 
 ### 中文

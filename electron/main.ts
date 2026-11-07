@@ -45,7 +45,7 @@ import { readCindyUsage } from './cindy-usage'
 import { readQoderUsage } from './qoder-usage'
 import { readTraeLocalUsage } from './trae-local-usage'
 import { reconcileProviderAttribution } from './provider-reconcile'
-import { ensureDshSessionAliases } from './dsh-aliases'
+import { readDshUsage } from './dsh-usage'
 import { ensureWorkbuddyAliases } from './workbuddy-aliases'
 import { decodeNonAsciiIds, ensureScannableModelIds } from './model-id-sanitize'
 import {
@@ -266,7 +266,9 @@ function createTray(): void {
 // a user running both the CLI and the IDE gets both halves. `trae` stays listed
 // for the international build's cloud sync; the CN builds' encrypted local
 // store is read by electron/trae-local-usage.ts and merged unconditionally as
-// well.
+// well. `dsh` is read by electron/dsh-usage.ts for a different reason: tokscale
+// has a DSH reader but drops an entire transcript on one unparsable event
+// (silently), so it is no longer asked for that client at all.
 const TOKSCALE_CLIENTS = [
   'codex',
   'claude',
@@ -289,7 +291,6 @@ const TOKSCALE_CLIENTS = [
   'droid',
   'amp',
   'grok',
-  'dsh',
   'zcode',
   'micode',
   'pi',
@@ -573,12 +574,6 @@ async function ensurePricingCache(): Promise<void> {
  *    ones, so one bad session set never blanks the whole local-usage view.
  */
 async function scanTokscaleUsage(): Promise<TokScanResult> {
-  // Alias DSH's versioned transcripts to the canonical names tokscale scans
-  // for (see dsh-aliases.ts) — best-effort, a missing DSH root is a no-op.
-  await ensureDshSessionAliases(
-    process.env.DSH_HOME?.trim() || join(homedir(), '.dsh'),
-    join(app.getPath('userData'), 'dsh-aliases.json'),
-  )
   // WorkBuddy AI (international) keeps its transcripts in a home tokscale
   // never scans — mirror them into the scanned one (see workbuddy-aliases.ts).
   await ensureWorkbuddyAliases(
@@ -608,6 +603,14 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
   // already reports that client, which it would once upstream
   // support lands — merging both would double count the same generations.
   const reads: Array<Promise<LocalAgentPayload | null>> = [
+    // DSH is read natively (see dsh-usage.ts): tokscale's DSH reader drops a
+    // whole transcript on one bad event, silently — on this machine that hid a
+    // 1.26 B-token session, a third of the agent's usage. `dsh` is therefore no
+    // longer in TOKSCALE_CLIENTS, which is why this payload is merged even when
+    // a scan does report the client (a stale tokscale would double count).
+    readDshUsage(homedir()).then((payload) =>
+      payload == null ? null : { client: 'dsh', payload, mergeAlways: true },
+    ),
     readMiniMaxCodeUsage(homedir()).then((payload) => (payload == null ? null : { client: 'mcode', payload })),
     readAntigravityUsage(homedir()).then((payload) =>
       payload == null ? null : { client: 'antigravity', payload },
