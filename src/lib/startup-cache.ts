@@ -118,15 +118,15 @@ function normalizeClientRows(value: unknown): AgentUsageVM['clients'] {
     if (typeof row.client !== 'string' || !known.has(row.client)) continue
     out.push({
       ...row,
-      today: withCacheWrite(row.today),
-      month: withCacheWrite(row.month),
-      allTime: withCacheWrite(row.allTime),
+      today: withPeriodDefaults(row.today),
+      month: withPeriodDefaults(row.month),
+      allTime: withPeriodDefaults(row.allTime),
       models: Array.isArray(row.models)
         ? row.models.map((m) => ({
             ...m,
-            today: withCacheWrite(m.today),
-            month: withCacheWrite(m.month),
-            allTime: withCacheWrite(m.allTime),
+            today: withPeriodDefaults(m.today),
+            month: withPeriodDefaults(m.month),
+            allTime: withPeriodDefaults(m.allTime),
           }))
         : [],
     })
@@ -135,13 +135,21 @@ function normalizeClientRows(value: unknown): AgentUsageVM['clients'] {
 }
 
 /**
- * Fill `cacheWrite` on a period read from a cache written before the field
- * existed. It is a counter, so 0 is the honest default; leaving it undefined
- * would turn the breakdown arithmetic into NaN the moment a caller sums it.
+ * Fill per-period fields a cache written before they existed is missing:
+ * `cacheWrite` (prompt-cache writes) and `credits` (the billing unit of a
+ * gateway that reports no tokens, e.g. Qoder global). Both are counters, so 0 is
+ * the honest default; leaving either undefined would turn the breakdown
+ * arithmetic into NaN the moment a caller sums it.
  */
-function withCacheWrite(period: AgentUsageVM['clients'][number]['today'] | undefined) {
-  if (period == null || typeof period !== 'object') return { tokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0, messages: 0 }
-  return { ...period, cacheWrite: typeof period.cacheWrite === 'number' ? period.cacheWrite : 0 }
+function withPeriodDefaults(period: AgentUsageVM['clients'][number]['today'] | undefined) {
+  if (period == null || typeof period !== 'object') {
+    return { tokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0, messages: 0, credits: 0 }
+  }
+  return {
+    ...period,
+    cacheWrite: typeof period.cacheWrite === 'number' ? period.cacheWrite : 0,
+    credits: typeof period.credits === 'number' ? period.credits : 0,
+  }
 }
 
 export function loadCachedAgentUsage(): AgentUsageVM | null {
@@ -170,15 +178,15 @@ export function loadCachedAgentUsage(): AgentUsageVM | null {
           typeof parsed.priceCoverage?.monthFallbackTokens === 'number' ? parsed.priceCoverage.monthFallbackTokens : 0,
       },
       clients: normalizeClientRows(parsed.clients),
-      todayTotal: withCacheWrite(parsed.todayTotal),
-      monthTotal: withCacheWrite(parsed.monthTotal),
-      allTimeTotal: withCacheWrite(parsed.allTimeTotal),
+      todayTotal: withPeriodDefaults(parsed.todayTotal),
+      monthTotal: withPeriodDefaults(parsed.monthTotal),
+      allTimeTotal: withPeriodDefaults(parsed.allTimeTotal),
       other:
         parsed.other && typeof parsed.other === 'object'
           ? {
-              today: withCacheWrite(parsed.other.today),
-              month: withCacheWrite(parsed.other.month),
-              all: withCacheWrite(parsed.other.all),
+              today: withPeriodDefaults(parsed.other.today),
+              month: withPeriodDefaults(parsed.other.month),
+              all: withPeriodDefaults(parsed.other.all),
             }
           : null,
     }

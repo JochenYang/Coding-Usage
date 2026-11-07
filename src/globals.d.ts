@@ -133,6 +133,19 @@ declare global {
     geminiUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Grok Build (SuperGrok) quota via the local `grok login` state; body is a normalized {percent,resetsAt,plan,email} */
     grokUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /** Qoder global build: credits pool from the IDE's own usage endpoint */
+    qoderQuota(): Promise<{
+      available: boolean
+      reason?: string
+      used?: number
+      total?: number
+      remaining?: number
+      percent?: number
+      isQuotaExceeded?: boolean
+      userType?: string
+      unit?: string
+      fetchedAt?: number
+    }>
     /** Trae CN credits usage via the IDE's encrypted local login; body is a normalized {percent,consumed,total,resetsAt,plan,packs} */
     traeUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Cursor plan quota from the editor/CLI login (raw /api/usage-summary body) */

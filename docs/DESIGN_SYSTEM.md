@@ -28,8 +28,27 @@
   1. 层级靠字重与留白，不靠颜色——单视图内彩色强调不超过两处（主强调 + 状态色）；因此标题不加彩色底块。
   2. 状态色只表达状态——`accent` 表品牌/主操作，`success/warning/danger` 表状态语义；因此破坏性操作不用品牌主色。
   3. 密度优先于装饰——数据页用高密卡片（`p-5` 起），空位用信息补足而不用装饰元素填充。
+     例外见 §1.1。
   4. 动效只用于转场反馈，不得承载信息——关键状态变化必须有静态视觉（颜色 + 文案/图标）兜底；
      因此 `prefers-reduced-motion` 下一切动效降级为透明度脉冲或静止（各组件已实现，见 §7）。
+
+### 1.1 例外：拉伸卡片的装饰底线（`CardWatermark`）
+
+套餐 / 订阅卡按行对齐，矮卡会被拉到与同行最高的卡等高，于是留下一块空白。可补的信息先补（例如只有余额
+的卡写供应商 tagline，见 `PlanGridCard`），剩下的空白用品牌的**单色字形**压一枚极淡水印：
+
+- 用 `@lobehub/icons` 的 `Mono`（即组件默认导出，`var Icons = Mono`）——它走 `currentColor`、无内联尺寸；
+- `128px`、`text-foreground` + `opacity-[0.06]`（两套主题共用一颗 token，无需 filter）；
+- 右下角越界裁切，裁切边框来自水印自己的 `overflow-hidden rounded-2xl` 层，卡片本身保持
+  `overflow: visible`（避免以后卡内的焦点环 / 浮层被裁）；
+- `aria-hidden` + `pointer-events-none`，不承载语义；
+- 层级：卡片 `z-0` 建堆叠上下文，水印 `-z-10`，即“卡底之上、正文之下”。
+
+为何不用彩色品牌图：`.Color` 是多色插画（白色部件在浅色卡上消失），`.Avatar` 带内联宽高（CSS 改不动，
+只能缩成一个 16–20px 方块），两者都需要逐品牌例外；单色字形只需一组尺寸/颜色规则即可覆盖全部品牌。
+
+新增卡片沿用 `src/components/common/CardWatermark.tsx`，传裸品牌组件（如 `<Codex />`）；供应商卡用
+`providerWatermarkIcon()`（见 `ProviderLogo.tsx`）取同一套字形。
 
 ## 2. Token 规范
 
@@ -134,6 +153,7 @@
 | ConfirmDialog | — | Default · Focus（危险确认） | 危险操作二次确认；按钮层级按主/次排布 |
 | LineChart / DonutChart | 自研 SVG（无图表库依赖） | Default · Hover（十字线 + HTML tooltip）· Empty（`<2` 点显示 `—`） | 网格 `border` 虚线、刻度 `subtle 10px`、线/面 `accent`；tooltip 固定字号 HTML 渲染；x 标签 thinning ≤7 |
 | ProviderLogo | lobehub slug / 内联 SVG / 字母兜底 | Default · 加载失败（字母兜底） | `rounded-md` 槽；`logoDarkInvert` 处理白底白 logo |
+| CardWatermark | — | Default（纯装饰） | 拉伸卡片的空白填充：品牌单色字形 6% 前景色水印，`-z-10` 在正文之下；卡片需 `z-0`，见 §1.1 |
 | 表单输入（各页内联） | — | Default · Focus-visible | 边框 `border`，聚焦 `focus:border-accent`；数字类配 `font-mono tabular-nums`；placeholder 用 `subtle` |
 | AppShell/Sidebar/TopBar | 桌面壳（导航 + 视图路由 hash） | Active（当前项高亮）· Default | 导航是全站共享组件，页面不自造第二套 |
 

@@ -13,7 +13,9 @@ import { applyPlanOrder, mergeVisibleOrder } from '@/lib/plan-order'
 import { EmptyState } from '@/components/common/EmptyState'
 import { Badge } from '@/components/common/Badge'
 import { ProgressBar } from '@/components/common/ProgressBar'
-import { ProviderLogo } from '@/components/ProviderLogo'
+import { cn } from '@/lib/cn'
+import { ProviderLogo, providerWatermarkIcon } from '@/components/ProviderLogo'
+import { CardWatermark } from '@/components/common/CardWatermark'
 import { AddAccountMenu } from '@/components/account/AddAccountMenu'
 import { CodexQuotaCard } from '@/components/overview/CodexQuotaCard'
 import { ClaudeQuotaCard } from '@/components/overview/ClaudeQuotaCard'
@@ -23,6 +25,7 @@ import { TraeQuotaCard } from '@/components/overview/TraeQuotaCard'
 import { KimiQuotaCard } from '@/components/overview/KimiQuotaCard'
 import { AntigravityQuotaCard } from '@/components/overview/AntigravityQuotaCard'
 import { LocalQuotaCard } from '@/components/overview/LocalQuotaCard'
+import { QoderQuotaCard } from '@/components/overview/QoderQuotaCard'
 import {
   Select,
   SelectContent,
@@ -32,7 +35,6 @@ import {
 } from '@/components/beui/select'
 import { useT } from '@/i18n/useT'
 import type { Dict } from '@/i18n/types'
-import { cn } from '@/lib/cn'
 
 export interface PlansPageProps {
   /** Adds a new (disabled) entry under the picked provider at the given index */
@@ -54,6 +56,18 @@ type BalanceVM = NonNullable<PlanCardVM['balance']>
 function providerPlan(t: Dict, providerId: string): string {
   if (!(providerId in t.providers)) return '—'
   return t.providers[providerId as keyof Dict['providers']].plan
+}
+
+/**
+ * Provider tagline, keyed the same way as `providerPlan`.
+ *
+ * Used as the filler in a balance-only card: a card with no usage windows is
+ * two lines tall next to a four-window neighbour, and the tagline is the one
+ * piece of real information it can still show in that space.
+ */
+function providerTagline(t: Dict, providerId: string): string {
+  if (!(providerId in t.providers)) return '—'
+  return t.providers[providerId as keyof Dict['providers']].tagline
 }
 
 /** Logo + account name column + status badge, mirroring the plan grid header */
@@ -174,9 +188,21 @@ function PlanExpiryRow({ expiresAt, now }: { expiresAt: number; now: number }) {
 /** Grid variant of the plan card (w-full instead of the row's fixed width) */
 function PlanGridCard({ card, now }: { card: PlanCardVM; now: number }) {
   const t = useT()
+  // A card with only a balance (DeepSeek, say) is a third the height of a card
+  // with three usage windows. Left as-is it shrinks inside its grid cell while
+  // its neighbours stretch, so the row reads as misaligned; filling the cell
+  // keeps both edges on the row's lines, and the leftover height is filled with
+  // the provider's tagline plus a centred balance block rather than one hole.
+  const balanceOnly = card.windows.length === 0 && card.balance != null
   return (
-    <article className="rounded-2xl border border-border bg-card p-5">
+    <article className="relative z-0 flex h-full flex-col rounded-2xl border border-border bg-card p-5">
+      <CardWatermark icon={providerWatermarkIcon(card.logoDef)} />
       <PlanGridCardHead card={card} />
+      {balanceOnly && (
+        <p className="mt-3 text-[11px] leading-relaxed text-subtle">
+          {providerTagline(t, card.providerId)}
+        </p>
+      )}
       {card.windows.length > 0 ? (
         <div className="mt-4 space-y-3">
           {card.windows.map((win) => (
@@ -195,12 +221,17 @@ function PlanGridCard({ card, now }: { card: PlanCardVM; now: number }) {
           Command Code's credit balance next to its quota windows); plans with
           only one of the two look exactly as before. */}
       {card.balance ? (
-        <PlanBalanceBlock
-          balance={card.balance}
-          className={card.windows.length > 0 ? 'mt-4 border-t border-border/60 pt-4' : 'mt-4'}
-        />
+        balanceOnly ? (
+          // Centred in the leftover height: the void is split above and below the
+          // figures instead of sitting between the header and the label.
+          <div className="flex flex-1 flex-col justify-center">
+            <PlanBalanceBlock balance={card.balance} />
+          </div>
+        ) : (
+          <PlanBalanceBlock balance={card.balance} className="mt-4 border-t border-border/60 pt-4" />
+        )
       ) : card.windows.length === 0 ? (
-        <p className="mt-4 text-xs text-subtle">{t.card.unconfigured}</p>
+        <p className="mt-auto text-xs text-subtle">{t.card.unconfigured}</p>
       ) : null}
     </article>
   )
@@ -258,22 +289,35 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
     [ordered, settings, updateSettings],
   )
 
+  // Whether the Antigravity card needs two grid tracks right now (it reports
+  // this itself once its quota data arrives).
+  const [antigravityWide, setAntigravityWide] = useState(false)
+
   // The official subscription cards have no accounts, so their order is simply
   // the saved key list with unknown keys appended.
+  //
+  // Antigravity spans two tracks once it has two model groups to show (see
+  // AntigravityQuotaCard): the card reports that need upward, because only the
+  // grid item — not the card — can claim a second column.
   const subscriptionCards = useMemo(() => {
-    const all: Array<{ key: string; node: ReactNode }> = [
+    const all: Array<{ key: string; node: ReactNode; span?: 1 | 2 }> = [
       { key: 'codex', node: <CodexQuotaCard /> },
       { key: 'claude', node: <ClaudeQuotaCard /> },
       { key: 'gemini', node: <GeminiQuotaCard /> },
       { key: 'grok', node: <GrokQuotaCard /> },
       { key: 'trae', node: <TraeQuotaCard /> },
       { key: 'kimi', node: <KimiQuotaCard /> },
-      { key: 'antigravity', node: <AntigravityQuotaCard /> },
+      {
+        key: 'antigravity',
+        node: <AntigravityQuotaCard onWideChange={setAntigravityWide} />,
+        span: antigravityWide ? 2 : 1,
+      },
       { key: 'cursor', node: <LocalQuotaCard kind="cursor" /> },
       { key: 'copilot', node: <LocalQuotaCard kind="copilot" /> },
+      { key: 'qoder', node: <QoderQuotaCard /> },
     ]
     return applyPlanOrder(all, settings.subscriptionOrder)
-  }, [settings.subscriptionOrder])
+  }, [settings.subscriptionOrder, antigravityWide])
 
   const onSubscriptionOrderChange = useCallback(
     (keys: string[]) => updateSettings({ ...settings, subscriptionOrder: keys }),

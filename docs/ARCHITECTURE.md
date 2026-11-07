@@ -61,7 +61,8 @@ electron/
   trae-usage.ts / trae-local-usage.ts
                           # Trae CN：登录解密探针 / SQLCipher 本地用量
   codebuddy-usage.ts / qoder-usage.ts / cindy-usage.ts / workbuddy-aliases.ts / dsh-aliases.ts
-                          # tokscale 覆盖不到的本地用量来源
+                          # tokscale 覆盖不到的本地用量来源（qoder-usage / cindy-usage 各自分国内 / 国际两行）
+  qoder-quota.ts          # Qoder 国际版额度：解 IDE 本地登录（Windows DPAPI）→ 官方 credits 接口
   model-pricing.ts / model-pricing-core.ts / builtin-pricing.ts
                           # 模型价格投影（models.dev 官方价优先，OpenRouter 兜底）
   agent-config-paths.ts / agent-config-io.ts / agent-config-service.ts
@@ -75,7 +76,7 @@ electron/
 
 1. **Provider 用量/余额**：`src/lib/query.ts#fetchUsage` → `ProviderDef.buildRequest/parseResponse`
    → 桌面经 `net:fetch` IPC、浏览器直连（失败回退 corsproxy）。结果写入 `results` 与启动缓存。
-2. **订阅额度（Codex / Claude / Gemini / Grok / Kimi / Antigravity / Trae / Cursor / Copilot）**：
+2. **订阅额度（Codex / Claude / Gemini / Grok / Kimi / Antigravity / Trae / Cursor / Copilot / Qoder 国际版）**：
    主进程读本地登录 → 调官方接口 → **只把数值**回传渲染层；凭据不出主进程。
 3. **本地 Agent 用量**：主进程 `tokscale:scan` 扫描本地会话日志，四类 tokscale 覆盖不到的
    存储由主进程直读后合并（CodeBuddy / Cindy / Qoder / Trae CN），聚合在 `src/lib/agent-usage.ts`。

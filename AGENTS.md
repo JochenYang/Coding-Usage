@@ -19,7 +19,9 @@
 3. Development and operations: [docs/development.md](./docs/development.md) — commands, tests, release, adding a provider
 4. UI / component spec: [docs/DESIGN_SYSTEM.md](./docs/DESIGN_SYSTEM.md) — read before touching UI
 5. Documentation index: [docs/README.md](./docs/README.md)
-6. Current plans: [docs/plans/](./docs/plans/) (no plan in progress right now)
+6. Current plans: [docs/plans/](./docs/plans/) — in progress:
+   [qoder-global-usage.md](./docs/plans/qoder-global-usage.md) (Qoder global build records credits,
+   not tokens; display semantics undecided)
 
 ## Hard rules
 

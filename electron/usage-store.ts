@@ -77,6 +77,8 @@ interface ClientEntry {
   tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
   cost?: number
   messages?: number
+  /** Credits billed by a gateway that reports no tokens (Qoder global) */
+  credits?: number
   /** Set when the main process repriced this entry from the shared price table */
   priced?: boolean
 }
@@ -206,6 +208,7 @@ interface EntrySums {
   cacheWrite: number
   cost: number
   messages: number
+  credits: number
 }
 
 function sumEntries(entries: ClientEntry[]): EntrySums {
@@ -215,6 +218,7 @@ function sumEntries(entries: ClientEntry[]): EntrySums {
   let cacheWrite = 0
   let cost = 0
   let messages = 0
+  let credits = 0
   for (const entry of entries) {
     input += num(entry.tokens?.input)
     output += num(entry.tokens?.output)
@@ -222,6 +226,7 @@ function sumEntries(entries: ClientEntry[]): EntrySums {
     cacheWrite += num(entry.tokens?.cacheWrite)
     cost += num(entry.cost)
     messages += num(entry.messages)
+    credits += num(entry.credits)
   }
   return {
     tokens: input + output + cacheRead + cacheWrite,
@@ -231,6 +236,7 @@ function sumEntries(entries: ClientEntry[]): EntrySums {
     cacheWrite,
     cost,
     messages,
+    credits,
   }
 }
 
@@ -256,6 +262,11 @@ function mergeDay(previous: Contribution, fresh: Contribution): Contribution {
   totals.tokens = num(fresh.totals.tokens) + carried.tokens
   totals.cost = num(fresh.totals.cost) + carried.cost
   totals.messages = num(fresh.totals.messages) + carried.messages
+  // Credits are a unit of their own on the day total: a carried-over
+  // credits-billed day (Qoder global) must keep its credits here, or the
+  // renderer's "unclassified" derivation (totals − Σclients) would have to
+  // absorb the difference and the headline would under-report the spend.
+  totals.credits = num(fresh.totals.credits) + carried.credits
 
   const breakdown: Record<string, unknown> = { ...fresh.tokenBreakdown }
   breakdown.input = num(fresh.tokenBreakdown.input) + carried.input

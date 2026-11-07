@@ -10,4 +10,5 @@
 
 ## 当前状态
 
-暂无进行中计划。已完成计划归档在 [docs/archive/](../archive/)。
+- [qoder-global-usage.md](./qoder-global-usage.md)：Qoder 国际版（global build）用量读取——已核实本机无 token、只有 credits，待定展示语义。
+- 已完成计划归档在 [docs/archive/](../archive/)。

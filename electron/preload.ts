@@ -40,6 +40,7 @@ const desktopBridge: DesktopBridge = {
   claudeUsage: () => ipcRenderer.invoke('claude:usage'),
   geminiUsage: () => ipcRenderer.invoke('gemini:usage'),
   grokUsage: () => ipcRenderer.invoke('grok:usage'),
+  qoderQuota: () => ipcRenderer.invoke('qoder:quota'),
   traeUsage: () => ipcRenderer.invoke('trae:usage'),
   cursorUsage: () => ipcRenderer.invoke('cursor:usage'),
   copilotUsage: () => ipcRenderer.invoke('copilot:usage'),

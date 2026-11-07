@@ -38,6 +38,7 @@ interface Row {
   output?: number
   messages?: number
   cost?: number
+  credits?: number
 }
 
 /** Build one day's contribution in the shape `tokscale graph` produces */
@@ -49,6 +50,7 @@ function contribution(date: string, rows: Row[]) {
     tokens: { input: row.input, output: row.output ?? 0, cacheRead: 0, cacheWrite: 0 },
     cost: row.cost ?? 0,
     messages: row.messages ?? 0,
+    credits: row.credits ?? 0,
   }))
   const input = clients.reduce((sum, c) => sum + c.tokens.input, 0)
   const output = clients.reduce((sum, c) => sum + c.tokens.output, 0)
@@ -58,6 +60,7 @@ function contribution(date: string, rows: Row[]) {
       tokens: input + output,
       cost: clients.reduce((sum, c) => sum + c.cost, 0),
       messages: clients.reduce((sum, c) => sum + c.messages, 0),
+      credits: clients.reduce((sum, c) => sum + c.credits, 0),
     },
     tokenBreakdown: { input, output, cacheRead: 0, cacheWrite: 0 },
     clients,
@@ -87,6 +90,23 @@ describe('usage history store', () => {
     // (totals minus client rows) cannot hide it from the headline figures
     expect(day.totals.tokens).toBe(170)
     expect(day.tokenBreakdown.input).toBe(170)
+  })
+
+  it('carries a vanished credits-billed row into the day total, not just its tokens', () => {
+    // Qoder global reports credits and zero tokens. A day carried over from the
+    // store must keep its credits in `totals` as well, or the renderer derives
+    // the missing amount as "unclassified" and the headline under-reports.
+    mergeScanIntoStore([
+      contribution('2026-01-01', [
+        { client: 'codex', input: 10 },
+        { client: 'qoder-global', input: 0, credits: 4, messages: 2 },
+      ]),
+    ])
+
+    const merged = mergeScanIntoStore([contribution('2026-01-01', [{ client: 'codex', input: 12 }])])
+    const day = merged.find((d) => d.date === '2026-01-01')!
+    expect(day.totals.credits).toBe(4)
+    expect(day.totals.tokens).toBe(12)
   })
 
   it('serves days the fresh scan stopped reporting', () => {

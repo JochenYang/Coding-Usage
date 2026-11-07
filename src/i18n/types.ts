@@ -309,6 +309,8 @@ export interface Dict {
     colOutput: string
     colCache: string
     colCacheWrite: string
+    /** Billing unit of an agent that reports no tokens (Qoder global) */
+    colCredits: string
     statusOnline: string
     statusOffline: string
     shownAgents: (n: number) => string
@@ -450,6 +452,11 @@ export interface Dict {
     grokNoAuth: string
     grokReauth: string
     grokBilling: string
+    qoderNoAuth: string
+    qoderReauth: string
+    qoderUnavailable: string
+    qoderCredits: string
+    qoderRemaining: (value: string) => string
     traeCreditsPlan: string
     traeNoAuth: string
     traeReauth: string

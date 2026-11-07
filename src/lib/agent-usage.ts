@@ -28,6 +28,10 @@ import { displayProviderName } from './provider-labels'
  *     (`~/.gemini/antigravity-cli`), not the IDE's
  *     → electron/antigravity-usage.ts
  *   - `qoder`: no tokscale reader exists → electron/qoder-usage.ts
+ *   - `qoder-global`: the global build of Qoder keeps its own CLI/IDE session
+ *     store under `~/.qoder`, billed in credits instead of tokens, so it gets
+ *     its own row and its own quota
+ *     → electron/qoder-usage.ts
  *   - `cindy`: Cindy runs Pi on its own agent home
  *     (`%APPDATA%/Cindy/pi-agent-home` on Windows), which tokscale's `pi`
  *     client never scans (it only reads `~/.pi`)
@@ -54,6 +58,7 @@ export const AGENT_CLIENTS = [
   'trae',
   'codebuddy',
   'qoder',
+  'qoder-global',
   'workbuddy',
   'cline',
   'roocode',
@@ -91,6 +96,12 @@ export interface AgentPeriodVM {
   cacheWrite: number
   costUsd: number
   messages: number
+  /**
+   * Credits billed by a gateway that reports no tokens (Qoder's global build).
+   * A separate unit on purpose: folding it into `tokens` or `costUsd` would
+   * invent a token count or a price that the vendor never recorded.
+   */
+  credits: number
 }
 
 /** One model's usage inside a single agent (the agent × model cross-cut) */
@@ -219,7 +230,7 @@ export interface AgentUsageVM {
 }
 
 function zero(): AgentPeriodVM {
-  return { tokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0, messages: 0 }
+  return { tokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0, messages: 0, credits: 0 }
 }
 
 function numberOr(value: unknown, fallback = 0): number {
@@ -229,7 +240,7 @@ function numberOr(value: unknown, fallback = 0): number {
 /** Per-day contribution entry from `tokscale graph` */
 interface GraphContribution {
   date: string
-  totals: { tokens?: number; cost?: number; messages?: number }
+  totals: { tokens?: number; cost?: number; messages?: number; credits?: number }
   tokenBreakdown?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
   /**
    * Session-active milliseconds for the day. tokscale reports this per
@@ -245,6 +256,8 @@ interface GraphContribution {
     tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; reasoning?: number }
     cost?: number
     messages?: number
+    /** Credits billed by a vendor that reports no tokens (see AgentPeriodVM) */
+    credits?: number
     /** Set by the main process when repriced from the shared price table */
     priced?: boolean
   }[]
@@ -262,6 +275,7 @@ function addSlice(map: Map<string, SliceAgg>, key: string, p: AgentPeriodVM): vo
     cacheWrite: hit.cacheWrite + p.cacheWrite,
     costUsd: hit.costUsd + p.costUsd,
     messages: hit.messages + p.messages,
+    credits: hit.credits + p.credits,
   })
 }
 
@@ -272,6 +286,7 @@ function makePeriod(parts: {
   cacheWrite: number
   cost: number
   messages: number
+  credits: number
 }): AgentPeriodVM {
   return {
     tokens: parts.input + parts.output + parts.cacheRead + parts.cacheWrite,
@@ -281,12 +296,13 @@ function makePeriod(parts: {
     cacheWrite: parts.cacheWrite,
     costUsd: parts.cost,
     messages: parts.messages,
+    credits: parts.credits,
   }
 }
 
 /** Day-level totals carry no breakdown inside `totals` — use tokenBreakdown */
 function dayPeriod(
-  totals: { tokens?: number; cost?: number; messages?: number },
+  totals: { tokens?: number; cost?: number; messages?: number; credits?: number },
   breakdown?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number },
 ): AgentPeriodVM {
   return makePeriod({
@@ -296,6 +312,7 @@ function dayPeriod(
     cacheWrite: numberOr(breakdown?.cacheWrite),
     cost: numberOr(totals.cost),
     messages: numberOr(totals.messages),
+    credits: numberOr(totals.credits),
   })
 }
 
@@ -304,6 +321,7 @@ function entryPeriod(e: {
   tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
   cost?: number
   messages?: number
+  credits?: number
 }): AgentPeriodVM {
   return makePeriod({
     input: numberOr(e.tokens?.input),
@@ -312,6 +330,7 @@ function entryPeriod(e: {
     cacheWrite: numberOr(e.tokens?.cacheWrite),
     cost: numberOr(e.cost),
     messages: numberOr(e.messages),
+    credits: numberOr(e.credits),
   })
 }
 
@@ -396,6 +415,7 @@ function addPeriod(a: AgentPeriodVM, b: AgentPeriodVM): AgentPeriodVM {
     cacheWrite: a.cacheWrite + b.cacheWrite,
     costUsd: a.costUsd + b.costUsd,
     messages: a.messages + b.messages,
+    credits: a.credits + b.credits,
   }
 }
 
@@ -681,7 +701,13 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
   return {
     clients,
     other:
-      otherToday.tokens > 0 || otherMonth.tokens > 0 || otherAll.tokens > 0
+      otherToday.tokens > 0 ||
+      otherMonth.tokens > 0 ||
+      otherAll.tokens > 0 ||
+      // A credits-only bucket (no tokens anywhere) is still real usage
+      otherToday.credits > 0 ||
+      otherMonth.credits > 0 ||
+      otherAll.credits > 0
         ? { today: otherToday, month: otherMonth, all: otherAll }
         : null,
     todayTotal,
@@ -720,6 +746,7 @@ function subtract(a: AgentPeriodVM, b: AgentPeriodVM): AgentPeriodVM {
     cacheWrite: Math.max(0, a.cacheWrite - b.cacheWrite),
     costUsd: Math.max(0, a.costUsd - b.costUsd),
     messages: Math.max(0, a.messages - b.messages),
+    credits: Math.max(0, a.credits - b.credits),
   }
 }
 

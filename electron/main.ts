@@ -19,6 +19,7 @@ import {
 import { autoUpdater } from 'electron-updater'
 import { fetchClaudeUsage, fetchGeminiUsage, type QuotaOutcome } from './subscription-quotas'
 import { fetchGrokUsage } from './grok-usage'
+import { readQoderQuota, type QoderQuotaOutcome } from './qoder-quota'
 import { fetchTraeUsage } from './trae-usage'
 import { fetchKimiUsage } from './kimi-usage'
 import { fetchAntigravityUsage } from './antigravity-quota'
@@ -631,7 +632,16 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
     readCindyUsage(app.getPath('appData')).then((payload) =>
       payload == null ? null : { client: 'cindy', payload, mergeAlways: true },
     ),
-    readQoderUsage(homedir()).then((payload) => (payload == null ? null : { client: 'qoder', payload })),
+    // Qoder's two builds are two rows and two separate stores, so each is a
+    // payload of its own: the skip-when-tokscale-covers-it rule then applies to
+    // one build at a time (upstream would most likely add `qoder` for the CN
+    // store only, and a shared payload would take the global row down with it).
+    readQoderUsage(homedir(), { client: 'qoder' }).then((payload) =>
+      payload == null ? null : { client: 'qoder', payload },
+    ),
+    readQoderUsage(homedir(), { client: 'qoder-global' }).then((payload) =>
+      payload == null ? null : { client: 'qoder-global', payload },
+    ),
     readTraeLocalUsage(homedir(), app.getPath('userData')).then((payload) =>
       payload == null ? null : { client: 'trae', payload, mergeAlways: true },
     ),
@@ -1160,6 +1170,15 @@ function registerIpc(): void {
     'grok:usage',
     async (): Promise<QuotaOutcome> =>
       cachedQuotaOutcome('grok', () => fetchGrokUsage(net.fetch, homedir())),
+  )
+
+  // Qoder global build: the credits pool the IDE shows in its own account
+  // panel. The probe decrypts the IDE's stored login on Windows (see
+  // qoder-quota.ts) and returns numbers only — the token never crosses this
+  // boundary. It caches internally, so it does not use the shared quota cache.
+  ipcMain.handle(
+    'qoder:quota',
+    (): Promise<QoderQuotaOutcome> => readQoderQuota(net.fetch, app.getPath('appData')),
   )
 
   // Cursor and GitHub Copilot plan quota, both read from the client's own

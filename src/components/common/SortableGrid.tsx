@@ -41,6 +41,13 @@ import { moveKey } from '@/lib/plan-order'
 
 export interface SortableItem {
   key: string
+  /**
+   * Columns the card occupies on a multi-column grid (`md` and up): a card whose
+   * content is two blocks tall would otherwise stretch its row and leave a
+   * neighbour half empty. Only 2 is honoured today; the union exists so a third
+   * value cannot be passed without a build error.
+   */
+  span?: 1 | 2
 }
 
 interface SortableGridProps<T extends SortableItem> {
@@ -320,13 +327,17 @@ export function SortableGrid<T extends SortableItem>({
               onPointerDown={(event) => onPointerDown(event, item.key)}
               onKeyDown={(event) => onKeyDown(event, item.key)}
               className={
-                isDragging
+                (isDragging
                   ? 'select-none rounded-2xl ring-2 ring-primary/40'
                   : // Hover feedback must not use transform: the same y is the drag
                     // offset, and a hover animation on it overrode the drag every
                     // frame (the card crept back to the cursor instead of following
                     // it). A shadow shift says "draggable" without touching transform.
-                    'rounded-2xl transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50'
+                    'rounded-2xl transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50') +
+                // Two-track card from `md` up: below that the grid is a single
+                // column, where an explicit span would create an implicit second
+                // track and push the card out of the layout.
+                (item.span === 2 ? ' md:col-span-2' : '')
               }
             >
               {renderItem(item)}

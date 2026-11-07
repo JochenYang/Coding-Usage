@@ -49,6 +49,42 @@ const ICON_MAP: Record<string, ReactNode> = {
 }
 
 /**
+ * Monochrome brand glyphs for decorative use (the card watermark).
+ *
+ * In this icon set the **default export is the mono glyph** (`var Icons = Mono`),
+ * so a bare `<Zhipu />` draws with `currentColor` and carries no inline size —
+ * unlike the `.Color` art and the `.Avatar` tiles, which need per-brand sizing
+ * and tinting. Kept keyed like `ICON_MAP` so a new provider registers both in
+ * one place.
+ */
+const WATERMARK_MAP: Record<string, ReactNode> = {
+  'zhipu-color': <Zhipu />,
+  'MiniMax-color': <Minimax />,
+  'openrouter-color': <OpenRouter />,
+  'kimi-color': <Kimi />,
+  opencode: <OpenCode />,
+  'deepseek-color': <DeepSeek />,
+  'siliconcloud-color': <SiliconCloud />,
+  'volcengine-ark': <Volcengine />,
+  'stepfun-avatar': <Stepfun />,
+  'novita-color': <Novita />,
+  'ollama-avatar': <Ollama />,
+  'cursor-color': <Cursor />,
+  'copilot-color': <GithubCopilot />,
+}
+
+/**
+ * Decorative glyph for a provider, or null when the definition has none
+ * (a locally bundled PNG has no monochrome counterpart).
+ */
+export function providerWatermarkIcon(def: { logo?: string | ReactNode }): ReactNode {
+  // Inline ReactNode logos are already vector art drawn by the definition itself
+  if (def.logo && typeof def.logo !== 'string') return def.logo
+  if (typeof def.logo === 'string' && WATERMARK_MAP[def.logo]) return WATERMARK_MAP[def.logo]
+  return null
+}
+
+/**
  * Provider brand mark. Priority:
  * 1. `logo` is a ReactNode (inline SVG) → render directly
  * 2. `logo` is a registry slug → render the bundled brand component

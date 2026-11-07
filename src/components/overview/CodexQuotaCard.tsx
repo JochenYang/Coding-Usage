@@ -7,6 +7,7 @@ import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
 import { useData } from '@/lib/data-context'
 import { summarizeCodexQuota, type CodexQuotaVM } from '@/lib/codex-quota'
 import { ProgressBar } from '@/components/common/ProgressBar'
+import { CardWatermark } from '@/components/common/CardWatermark'
 import { cn } from '@/lib/cn'
 
 /**
@@ -47,7 +48,8 @@ export function CodexQuotaCard({ className }: { className?: string }) {
   const now = useNowTick()
 
   return (
-    <section className={cn('rounded-2xl border border-border bg-card p-5', className)}>
+    <section className={cn('relative z-0 flex h-full flex-col rounded-2xl border border-border bg-card p-5', className)}>
+      <CardWatermark icon={<Codex />} />
       <div className="flex items-center gap-2.5">
         <span ref={brandRef} className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted [&>svg]:h-5 [&>svg]:w-5" aria-hidden>
           <Codex.Color />

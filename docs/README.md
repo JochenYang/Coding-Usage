@@ -23,5 +23,5 @@
 
 ## 当前状态
 
-- 进行中的计划：**暂无**（新增计划请放 `docs/plans/<slug>.md`，并在 [AGENTS.md](../AGENTS.md) 的必读顺序中登记）。
+- 进行中的计划：[qoder-global-usage.md](./plans/qoder-global-usage.md)（Qoder 国际版用量读取；新增计划请放 `docs/plans/<slug>.md`，并在 [AGENTS.md](../AGENTS.md) 的必读顺序中登记）。
 - 归档内容：见 [archive/](./archive/)。

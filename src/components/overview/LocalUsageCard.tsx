@@ -21,7 +21,7 @@ import {
   XiaomiMiMo,
 } from '@lobehub/icons'
 import type { AgentClientId, AgentPeriodVM, AgentUsageVM } from '@/lib/agent-usage'
-import { formatAsOf, formatCompactValue } from '@/lib/format'
+import { formatAmount, formatAsOf, formatCompactValue } from '@/lib/format'
 import workbuddyLogo from '@/components/logos/workbuddy.png'
 import zcodeLogo from '@/components/logos/zcode.png'
 import cindyLogo from '@/components/logos/cindy.png'
@@ -57,6 +57,8 @@ const AGENT_ICONS: Partial<Record<AgentClientId, ReactNode>> = {
   trae: <Trae.Color />,
   codebuddy: <CodeBuddy.Color />,
   qoder: <Qoder.Color />,
+  // Both Qoder builds share the brand mark; the row label tells them apart
+  'qoder-global': <Qoder.Color />,
   kiro: <Kiro.Color />,
   amp: <Amp.Color />,
   dsh: <DeepSeek.Color />,
@@ -91,6 +93,7 @@ const AGENT_LABELS: Record<AgentClientId, string> = {
   trae: 'Trae',
   codebuddy: 'CodeBuddy',
   qoder: 'Qoder',
+  'qoder-global': 'Qoder Global',
   workbuddy: 'WorkBuddy',
   cline: 'Cline',
   roocode: 'Roo Code',
@@ -121,9 +124,13 @@ interface PeriodColumnProps {
 
 /** One right-aligned stat value; the column headers live on the list header row */
 function PeriodColumn({ period, exists, mode }: PeriodColumnProps) {
+  // A credits-billed agent reports no tokens at all (Qoder's global build), so
+  // showing 0 would read as "nothing happened" next to a real spend number. The
+  // dash says "no token figure exists" and the row's own line carries the credits.
+  const creditsOnly = period.tokens === 0 && period.credits > 0
   return (
     <div className="text-right text-xs font-medium tabular-nums text-foreground sm:text-sm">
-      {exists ? formatCompactValue(displayTokens(period, mode)) : '—'}
+      {!exists ? '—' : creditsOnly ? '—' : formatCompactValue(displayTokens(period, mode))}
     </div>
   )
 }
@@ -151,7 +158,7 @@ const PERIOD_GRID = 'grid w-[150px] shrink-0 grid-cols-3 gap-1 sm:w-[220px] sm:g
  */
 function breakdownText(
   period: AgentPeriodVM,
-  l: { colInput: string; colOutput: string; colCache: string; colCacheWrite: string },
+  l: { colInput: string; colOutput: string; colCache: string; colCacheWrite: string; colCredits: string },
   compact: (n: number) => string,
 ): string {
   const parts = [
@@ -160,6 +167,9 @@ function breakdownText(
     `${l.colCache} ${compact(period.cacheRead)}`,
   ]
   if (period.cacheWrite > 0) parts.push(`${l.colCacheWrite} ${compact(period.cacheWrite)}`)
+  // Only when the build bills in credits (Qoder global): that is the whole
+  // usage figure for such a row, and it has no token counterpart to sit beside.
+  if (period.credits > 0) parts.push(`${l.colCredits} ${formatAmount(period.credits)}`)
   return parts.join(' · ')
 }
 
@@ -340,6 +350,14 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
                                 title={row.model}
                               >
                                 {row.model}
+                                {/* A credits-billed model has no token figure at
+                                    all, so the unit belongs on its label — the
+                                    period columns below can only show a dash. */}
+                                {row.allTime.credits > 0 && (
+                                  <span className="text-[10px] text-subtle">
+                                    {` · ${t.overview.colCredits} ${formatAmount(row.allTime.credits)}`}
+                                  </span>
+                                )}
                               </span>
                               <div className={PERIOD_GRID}>
                                 {[row.today, row.month, row.allTime].map((period, ci) => {
@@ -368,7 +386,7 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
               )
             })}
           {/* Unclassified (synthetic) entries keep the four rows summing to totals */}
-          {usage.other && usage.other.all.tokens > 0 && (
+          {usage.other && (usage.other.all.tokens > 0 || usage.other.all.credits > 0) && (
             <div className="flex items-center gap-3 border-t border-border/60 py-2.5">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-[10px] font-semibold text-muted-foreground" aria-hidden>
                 …

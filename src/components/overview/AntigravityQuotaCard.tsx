@@ -13,6 +13,7 @@ import {
   type AntigravityWindowId,
 } from '@/lib/antigravity-quota'
 import { ProgressBar } from '@/components/common/ProgressBar'
+import { CardWatermark } from '@/components/common/CardWatermark'
 import { cn } from '@/lib/cn'
 
 /**
@@ -58,8 +59,18 @@ function unavailableMessage(reason: string | null | undefined, t: Dict): string 
  * These are REMAINING percentages, matching Antigravity's own "…Limit Remaining"
  * panel, so the rows are labelled as remaining rather than reusing the
  * used-percentage wording of the neighbouring cards.
+ *
+ * `onWideChange` reports whether the card currently needs two grid tracks: it
+ * asks for them only when there really are two model groups to lay out side by
+ * side, so a single-group or empty card keeps its normal one-cell width.
  */
-export function AntigravityQuotaCard({ className }: { className?: string }) {
+export function AntigravityQuotaCard({
+  className,
+  onWideChange,
+}: {
+  className?: string
+  onWideChange?: (wide: boolean) => void
+}) {
   const t = useT()
   const [vm, setVm] = useState<AntigravityQuotaVM | null>(null)
   const [loading, setLoading] = useState(false)
@@ -88,8 +99,18 @@ export function AntigravityQuotaCard({ className }: { className?: string }) {
   // Minute-resolution clock so the reset countdowns stay live on this card alone
   const now = useNowTick()
 
+  // Two model groups are two blocks of rows: stacked in one cell they make this
+  // card twice as tall as its neighbours and leave the next row's cards hanging
+  // beside empty space. Side by side they need a second track, which only the
+  // grid can give, so the need is reported upward.
+  const wide = vm?.available === true && vm.groups.length >= 2
+  useEffect(() => {
+    onWideChange?.(wide)
+  }, [wide, onWideChange])
+
   return (
-    <section className={cn('rounded-2xl border border-border bg-card p-5', className)}>
+    <section className={cn('relative z-0 flex h-full flex-col rounded-2xl border border-border bg-card p-5', className)}>
+      <CardWatermark icon={<Antigravity />} />
       <div className="flex items-center gap-2.5">
         <span
           ref={brandRef}
@@ -111,7 +132,7 @@ export function AntigravityQuotaCard({ className }: { className?: string }) {
           {unavailableMessage(vm?.reason, t)}
         </p>
       ) : (
-        <div className="mt-3 space-y-4">
+        <div className={wide ? 'mt-3 md:grid md:grid-cols-2 md:items-start md:gap-x-6 md:gap-y-4' : 'mt-3 space-y-4'}>
           {vm.groups.map((group) => (
             <div key={`${group.id}-${group.serverName}`}>
               <p className="text-[11px] font-medium text-muted-foreground">
@@ -152,7 +173,9 @@ export function AntigravityQuotaCard({ className }: { className?: string }) {
               </div>
             </div>
           ))}
-          <p className="text-[11px] leading-relaxed text-subtle">{t.antigravityQuota.remainingNote}</p>
+          <p className={cn('text-[11px] leading-relaxed text-subtle', wide && 'md:col-span-2')}>
+            {t.antigravityQuota.remainingNote}
+          </p>
         </div>
       )}
     </section>

@@ -12,6 +12,7 @@ import {
   type LocalPlanRaw,
 } from '@/lib/local-plan-quota'
 import { ProgressBar } from '@/components/common/ProgressBar'
+import { CardWatermark } from '@/components/common/CardWatermark'
 import { cn } from '@/lib/cn'
 
 /**
@@ -30,12 +31,15 @@ const SOURCES = {
   cursor: {
     name: 'Cursor',
     logo: <Cursor.Avatar size={16} />,
+    // Monochrome glyph for the decorative watermark (see CardWatermark)
+    watermark: <Cursor />,
     load: (): Promise<LocalPlanRaw> => window.desktopBridge!.cursorUsage(),
     summarize: summarizeCursorQuota,
   },
   copilot: {
     name: 'GitHub Copilot',
     logo: <GithubCopilot.Avatar size={16} />,
+    watermark: <GithubCopilot />,
     load: (): Promise<LocalPlanRaw> => window.desktopBridge!.copilotUsage(),
     summarize: summarizeCopilotQuota,
   },
@@ -71,7 +75,9 @@ export function LocalQuotaCard({ kind, className }: { kind: LocalQuotaKind; clas
   const sealed = vm?.reason === 'sealed-token' && kind === 'cursor'
 
   return (
-    <section className={cn('rounded-2xl border border-border bg-card p-5', className)}>
+    <section className={cn('relative z-0 flex h-full flex-col rounded-2xl border border-border bg-card p-5', className)}>
+      {/* Monogram-free: the mono glyph needs no sizing or tint override */}
+      <CardWatermark icon={source.watermark} />
       <div className="flex items-center gap-2.5">
         <span
           ref={brandRef}
