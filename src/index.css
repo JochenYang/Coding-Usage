@@ -46,6 +46,13 @@
   --color-destructive: #ef4444;
   --color-destructive-foreground: #ffffff;
 
+  /* System overlay surface (the alert island): a dark "device" surface that
+     stays dark in both themes, exactly like the hardware notch it imitates.
+     Constant on purpose — it is an overlay on top of the page, not a region of
+     it — so it must not follow the theme (see DESIGN_SYSTEM §2.3). */
+  --color-island: #0b0b12;
+  --color-island-foreground: #f4f4f8;
+
   /* Categorical chart series (per-model curves / stacked segments). Distinct in
      hue AND lightness so adjacent series stay separable in both themes, and in
      greyscale for colour-blind readers. Keep in sync with the dark block. */

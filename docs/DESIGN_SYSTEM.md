@@ -75,6 +75,7 @@
 | `warning` | `#f59e0b` | 同左 | 预警 |
 | `danger` / `destructive` | `#ef4444` | 同左 | 危险/错误；`destructive-foreground`恒 `#ffffff` |
 | `offline` | `#a3a3b8` | `#4b4b63` | 离线/静默 |
+| `island` / `island-foreground` | `#0b0b12` / `#f4f4f8` | 同左 | 系统叠加层（告警灵动岛）的表面：两套主题恒定深色 |
 
 ### 2.2 新增 Token 判定（满足任一才新增）
 
@@ -87,6 +88,7 @@
   见 `:4`）。切换只发生在 Semantic 层，组件零改动。
 - 暗色不止反色：`accent-soft` 改用透明度表达（阴影在暗底失效）；`offline` 在暗底加深保证可见。
 - 例外（恒定值，注明不参与主题）：`accent` / `success` / `warning` / `danger` 两套主题同值；
+  `island` / `island-foreground` 恒深色（它悬在页面之上，模仿硬件遮蔽区，不能跟着主题翻成浅色）；
   图表分类色板（`DIST_COLORS`，见 §4.3）暂不同值。
 
 ## 3. 色彩语义

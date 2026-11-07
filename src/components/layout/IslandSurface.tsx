@@ -120,7 +120,7 @@ export function IslandSurface() {
             void window.desktopBridge?.islandClickThrough(true)
             void window.desktopBridge?.islandHide()
           }}
-          compact={<span className="h-2 w-2 rounded-full bg-background/25" aria-hidden />}
+          compact={<span className="h-2 w-2 rounded-full bg-island-foreground/25" aria-hidden />}
         >
           <DynamicIslandView id="alert" className="min-w-[320px] max-w-[460px] py-2.5">
             <AlertIslandBody

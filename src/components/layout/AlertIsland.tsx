@@ -58,21 +58,21 @@ export function AlertIslandBody({
         className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left"
         aria-label={openLabel}
       >
-        <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-background/10" aria-hidden>
+        <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-island-foreground/10" aria-hidden>
           <Icon className="h-3 w-3" />
-          <span className={cn('absolute right-0 top-0 h-1.5 w-1.5 rounded-full ring-2 ring-foreground', LEVEL_DOT[latest.level])} />
+          <span className={cn('absolute right-0 top-0 h-1.5 w-1.5 rounded-full ring-2 ring-island', LEVEL_DOT[latest.level])} />
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
             <span className="truncate text-xs font-medium">{alertTitle(latest, t)}</span>
             {rest > 0 && (
-              <span className="shrink-0 rounded-full bg-background/10 px-1.5 py-px text-[10px] tabular-nums">
+              <span className="shrink-0 rounded-full bg-island-foreground/10 px-1.5 py-px text-[10px] tabular-nums">
                 {t.island.more(rest)}
               </span>
             )}
           </span>
           {alertDetail(latest, t) && (
-            <span className="mt-0.5 block truncate text-[11px] text-background/60">{alertDetail(latest, t)}</span>
+            <span className="mt-0.5 block truncate text-[11px] text-island-foreground/60">{alertDetail(latest, t)}</span>
           )}
         </span>
       </button>
@@ -80,7 +80,7 @@ export function AlertIslandBody({
         type="button"
         onClick={onDismiss}
         aria-label={dismissLabel}
-        className="shrink-0 rounded-md p-1 text-background/60 transition-colors hover:bg-background/10 hover:text-background"
+        className="shrink-0 rounded-md p-1 text-island-foreground/60 transition-colors hover:bg-island-foreground/10 hover:text-island-foreground"
       >
         {rest > 0 ? <BellOff className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
       </button>
@@ -156,7 +156,7 @@ export function AlertIsland() {
           view={open ? 'alert' : null}
           open={open}
           onExitComplete={() => setShown(null)}
-          compact={<span className="h-2 w-2 rounded-full bg-background/25" aria-hidden />}
+          compact={<span className="h-2 w-2 rounded-full bg-island-foreground/25" aria-hidden />}
         >
           <DynamicIslandView id="alert" className="min-w-[320px] max-w-[460px] py-2.5">
             <AlertIslandBody
