@@ -10,10 +10,10 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
-## [Unreleased]
+## [v0.9.3] - 2026-11-08
 
 ### 中文
-- DSH（DeepSeek Harness）用量改为主进程自行读取，不再交给 tokscale：后者的 DSH 解析器遇到一个解析不了的事件会把**整份会话丢弃**且不报错（本机实测：一个 21 MB、3,020 次调用、约 12.6 亿 token 的会话因末尾一个事件被整份跳过）。新读取器逐帧解压追加式 zstd、逐行容错，并**同时读 DSH 应用自己的用量插件存储**（`~/.dsh/storages/dsh-app-plugin-usage/usage.jsonl`）——转录只能覆盖仍在磁盘的会话，被应用清理掉的会话只剩那份记录；**完整**的转录对该会话有最终权威，**不完整**的转录（坏帧、撕裂行）则与账本按 `sessionId#seq` 逐事件并集，不会因为一段尾巴坏了就丢掉整会话。实测本机 DSH 由 tokscale 的 23.3 亿回到 **112.6 亿 token / 36,151 次调用**，与应用内用量插件（去重后 112.5 亿）一致
+- DSH（DeepSeek Harness）用量改为主进程自行读取，不再交给 tokscale：后者的 DSH 解析器遇到一个解析不了的事件会把**整份会话丢弃**且不报错（本机实测：一个 21 MB、3,020 次调用、约 12.6 亿 token 的会话因末尾一个事件被整份跳过）。新读取器逐帧解压追加式 zstd、逐行容错，并**同时读 DSH 应用自己的用量插件存储**（`~/.dsh/storages/dsh-app-plugin-usage/usage.jsonl`）——转录只能覆盖仍在磁盘的会话，被应用清理掉的会话只剩那份记录；两个来源**逐事件合并**：转录能记账的每个 `sessionId#seq` 先占位，账本只补转录真没覆盖到的事件，既不会重复也不会因为一段坏尾巴 / 截断丢掉整会话。实测本机 DSH 由 tokscale 的 23.3 亿回到 **112.6 亿 token / 36,151 次调用**，与应用内用量插件（去重后 112.5 亿）一致
 - DSH 读取器的计数修正：真实 v4 的 **fork** 边界是 `session/end-seed` 的 `data.inherited`（不是 `header.seedLength`，忽略它会把父会话前缀重算一遍）；`compaction/summary` 的 provider/model 在 `data` 上而非 `data.message.source`，否则这些调用会落到 `dsh/unknown` 而无法定价；同一 message id 的递增快照取最终值；两个来源改为**逐事件合并**——转录知道的每个 `sessionId#seq`（已计、继承、被取代，以及“早期零计数快照但同代已有最终快照”的那些）都记为已占用，账本只补转录真没覆盖到的事件，既不会重复也不会因为一段坏尾巴 / 截断丢掉整会话。已解析会话按 inode/ctime/mtime/size 缓存，重复扫从 ~5.3 秒降到 ~0.15 秒
 - 随之移除 `electron/dsh-aliases.ts`：不再需要把版本化转录硬链接成 tokscale 认的名字
 
