@@ -11,6 +11,7 @@ const desktopBridge: DesktopBridge = {
   fetch: (url, headers) => ipcRenderer.invoke('net:fetch', url, headers),
   webhookSend: (channel, cred, title, text) =>
     ipcRenderer.invoke('webhook:send', channel, cred, title, text),
+  backgroundDone: () => ipcRenderer.invoke('background:done'),
   ilinkBegin: () => ipcRenderer.invoke('ilink:begin'),
   ilinkPoll: (qrCode) => ipcRenderer.invoke('ilink:poll', qrCode),
   ilinkActivate: (token) => ipcRenderer.invoke('ilink:activate', token),

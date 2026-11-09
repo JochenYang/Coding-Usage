@@ -17,14 +17,21 @@ import { AccountDrawer } from './components/account/AccountDrawer'
 import { getProvider } from './providers/registry'
 import { getProviderEntries } from './lib/storage'
 import { IslandSurface, useIslandMode } from './components/layout/IslandSurface'
+import { BackgroundRunner, useBackgroundMode } from './components/layout/BackgroundRunner'
 import type { ProviderConfig } from './types'
 
 export default function App() {
+  // Both are plain hash checks, so both run before any early return keeps the
+  // hook order stable.
+  const islandMode = useIslandMode()
+  const backgroundMode = useBackgroundMode()
   // The dedicated island overlay window loads this same bundle with a bare
   // #/island hash: render ONLY the surface there — no DataProvider, so the
   // overlay never runs a second instance of the refresh/scan side effects.
-  const islandMode = useIslandMode()
   if (islandMode) return <IslandSurface />
+  // The shell's hidden cycle window (#/background) runs one refresh with the
+  // data layer and reports back; it renders no UI.
+  if (backgroundMode) return <BackgroundRunner />
   return (
     <DataProvider>
       <Shell />

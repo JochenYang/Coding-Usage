@@ -1,4 +1,4 @@
-import type { Section } from './data-context'
+import type { Section } from './sections'
 import type { ProviderDef, ProviderResult, ProviderStatus } from '../types'
 import { convertAmount, type FxRates } from './rates'
 import { DEFAULT_ALERT_THRESHOLDS } from './alerts'

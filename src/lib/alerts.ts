@@ -1,4 +1,4 @@
-import type { Section } from './data-context'
+import type { Section } from './sections'
 import type { AlertThresholds, ProviderResult } from '../types'
 
 /**
@@ -244,6 +244,19 @@ export function deriveAlerts(
   // Newest first for panel rendering
   merged.sort((a, b) => b.firstSeenAt - a.firstSeenAt)
   return merged
+}
+
+/**
+ * Alerts worth a popup: ids the previous render did not know, and ones that
+ * flipped from resolved history back to live. Shared by the in-app island and
+ * the background cycle window so both use the same rule.
+ */
+export function newAlertsFor(previous: Map<string, boolean>, current: AlertItem[]): AlertItem[] {
+  return current.filter((alert) => {
+    const was = previous.get(alert.id)
+    if (was === undefined) return true
+    return was === true && alert.resolved !== true
+  })
 }
 
 export function unreadCount(items: AlertItem[]): number {

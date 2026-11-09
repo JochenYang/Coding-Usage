@@ -87,6 +87,12 @@ declare global {
     fetch(url: string, headers: Record<string, string>): Promise<DesktopFetchResult>
     /** POST a markdown message to a WeCom group-robot webhook; the payload shape is owned by main */
     webhookSend(channel: WebhookChannel, cred: WebhookCredential, title: string, text: string): Promise<WebhookSendResult>
+    /**
+     * The background window finished its refresh cycle: the shell closes it. A
+     * hidden window runs the renderer's own refresh, alerts, pushes and
+     * snapshots once, so nothing is duplicated in the main process.
+     */
+    backgroundDone(): Promise<void>
     /** WeChat iLink bot: fetch a fresh login QR (image as data: URL) */
     ilinkBegin(): Promise<IlinkBeginResult>
     /** WeChat iLink bot: poll the login QR status; success returns the bot token */

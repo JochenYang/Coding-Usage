@@ -10,6 +10,20 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- 关窗到托盘不再只是隐藏窗口，而是**销毁窗口与其渲染进程**（Electron 的隐藏渲染进程无论看不看得见都占用约 115 MB）：实测空闲常驻内存由 **410.8 MB / 4 进程降到 287–291 MB / 3 进程（-30%）**，代价是重开窗口有一次短暂加载，窗口位置会恢复
+- 无窗口期间的后台工作不重写：主进程每 `autoRefreshMin` 开一个**隐藏窗口**跑一轮原有的刷新、告警推导、推送与快照，页面回报 `background:done` 后销毁（超时 90 秒兜底）。实测每个周期占用约 4 秒、峰值约 115 MB，其余时间回到 3 进程
+- 因此所有状态仍然只有一份（同一份 localStorage）：已读告警不会在窗口重开后重推，推送冷却与推送日志在后台周期与前台之间共享，趋势快照与日归档不断档
+- 修掉同一批告警被并发推送多次的问题：推送批次改为串行执行，后续批次看到已推送记录后直接跳过（实测同一周期由 3 条重复发送降为 1 条）
+
+### English
+- Closing to the tray now **destroys the window and its renderer** instead of hiding it (a hidden Electron renderer holds about 115 MB whether or not it is visible): measured idle footprint goes from **410.8 MB / 4 processes to 287–291 MB / 3 processes (-30%)**, at the cost of a short load when the window comes back, which restores its last position
+- The work that used to happen in the hidden window is not reimplemented: every `autoRefreshMin` the shell opens a **hidden window** that runs the renderer's own refresh, alert derivation, pushes and snapshots, and the page reports `background:done` so it is closed (with a 90 s timeout). Measured, a cycle lasts about 4 seconds and peaks around 115 MB, then the process tree drops back to three
+- That keeps every piece of state in one place (the same localStorage): a read alert is not pushed again when the window reopens, the push cooldown and push log are shared between background cycles and the visible window, and trend snapshots and daily archives do not develop gaps
+- Overlapping push batches no longer send the same alert several times: batches run one at a time, so a later batch sees the pushed ids and stays quiet (measured: three duplicate sends per cycle down to one)
+
 ## [v0.9.3] - 2026-11-08
 
 ### 中文

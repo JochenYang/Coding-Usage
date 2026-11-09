@@ -21,7 +21,7 @@
 |---|---|---|---|
 | 渲染层 | `src/**` | 页面、视图模型、状态、i18n | 不直接持有明文密钥（仅按需经 IPC 取） |
 | 桥接层 | `electron/preload.ts` + `src/globals.d.ts` | 暴露 `window.desktopBridge` | 只暴露显式方法；类型在 `globals.d.ts` 维护 |
-| 主进程 | `electron/**` | 网络请求、本地登录探针、文件读写、窗口/托盘/更新 | 明文凭据只在此层使用，不写日志 |
+| 主进程 | `electron/**` | 网络请求、本地登录探针、文件读写、窗口/托盘/更新、无窗口时的后台刷新与告警推送 | 明文凭据只在此层使用，不写日志 |
 | 静态资源 | `dist/`（渲染层）、`dist-electron/`（main + preload CJS） | 打包产物 | 两者构建命令不同，见 §6 |
 
 ### 2.1 渲染层结构
@@ -72,6 +72,8 @@ electron/
   agent-model-list.ts / agent-model-test.ts / kimi-config.ts / mcode-config.ts / opencode-config.ts
                           # 各 Agent 的模型拉取、连通性测试与配置解析
   island-window.ts        # 桌面灵动岛覆盖窗口
+  background.ts           # 无窗口时定时开一个隐藏窗口跑一轮刷新/告警/推送，跑完销毁
+  webhook-send.ts         # 告警 webhook 发送（含 iLink 会话预热与恢复），webhook:send 通道用
 ```
 
 ## 3. 数据流
@@ -86,6 +88,13 @@ electron/
    内置快照 `builtin-pricing.ts`（生成脚本 `scripts/gen-builtin-pricing.ts`）标注生成日期。
 5. **持久化**：`settings`（v1→v2→v3 迁移，v3 为 safeStorage 加密）、`snapshots`（本地时序）、
    `results`（启动缓存，读取时做字段归一化）。
+6. **窗口与后台**：关闭到托盘会**销毁**窗口及其渲染进程（空闲时常驻内存因此少约 110 MB），
+   而不是隐藏；托盘、`second-instance`、灵动岛点击都会重建窗口并恢复上次的位置
+   （如果保存的矩形已不在任何显示器上，则丢弃并居中）。无窗口期间，主进程按
+   `autoRefreshMin` 定时开一个**隐藏窗口**（`#/background`）跑一轮完整的刷新、告警推导、
+   推送与快照，页面回报 `background:done` 后立即销毁，超时 90 秒兜底。这样所有状态
+   （已读、推送冷却、推送日志、趋势快照、日归档）仍在渲染层那一份 localStorage 里，
+   主进程不重复实现数据层，也不会出现「同一告警窗口重开后重推」或「趋势断档」。
 
 ## 4. 安全边界
 

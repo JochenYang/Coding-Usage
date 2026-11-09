@@ -91,39 +91,23 @@ async function fetchFxRates(): Promise<FxRates | null> {
 }
 import type { AlertItem } from './alerts'
 import { useLocale } from '../i18n/LocaleProvider'
+import { buildSections, type Card, type Section } from './sections'
 
-export interface Card {
-  def: ProviderDef
-  cfg: ProviderConfig
-  index: number
-  key: string
-}
-
-export interface Section {
-  def: ProviderDef
-  cards: Card[]
-}
-
-/** Group enabled, keyed accounts by provider in registry order */
-export function buildSections(settings: Settings): Section[] {
-  const out: Section[] = []
-  for (const def of PROVIDERS) {
-    const entries = getProviderEntries(settings, def.id)
-    const cards: Card[] = []
-    entries.forEach((cfg, i) => {
-      if (!cfg.enabled || !cfg.apiKey) return
-      cards.push({ def, cfg, index: i, key: `${def.id}-${i}` })
-    })
-    if (cards.length === 0) continue
-    out.push({ def, cards })
-  }
-  return out
-}
+// Accounts and their grouping live in ./sections so that pure logic stays out of
+// this React module.
+export { buildSections }
+export type { Card, Section }
 
 /**
  * App-wide data layer: settings + per-account fetch results + refresh scheduler
  * + derived alerts. Extracted from the former single-component App so every
  * page shares one source of truth without a state library.
+ *
+ * `background` marks the hidden cycle window the shell opens while no window is
+ * open: it refreshes, derives alerts and pushes, but it must not write settings
+ * back (it would persist a snapshot taken moments ago, overwriting an edit the
+ * user just made) and must not own the iLink keep-alive (destroying this window
+ * at the end of the cycle would abort the session the visible window set up).
  */
 interface DataContextValue {
   settings: Settings
@@ -179,7 +163,14 @@ interface DataContextValue {
 
 const DataContext = createContext<DataContextValue | null>(null)
 
-export function DataProvider({ children }: { children: ReactNode }) {
+export function DataProvider({
+  children,
+  background = false,
+}: {
+  children: ReactNode
+  /** True in the shell's hidden cycle window: read-only with respect to settings */
+  background?: boolean
+}) {
   const { locale } = useLocale()
   const [settings, setSettings] = useState<Settings>(loadSettings)
   // Replaying the last persisted fetch results makes the first paint show
@@ -222,6 +213,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const editBaseRef = useRef<Settings>(settings)
 
   useEffect(() => {
+    // The hidden cycle window only refreshes: persisting from here would rewrite
+    // every credential (fresh DPAPI blobs) on every cycle and could write back a
+    // settings snapshot older than an edit made in the foreground.
+    if (background) return
     // Persist first, then mirror the encrypted v3 document to a userData file
     // so a lost/corrupt localStorage can be restored on next launch.
     void (async () => {
@@ -232,7 +227,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         if (rawV3) void bridge.settingsBackupWrite(rawV3)
       }
     })()
-  }, [settings])
+  }, [settings, background])
 
   // Startup recovery: when localStorage has no settings at all (fresh profile
   // or a wiped/corrupt leveldb), fall back to the userData file mirror.
@@ -330,7 +325,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // app quit both stop it.
   useEffect(() => {
     const bridge = window.desktopBridge
-    if (!bridge) return
+    if (!bridge || background) return
     const token = settings.integrations.weixinBotToken
     const userId = settings.integrations.weixinBotUserId
     if (token && !token.startsWith(ENC_PREFIX) && userId) {
@@ -340,7 +335,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
     }
     void bridge.ilinkSessionStop()
-  }, [settings.integrations.weixinBotToken, settings.integrations.weixinBotUserId])
+  }, [settings.integrations.weixinBotToken, settings.integrations.weixinBotUserId, background])
 
   const refreshOne = useCallback(
     async (

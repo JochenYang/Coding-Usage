@@ -179,7 +179,28 @@ export interface PushOutcome {
  * Every attempt is appended to the push log so background failures are
  * inspectable on the integrations page instead of silent.
  */
-export async function pushAlerts(
+/**
+ * Serializes push batches. The effect that calls this re-runs whenever the
+ * alert set or the settings change, and several runs can overlap: each would
+ * read the cooldown table before any of them wrote to it and send the same
+ * alerts again. One at a time, the later runs see the pushed ids and stay quiet.
+ */
+let pushChain: Promise<unknown> = Promise.resolve()
+
+export function pushAlerts(
+  intg: IntegrationsSettings,
+  items: AlertItem[],
+  t: Dict,
+): Promise<Record<string, PushOutcome>> {
+  const run = pushChain.then(() => pushAlertsOnce(intg, items, t))
+  pushChain = run.then(
+    () => undefined,
+    () => undefined,
+  )
+  return run
+}
+
+async function pushAlertsOnce(
   intg: IntegrationsSettings,
   items: AlertItem[],
   t: Dict,

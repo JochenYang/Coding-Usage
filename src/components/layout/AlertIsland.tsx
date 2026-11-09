@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { BellOff, CircleAlert, Info, Lock, X } from 'lucide-react'
 import type { AlertItem, AlertKind } from '@/lib/alerts'
+import { newAlertsFor } from '@/lib/alerts'
 import { alertDetail, alertTitle } from '@/lib/alert-text'
 import { useData } from '@/lib/data-context'
 import { useT } from '@/i18n/useT'
@@ -109,11 +110,7 @@ export function AlertIsland() {
   useEffect(() => {
     const prev = prevRef.current
     prevRef.current = new Map(alerts.map((a) => [a.id, a.resolved === true]))
-    const fresh = alerts.filter((a) => {
-      const was = prev.get(a.id)
-      if (was === undefined) return true
-      return was === true && a.resolved !== true
-    })
+    const fresh = newAlertsFor(prev, alerts)
     if (fresh.length === 0) return
     if (overlayOn) {
       void window.desktopBridge?.islandShow(fresh)

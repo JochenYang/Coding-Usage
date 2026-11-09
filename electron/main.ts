@@ -14,9 +14,11 @@ import {
   safeStorage,
   session,
   shell,
+  screen,
   Tray,
 } from 'electron'
 import { autoUpdater } from 'electron-updater'
+import { Background } from './background'
 import { fetchClaudeUsage, fetchGeminiUsage, type QuotaOutcome } from './subscription-quotas'
 import { fetchGrokUsage } from './grok-usage'
 import { readQoderQuota, type QoderQuotaOutcome } from './qoder-quota'
@@ -48,21 +50,14 @@ import { reconcileProviderAttribution } from './provider-reconcile'
 import { readDshUsage } from './dsh-usage'
 import { ensureWorkbuddyAliases } from './workbuddy-aliases'
 import { decodeNonAsciiIds, ensureScannableModelIds } from './model-id-sanitize'
-import {
-  buildChannelRequest,
-  channelErrorDetail,
-  isChannelSuccess,
-  type PushChannel,
-} from './webhook-channels'
 import { ilinkBeginLogin, ilinkPollActivation, ilinkPollLogin } from './weixin-ilink'
 import {
-  ensureIlinkSessionWarm,
   initIlinkSession,
-  recoverIlinkSession,
   startIlinkSession,
   stopIlinkSession,
 } from './weixin-session'
 import { initIslandWindow, islandHide, islandRendererReady, islandSetClickThrough, islandShow } from './island-window'
+import { sendWebhook } from './webhook-send'
 import {
   listAgentProviderModels,
   readAgentConfig,
@@ -91,6 +86,15 @@ const ENC_PREFIX = 'enc:v3:'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
+// Refreshes accounts, derives alerts and pushes them while no window is open:
+// closing to the tray destroys the window and its renderer process.
+let background: Background | null = null
+// Webhook sends in flight, so a background cycle window is not closed while one
+// is still running (the message would arrive with its cooldown record lost).
+let pendingWebhookSends = 0
+// Last window rectangle, so closing to the tray and coming back lands where the
+// user left it, and so a relaunch does too.
+let lastBounds: Electron.Rectangle | null = null
 // Gate for close-to-tray: only a real quit (tray menu / app.quit) may pass the
 // window close event through instead of routing it to the renderer dialog.
 let isQuitting = false
@@ -103,10 +107,87 @@ let lastUpdateVersion: string | null = null
 
 function showMainWindow(): void {
   const win = mainWindow
-  if (!win) return
+  // Closed to the tray: the window was destroyed, so bring a fresh one up. The
+  // page reloads and reads its state back from disk.
+  if (!win || win.isDestroyed()) {
+    // A background cycle may be running: its page would fetch and push the same
+    // accounts a second time, and its settings snapshot is older than the one
+    // about to be edited. End it before the real window appears.
+    background?.cancelCycle()
+    createWindow()
+    // A visible window refreshes on its own: stand the background cycles down.
+    void background?.reschedule()
+    return
+  }
   if (win.isMinimized()) win.restore()
   win.show()
   win.focus()
+}
+
+/**
+ * Closing to the tray, not hiding: a hidden Chromium renderer keeps about
+ * 115 MB resident whether or not anyone can see it, and the background engine
+ * keeps refreshes and alerts flowing meanwhile.
+ */
+function closeToTray(): void {
+  const win = mainWindow
+  if (!win || win.isDestroyed()) return
+  rememberBounds(win)
+  mainWindow = null
+  win.destroy()
+  // Nothing refreshes while the window is gone: hand the work to the hidden
+  // cycle window until a window exists again.
+  void background?.reschedule()
+}
+
+/** Saves the rectangle a restored window should take. */
+function rememberBounds(win: BrowserWindow): void {
+  if (win.isDestroyed() || win.isMaximized() || win.isMinimized() || win.isFullScreen()) return
+  lastBounds = win.getBounds()
+  void writeFile(join(app.getPath('userData'), 'window-state.json'), JSON.stringify(lastBounds), 'utf8').catch(
+    () => {},
+  )
+}
+
+/** Reads back the rectangle the last session left the window in. */
+async function loadWindowState(): Promise<void> {
+  try {
+    const parsed = JSON.parse(
+      await readFile(join(app.getPath('userData'), 'window-state.json'), 'utf8'),
+    ) as Electron.Rectangle
+    if (typeof parsed?.x === 'number' && typeof parsed?.y === 'number' && typeof parsed?.width === 'number') {
+      lastBounds = parsed
+    }
+  } catch {
+    // First run, or an unreadable file: the window opens centred
+  }
+}
+
+/**
+ * The saved rectangle, unless no display reaches it any more: a window restored
+ * onto an unplugged monitor would never be found again.
+ */
+function usableBounds(): Electron.Rectangle | null {
+  const bounds = lastBounds
+  if (!bounds) return null
+  const onScreen = screen.getAllDisplays().some(({ workArea }) =>
+    bounds.x < workArea.x + workArea.width &&
+    bounds.x + bounds.width > workArea.x &&
+    bounds.y < workArea.y + workArea.height &&
+    bounds.y + bounds.height > workArea.y,
+  )
+  return onScreen ? bounds : null
+}
+
+/** Brings the window up and asks its page for the alerts center. */
+function openAlertsCenter(): void {
+  const had = !!mainWindow && !mainWindow.isDestroyed()
+  showMainWindow()
+  const win = mainWindow
+  if (!win) return
+  // A window that is still loading would drop the message, so wait it out.
+  if (had) win.webContents.send('island:open-alerts')
+  else win.webContents.once('did-finish-load', () => win.webContents.send('island:open-alerts'))
 }
 
 /**
@@ -141,9 +222,12 @@ function applyCsp(): void {
 }
 
 function createWindow(): void {
+  const restored = usableBounds()
   const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    x: restored?.x,
+    y: restored?.y,
+    width: restored?.width ?? 1280,
+    height: restored?.height ?? 800,
     minWidth: 960,
     minHeight: 640,
     backgroundColor: '#0b0b12',
@@ -164,6 +248,12 @@ function createWindow(): void {
     },
   })
   mainWindow = win
+  // The window can go away without the user quitting (close to tray destroys
+  // it); the reference must not outlive it, or showMainWindow would act on a
+  // destroyed object instead of rebuilding.
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null
+  })
 
   // Renderer-initiated window.open / target="_blank" links (provider docs,
   // key pages) must open in the system browser: Electron's default is a new
@@ -833,121 +923,27 @@ function registerIpc(): void {
   )
 
   // Alert-push webhook send. The renderer supplies only the channel id, its
-  // credential pieces and the message text; the payload shape and the
-  // per-platform success semantics live in webhook-channels.ts, so the
-  // renderer stays a narrow client of known integrations rather than an open
-  // POST proxy.
+  // credential pieces and the message text; the payload shape, the per-platform
+  // success semantics and iLink's session recovery live in webhook-send.ts.
   ipcMain.handle(
     'webhook:send',
-    async (
-      _event,
-      channel: unknown,
-      cred: unknown,
-      title: unknown,
-      text: unknown,
-    ): Promise<WebhookSendResult> => {
-      if (
-        !['wecom', 'feishu', 'telegram', 'weixin'].includes(channel as string) ||
-        !cred ||
-        typeof cred !== 'object' ||
-        typeof title !== 'string' ||
-        !title ||
-        typeof text !== 'string' ||
-        !text
-      ) {
-        return { ok: false, status: 0, error: 'invalid-request' }
+    async (_event, channel: unknown, cred: unknown, title: unknown, text: unknown) => {
+      // The background cycle window may be closed as soon as it reports its
+      // refresh is done; a send already in flight must finish (and record its
+      // cooldown) before that window goes away.
+      pendingWebhookSends++
+      try {
+        return await sendWebhook(channel, cred, title, text)
+      } finally {
+        pendingWebhookSends--
       }
-      const c = cred as Record<string, unknown>
-      const request = buildChannelRequest(
-        channel as PushChannel,
-        {
-          url: typeof c.url === 'string' ? c.url : undefined,
-          token: typeof c.token === 'string' ? c.token : undefined,
-          chatId: typeof c.chatId === 'string' ? c.chatId : undefined,
-          userId: typeof c.userId === 'string' ? c.userId : undefined,
-        },
-        title,
-        text,
-      )
-      if (!request) return { ok: false, status: 0, error: 'invalid-credential' }
-      // WeChat iLink: sendmessage only lands while the bot session is
-      // "prepared" (ZCode keeps a getupdates long-poll alive for that).
-      // This app is opened on demand, so warm the session after a cold
-      // start and recover from {ret:-2,prepare failed} with one full
-      // getupdates round before the single retry below.
-      const weixinToken = channel === 'weixin' ? (c.token as string) : ''
-      if (weixinToken) {
-        // The return value matters: a bare send against an unprepared session
-        // is the deterministic {ret:-2} this whole path exists to avoid. When
-        // warming fails we still try — the platform occasionally accepts it —
-        // but the log line is what makes a cold-start failure diagnosable.
-        const warm = await ensureIlinkSessionWarm(weixinToken)
-        if (!warm) {
-          console.error('[webhook:send] channel=weixin warm=fail, sending anyway')
-        }
-      }
-      const isWeixinPrepareFailed = (json: unknown): boolean => {
-        if (channel !== 'weixin' || json == null || typeof json !== 'object') return false
-        const obj = json as Record<string, unknown>
-        const layers = [obj, obj.data, obj.result].filter(
-          (l): l is Record<string, unknown> => l != null && typeof l === 'object' && !Array.isArray(l),
-        )
-        return layers.some((l) => {
-          const ret = l.ret
-          const msg = typeof l.errmsg === 'string' ? l.errmsg : typeof l.message === 'string' ? l.message : ''
-          return ret === -2 || ret === '-2' || /prepare failed/i.test(msg)
-        })
-      }
-      // One retry on transport-level failure: the iLink endpoint occasionally
-      // black-holes a request past the 15s timeout while the next one answers
-      // instantly. A hard-down network fails both attempts quickly anyway.
-      // WeChat prepare-failed also uses the retry slot after a session recover.
-      let lastError = ''
-      let weixinRecovered = false
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          const res = await net.fetch(request.url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...(request.headers ?? {}) },
-            body: request.body,
-            signal: AbortSignal.timeout(15_000),
-          })
-          let json: unknown = null
-          try {
-            json = JSON.parse(await res.text())
-          } catch {
-            // Non-JSON error page (gateway etc.) — the HTTP status carries it
-          }
-          // Logical failures (HTTP 200 + platform errcode, e.g. weixin ret!=0)
-          // must carry the platform detail too — otherwise the renderer can only
-          // fall back to a bare "HTTP 200" and the real cause is invisible.
-          const ok = isChannelSuccess(channel as PushChannel, res.ok, json)
-          if (!ok) {
-            // Cold-start / idle-session rejection: re-prepare via getupdates
-            // and spend the retry slot on the same payload (not a duplicate
-            // logical message — the first attempt never delivered).
-            if (weixinToken && !weixinRecovered && isWeixinPrepareFailed(json)) {
-              weixinRecovered = true
-              const recovered = await recoverIlinkSession(weixinToken)
-              console.error(
-                `[webhook:send] channel=weixin prepare-failed, recover=${recovered ? 'ok' : 'fail'}`,
-              )
-              if (recovered) continue
-            }
-            const detail = channelErrorDetail(channel as PushChannel, res.status, json)
-            console.error(`[webhook:send] channel=${channel as string} status=${res.status} detail=${detail}`)
-            // A platform rejection is deterministic — retrying would just
-            // duplicate the failure, so return immediately
-            return { ok: false, status: res.status, error: detail }
-          }
-          return { ok, status: res.status }
-        } catch (e) {
-          lastError = String(e instanceof Error ? e.message : e)
-        }
-      }
-      return { ok: false, status: 0, error: lastError }
     },
   )
+
+  // The hidden cycle window finished a background refresh: close it.
+  ipcMain.handle('background:done', (event): void => {
+    background?.done(event.sender)
+  })
 
   // WeChat iLink bot login/activation flow (desktop-only interactive setup).
   // Only the QR image, status and the resulting token/user id cross the
@@ -1007,8 +1003,7 @@ function registerIpc(): void {
     islandSetClickThrough(clickThrough === true)
   })
   ipcMain.handle('island:open-main', (): void => {
-    showMainWindow()
-    mainWindow?.webContents.send('island:open-alerts')
+    openAlertsCenter()
   })
 
   // safeStorage wrappers. Returning null (instead of throwing) lets the
@@ -1035,10 +1030,11 @@ function registerIpc(): void {
   ipcMain.handle('settings:backup-write', (_event, payload: unknown): void => {
     if (typeof payload !== 'string' || payload.length === 0) return
     // Fire-and-forget mirror; the catch swallows async rejections the outer
-    // (synchronous) handler could never see
-    void writeFile(join(app.getPath('userData'), 'settings-backup.json'), payload, 'utf8').catch(
-      () => {},
-    )
+    // (synchronous) handler could never see. The background cycle reads that
+    // mirror for the interval, so a settings change also re-arms it.
+    void writeFile(join(app.getPath('userData'), 'settings-backup.json'), payload, 'utf8')
+      .then(() => void background?.reschedule())
+      .catch(() => {})
   })
 
   ipcMain.handle('settings:backup-read', async (): Promise<string | null> => {
@@ -1064,7 +1060,7 @@ function registerIpc(): void {
   // Styled in-app confirm dialog owns the tray-vs-quit decision; the main
   // process only executes the renderer's final choice.
   ipcMain.handle('window:hide', (): void => {
-    mainWindow?.hide()
+    closeToTray()
   })
 
   ipcMain.handle('app:quit', (): void => {
@@ -1511,17 +1507,34 @@ if (!gotSingleInstanceLock) {
 } else {
   app.on('second-instance', () => showMainWindow())
 
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
     applyCsp()
     initIlinkSession(net.fetch)
     // Point the usage history store at userData before any scan can run, so a
     // first refresh already merges into the persistent history.
     initUsageStore(app.getPath('userData'))
+    await loadWindowState()
     registerIpc()
     createWindow()
     createTray()
     setupAutoUpdater()
     initIslandWindow(!app.isPackaged && process.env.ELECTRON_RENDERER_URL ? process.env.ELECTRON_RENDERER_URL : null)
+    // Starts after the first window exists: while one exists it refreshes and
+    // pushes on its own, and no cycle window is opened.
+    background = new Background({
+      userData: app.getPath('userData'),
+      hasMainWindow: () => !!mainWindow && !mainWindow.isDestroyed(),
+      busy: () => pendingWebhookSends > 0,
+      preload: join(__dirname, 'preload.cjs'),
+      load: (win) => {
+        if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
+          void win.loadURL(`${process.env.ELECTRON_RENDERER_URL}#/background`)
+        } else {
+          void win.loadFile(join(__dirname, '../dist/index.html'), { hash: '/background' })
+        }
+      },
+    })
+    void background.start()
   })
 
   // Keep running in the tray when every window is hidden/closed; real quits go
@@ -1533,6 +1546,10 @@ if (!gotSingleInstanceLock) {
   app.on('before-quit', () => {
     // Let pending close events pass through during the real quit sequence
     isQuitting = true
+    // A quit from the tray menu does not go through closeToTray: remember the
+    // rectangle here too, so the next launch reopens where this one was.
+    if (mainWindow && !mainWindow.isDestroyed()) rememberBounds(mainWindow)
+    background?.stop()
     void stopIlinkSession()
     closeUsageStore()
   })
