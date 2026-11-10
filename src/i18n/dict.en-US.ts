@@ -590,6 +590,8 @@ export const enUS: Dict = {
     needsIde:
       'No Antigravity login found on this machine. Sign in once in the IDE — afterwards the IDE can stay closed and this card keeps refreshing.',
     staleHandshake: 'The stored login was rejected. Sign in again in Antigravity and retry.',
+    refreshUnavailable:
+      'The stored login could not be refreshed (Antigravity client not found, the refresh service unreachable, or no refresh credential stored); the sign-in itself may still be valid. Check that Antigravity is installed and retry later; if this persists, update this app.',
     unavailable: 'Antigravity quota is unavailable right now — check that the IDE is running and signed in.',
   },
   providerErrors: {

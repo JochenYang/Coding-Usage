@@ -10,6 +10,18 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- `invalid_grant` 不再立即终止客户端遍历：按 RFC 6749 它也可能表示「令牌由另一个候选客户端签发」，立即终止会把活登录误判成死登录；现在全部候选失败、至少一次 `invalid_grant` 且没有候选因网络未获答复才判凭据被拒，401/403 重试分支也用同一分类
+- 修复 Antigravity 新版安装下额度卡报「登录凭据已失效」的问题：新版（appx 式布局）不再写 `~/.gemini/<flavour>/bin/agentapi.bat`，以它为锚点的客户端发现扫到零个 OAuth 候选，刷新一次都没尝试就被判失败；现在直接从标准安装目录（`%LOCALAPPDATA%\Programs` / `%PROGRAMFILES%`，含 `_` 布局）读 IDE bundle，实测刷新成功、额度正常返回
+- 额度卡的刷新失败文案与「凭据被拒」分开：只有 Google 明确回 `invalid_grant`（令牌真失效）才提示重新登录；找不到客户端或刷新服务不可达时显示「无法刷新凭据，登录本身可能仍有效」，不再误导重登录
+
+### English
+- `invalid_grant` no longer stops the client walk early: per RFC 6749 it can also mean "the token was issued to another candidate client", and stopping there would sentence a live login to death; the login is declared rejected only when every candidate fails with at least one `invalid_grant` and no candidate was left unanswered by the network, and the 401/403 retry branch applies the same classification
+- Fix the Antigravity quota card reporting a dead login on current installs: the appx-style layout no longer writes `~/.gemini/<flavour>/bin/agentapi.bat`, so launcher-anchored discovery found zero OAuth candidates and every refresh was declared failed without a single attempt; the IDE bundle is now also read straight from the standard install roots (`%LOCALAPPDATA%\Programs` / `%PROGRAMFILES%`, `_` layout included) — measured on this machine: refresh succeeds and the quota returns
+- The card now separates a probe-side refresh failure from a rejected credential: re-login is advised only when Google itself answers `invalid_grant` (a truly dead token); a missing client or unreachable refresh service reads as "could not refresh, the sign-in itself may still be valid" instead of misleading re-login advice
+
 ## [v0.9.4] - 2026-11-09
 
 ### 中文

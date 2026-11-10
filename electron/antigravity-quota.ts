@@ -69,8 +69,11 @@ import { dirname, join } from 'node:path'
  * resources above it carry the IDE's own bundle, whose `cloudCode/common/oauthClient.js`
  * module declares each client id directly followed by that id's secret. The
  * pairs are therefore read *positionally* — a build ships more than one client,
- * and the first id does not necessarily own the first secret. Nothing is written
- * and nothing leaves the machine; the values live in memory for this probe.
+ * and the first id does not necessarily own the first secret. Current builds
+ * ship no launcher at all (appx-style installs), so the same bundle is also
+ * read straight from the standard install roots, `_` layout included. Nothing
+ * is written and nothing leaves the machine; the values live in memory for
+ * this probe.
  *
  * A wrong pair cannot corrupt anything: the refresh simply fails with
  * `invalid_client` and the probe moves to the next candidate, falling through to
@@ -92,6 +95,13 @@ const MAX_PAIR_GAP = 400
 interface OAuthClient {
   id: string
   secret: string
+}
+
+interface RefreshResult {
+  token: string | null
+  /** Every candidate failed with at least one `invalid_grant` and none was
+   * left unanswered by the network: the refresh token itself is dead. */
+  rejected: boolean
 }
 
 let cachedClient: OAuthClient | undefined
@@ -184,16 +194,36 @@ async function readIdeBundle(exe: string): Promise<string | null> {
 }
 
 /**
+ * Install roots for builds that ship no launcher.
+ *
+ * The appx-style layout keeps the Electron app under `_` inside the install
+ * root; legacy layouts keep `resources` at the root itself. Per-user installs
+ * default to `%LOCALAPPDATA%\Programs`, machine-wide ones to `%PROGRAMFILES%`;
+ * both product directory names the credential store probe knows are tried.
+ */
+function installRoots(): string[] {
+  const bases: string[] = []
+  if (process.env.LOCALAPPDATA) bases.push(join(process.env.LOCALAPPDATA, 'Programs'))
+  if (process.env.PROGRAMFILES) bases.push(process.env.PROGRAMFILES)
+  const roots: string[] = []
+  for (const base of bases) {
+    for (const name of ['Antigravity IDE', 'Antigravity']) roots.push(join(base, name))
+  }
+  return roots
+}
+
+/**
  * Every OAuth client worth trying, best candidate first.
  *
  * The IDE bundle is the authoritative source and is read first: it declares the
- * real pairs, and trying them costs two small file reads. Only when none is
+ * real pairs, and trying them costs two small file reads. Launcher-less
+ * installs are reached through the install roots next. Only when none is
  * accepted does the search fall back to the language server's string table,
  * where ids and a stray secret are mixed into unrelated API strings — a 135 MB
  * read, so it is kept last and the pairs are tried as a cross-product because
  * nothing there states which secret belongs to which id.
  */
-async function* clientCandidates(): AsyncGenerator<OAuthClient> {
+export async function* clientCandidates(): AsyncGenerator<OAuthClient> {
   const tried = new Set<string>()
   const fresh = (list: OAuthClient[]): OAuthClient[] =>
     list.filter((client) => {
@@ -216,6 +246,16 @@ async function* clientCandidates(): AsyncGenerator<OAuthClient> {
     }
     for (const text of sources) {
       for (const client of fresh(declaredPairs(text))) yield client
+    }
+  }
+
+  // Launcher-less installs: read the bundle straight from the install roots,
+  // appx `_` layout first (current builds), legacy layout second. Misses are
+  // cheap failed opens; `fresh` dedupes against launcher-derived pairs.
+  for (const root of installRoots()) {
+    for (const layout of ['_', '']) {
+      const bundle = await readTextBytes(join(root, layout, 'resources', 'app', 'out', 'main.js'), BUNDLE_SCAN_BYTES)
+      if (bundle) for (const client of fresh(declaredPairs(bundle))) yield client
     }
   }
 
@@ -280,27 +320,39 @@ async function fetchToken(
  * can tell the right pair from the wrong one — a parse that merely looks
  * plausible is not evidence. The pair that works is remembered, and re-resolved
  * from disk if a later refresh is rejected (the IDE may have been updated since).
+ * `rejected` separates a dead login (every candidate failed and Google
+ * answered `invalid_grant`, re-sign-in is the fix) from a probe that could not
+ * refresh (no client found, wrong clients or network): the card must not advise
+ * re-login for the latter.
+ * Exported for regression tests.
  */
-async function refreshAccessToken(refreshToken: string): Promise<string | null> {
-  if (!refreshToken) return null
+export async function refreshAccessToken(refreshToken: string): Promise<RefreshResult> {
+  if (!refreshToken) return { token: null, rejected: false }
 
   const cached = cachedClient
   if (cached) {
     const res = await fetchToken(cached, refreshToken)
-    if (res.ok) return res.accessToken
+    if (res.ok) return { token: res.accessToken, rejected: false }
     cachedClient = undefined // stale guess: re-resolve below
   }
 
+  let rejected = false
+  let unanswered = false
   for await (const client of clientCandidates()) {
     const res = await fetchToken(client, refreshToken)
     if (res.ok) {
       cachedClient = client
-      return res.accessToken
+      return { token: res.accessToken, rejected: false }
     }
-    // A token Google calls dead will not be revived by another client id
-    if (res.error === 'invalid_grant') return null
+    // invalid_grant is ambiguous: a dead token, or a token issued to another
+    // candidate client (RFC 6749 §5.2). Keep trying; only a unanimous failure
+    // with at least one invalid_grant counts as a rejected login.
+    if (res.error === 'invalid_grant') rejected = true
+    // A candidate that never answered (network) cannot vouch for the token's
+    // death; stay conservative and report refresh-unavailable instead.
+    if (res.status === 0) unanswered = true
   }
-  return null
+  return { token: null, rejected: rejected && !unanswered }
 }
 
 /** Cloud Code hosts, daily first: that is the channel the IDE itself uses */
@@ -726,10 +778,13 @@ export function quotaGroupsFromModels(models: Map<string, ModelQuota>): unknown 
 }
 
 /**
- * Route 1. Uses the stored token when it is still valid, refreshes it when it is
- * not, and reports `refresh-failed` when Google rejects the refresh token.
+ * Route 1. Uses the stored token when it is still valid, refreshes it when it
+ * is not, and reports `refresh-failed` when Google rejects the refresh token
+ * itself (`invalid_grant`) or `refresh-unavailable` when the probe could not
+ * refresh (no client found / network) — the two need different advice.
+ * Exported for regression tests.
  */
-async function fetchViaCloudCode(): Promise<{ available: boolean; body?: string; reason?: string }> {
+export async function fetchViaCloudCode(): Promise<{ available: boolean; body?: string; reason?: string }> {
   const creds = await readStoredCredentials()
   if (!creds) return { available: false, reason: 'no-credentials' }
 
@@ -737,11 +792,11 @@ async function fetchViaCloudCode(): Promise<{ available: boolean; body?: string;
   let access = creds.accessToken
   if (stale) {
     const refreshed = await refreshAccessToken(creds.refreshToken)
-    if (refreshed) access = refreshed
+    if (refreshed.token) access = refreshed.token
     else if (creds.expiresAt !== 0 && Date.now() < creds.expiresAt) {
       // Refresh failed but the stored token has not actually expired yet
     } else {
-      return { available: false, reason: 'refresh-failed' }
+      return { available: false, reason: refreshed.rejected ? 'refresh-failed' : 'refresh-unavailable' }
     }
   }
 
@@ -756,12 +811,14 @@ async function fetchViaCloudCode(): Promise<{ available: boolean; body?: string;
     // A different account may be signed in behind the refreshed token
     cachedProject = null
     const refreshed = await refreshAccessToken(creds.refreshToken)
-    if (!refreshed) return { available: false, reason: `http-${first.status}` }
-    const retryInfo = await loadCodeAssist(refreshed, creds.refreshToken)
+    if (!refreshed.token) {
+      return { available: false, reason: refreshed.rejected ? 'refresh-failed' : 'refresh-unavailable' }
+    }
+    const retryInfo = await loadCodeAssist(refreshed.token, creds.refreshToken)
     const retryProject = retryInfo?.project ?? project
-    const retry = await fetchQuotaSummary(refreshed, retryProject)
+    const retry = await fetchQuotaSummary(refreshed.token, retryProject)
     if (retry.ok) return { available: true, body: retry.body }
-    const retryModels = await fetchModelQuotas(refreshed, retryProject)
+    const retryModels = await fetchModelQuotas(refreshed.token, retryProject)
     if (retryModels) return { available: true, body: JSON.stringify(quotaGroupsFromModels(retryModels)) }
     return { available: false, reason: `http-${first.status}` }
   }

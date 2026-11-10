@@ -582,6 +582,7 @@ export interface Dict {
     remainingNote: string
     needsIde: string
     staleHandshake: string
+    refreshUnavailable: string
     unavailable: string
   }
   providerErrors: {

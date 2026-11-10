@@ -575,6 +575,8 @@ export const zhCN: Dict = {
     needsIde:
       '未检测到本机 Antigravity 登录。请先在 IDE 中登录一次（之后即可关闭 IDE，本卡片仍能刷新）。',
     staleHandshake: '登录凭据已失效或被拒绝。请在 Antigravity 中重新登录一次后重试。',
+    refreshUnavailable:
+      '无法刷新登录凭据（未找到 Antigravity 客户端、刷新服务不可达或缺少刷新凭据），登录本身可能仍有效。请确认 Antigravity 已安装并稍后重试；若持续出现，请更新本应用。',
     unavailable: '暂时无法读取 Antigravity 额度，请确认 IDE 正在运行且已登录。',
   },
   providerErrors: {

@@ -44,6 +44,7 @@ const PROBE_RACE_TIMEOUT_MS = 60_000
 /** Failure reason → the sentence the card shows */
 function unavailableMessage(reason: string | null | undefined, t: Dict): string {
   if (reason === 'no-credentials') return t.antigravityQuota.needsIde
+  if (reason === 'refresh-unavailable') return t.antigravityQuota.refreshUnavailable
   if (reason === 'refresh-failed' || reason === 'http-401' || reason === 'http-403') {
     return t.antigravityQuota.staleHandshake
   }
