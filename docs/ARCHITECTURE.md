@@ -57,14 +57,18 @@ electron/
   preload.ts              # contextBridge → window.desktopBridge
   kimi-usage.ts / grok-usage.ts / antigravity-quota.ts / subscription-quotas.ts
                           # 订阅额度探针（本地登录 → 官方接口）
-  local-plan-quota.ts     # Cursor / GitHub Copilot 本地登录探针
+  local-plan-quota.ts     # Cursor / GitHub Copilot 本地登录探针（Cursor 的 sealed token
+                          # 走 safe-storage.ts 解开；额度读 Cursor 当前的 GetCurrentPeriodUsage，
+                          # 不提供 token 级用量，因此不计入本地用量）
+  safe-storage.ts         # 读另一个 Electron 应用的 safeStorage 密钥（Windows DPAPI → Chromium
+                          # `v10` AES-256-GCM）；qoder / cursor 两个探针共用
   trae-usage.ts / trae-local-usage.ts
                           # Trae CN：登录解密探针 / SQLCipher 本地用量
   codebuddy-usage.ts / qoder-usage.ts / cindy-usage.ts / dsh-usage.ts / workbuddy-aliases.ts
                           # tokscale 覆盖不到或读不可靠的本地用量来源（qoder / cindy 各自分国内、国际两行；
                           # dsh 自己读多帧 zstd 转录 + DSH 应用自己的用量插件存储：tokscale 的 dsh 读者
                           # 遇到一个坏事件会丢弃整份会话，而转录只覆盖仍在磁盘的会话）
-  qoder-quota.ts          # Qoder 国际版额度：解 IDE 本地登录（Windows DPAPI）→ 官方 credits 接口
+  qoder-quota.ts          # Qoder 国际版额度：解 IDE 本地登录（DPAPI 密钥 + safe-storage.ts）→ 官方 credits 接口
   model-pricing.ts / model-pricing-core.ts / builtin-pricing.ts
                           # 模型价格投影（models.dev 官方价优先，OpenRouter 兜底）
   agent-config-paths.ts / agent-config-io.ts / agent-config-service.ts

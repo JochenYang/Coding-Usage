@@ -154,7 +154,7 @@ declare global {
     }>
     /** Trae CN credits usage via the IDE's encrypted local login; body is a normalized {percent,consumed,total,resetsAt,plan,packs} */
     traeUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
-    /** Cursor plan quota from the editor/CLI login (raw /api/usage-summary body) */
+    /** Cursor plan quota from the editor/CLI login (current-period body, or the legacy summary as fallback) */
     cursorUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** GitHub Copilot plan quota from the extension's hosts.json login */
     copilotUsage(): Promise<{ available: boolean; body?: string; reason?: string }>

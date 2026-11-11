@@ -1,7 +1,6 @@
-import { spawn } from 'node:child_process'
-import { createDecipheriv } from 'node:crypto'
 import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import { decryptChromiumV10, unwrapDpapiKey } from './safe-storage'
 
 /**
  * Qoder (global build) account quota probe.
@@ -56,19 +55,6 @@ const USAGE_URL = 'https://openapi.qoder.sh/sash/api/v2/me/usage'
 /** Qoder's userData directory name inside the platform appData root */
 const USER_DATA_NAME = 'com.qoder.app.stable'
 
-/**
- * DPAPI unwrap script, read by the child from stdin so the wrapped key never
- * appears on a command line (`Win32_Process.CommandLine` is readable by other
- * processes and by admin tooling).
- */
-const DPAPI_SCRIPT = `
-Add-Type -AssemblyName System.Security
-$b = [Convert]::FromBase64String('$KEY')
-$p = [System.Security.Cryptography.ProtectedData]::Unprotect($b, $null, 'CurrentUser')
-[Convert]::ToBase64String($p)
-`.trim()
-
-const DPAPI_TIMEOUT_MS = 10_000
 const HTTP_TIMEOUT_MS = 15_000
 
 /** In-memory token cache: decryption costs a child process, the token is good for a session */
@@ -145,36 +131,6 @@ export function narrowQoderUsage(raw: unknown): Omit<QoderQuotaOutcome, 'fetched
   }
 }
 
-/** DPAPI-unwrap the Chromium key through a short-lived PowerShell child */
-function unwrapDpapiKey(wrapped: Buffer): Promise<Buffer | null> {
-  return new Promise((resolve) => {
-    const child = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', '-'], {
-      windowsHide: true,
-    })
-    let out = ''
-    let settled = false
-    const finish = (value: Buffer | null): void => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      resolve(value)
-    }
-    const timer = setTimeout(() => {
-      child.kill()
-      finish(null)
-    }, DPAPI_TIMEOUT_MS)
-    child.stdout?.setEncoding('utf8')
-    child.stdout?.on('data', (chunk: string) => {
-      out += chunk
-    })
-    // PowerShell writes its own diagnostics on stderr; drained, never parsed
-    child.stderr?.resume()
-    child.on('error', () => finish(null))
-    child.on('close', () => finish(out.trim() ? Buffer.from(out.trim(), 'base64') : null))
-    child.stdin?.end(DPAPI_SCRIPT.replace('$KEY', wrapped.toString('base64')))
-  })
-}
-
 type StoredAuth = { ok: true; token: string; expiresAtMs: number } | { ok: false; reason: string }
 
 /**
@@ -210,15 +166,9 @@ async function readStoredAuth(userData: string): Promise<StoredAuth & { mtimeMs?
   if (!key || key.length !== 32) return { ok: false, reason: 'decrypt-failed' }
 
   // v10: AES-256-GCM with a 12-byte nonce and a trailing 16-byte tag
-  if (blob.subarray(0, 3).toString('latin1') !== 'v10' || blob.length < 3 + 12 + 16) {
-    return { ok: false, reason: 'decrypt-failed' }
-  }
+  const plain = decryptChromiumV10(blob, key)
+  if (plain == null) return { ok: false, reason: 'decrypt-failed' }
   try {
-    const decipher = createDecipheriv('aes-256-gcm', key, blob.subarray(3, 15))
-    decipher.setAuthTag(blob.subarray(blob.length - 16))
-    const plain = Buffer.concat([decipher.update(blob.subarray(15, blob.length - 16)), decipher.final()]).toString(
-      'utf8',
-    )
     const auth = asRecord(JSON.parse(plain))
     const token = str(auth?.token)
     if (!token) return { ok: false, reason: 'no-login' }
