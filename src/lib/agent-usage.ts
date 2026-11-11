@@ -373,6 +373,13 @@ function sortedByProviderCost(list: [string, SliceAgg][]): CostSliceVM[] {
   return toProviderSlice(list).sort((a, b) => b.costUsd - a.costUsd)
 }
 
+/**
+ * Sentinel for "the scan ran and found nothing". A shared constant because the
+ * usage card treats it as an empty state rather than an error — the two sides
+ * must not drift apart on the literal.
+ */
+export const EMPTY_SCAN_REASON = 'no data'
+
 function emptyVM(
   error: string | null,
   skippedClients: string[] | null = null,
@@ -463,7 +470,9 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
           ),
         )
       : undefined
-  if (typeof root.error === 'string' && root.error) return emptyVM(root.error, skippedClients, skippedDetails, pricing)
+  if (typeof root.error === 'string' && root.error) {
+    return emptyVM(root.error, skippedClients, skippedDetails, pricing)
+  }
 
   const daily = (root.daily ?? {}) as { contributions?: unknown }
   const contribs: GraphContribution[] = (Array.isArray(daily.contributions) ? daily.contributions : [])
@@ -472,7 +481,10 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
     )
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
 
-  if (contribs.length === 0) return emptyVM('no data', skippedClients, skippedDetails, pricing)
+  // No contributions is an empty state, not a failure.
+  if (contribs.length === 0) {
+    return emptyVM(EMPTY_SCAN_REASON, skippedClients, skippedDetails, pricing)
+  }
 
   // Buckets anchor to the REAL local date, not "the last row": a dataset that
   // ends yesterday (no usage today yet) must show 0 for today, not relabel

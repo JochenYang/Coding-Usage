@@ -28,7 +28,7 @@ import cindyLogo from '@/components/logos/cindy.png'
 import { useT } from '@/i18n/useT'
 import { useTheme } from '@/components/ThemeProvider'
 import { useData } from '@/lib/data-context'
-import { displayTokens } from '@/lib/agent-usage'
+import { EMPTY_SCAN_REASON, displayTokens } from '@/lib/agent-usage'
 import { Tooltip } from '@/components/common/Tooltip'
 import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
 import { cn } from '@/lib/cn'
@@ -233,7 +233,7 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
         </div>
       </div>
 
-      {usage.error ? (
+      {usage.error && usage.error !== EMPTY_SCAN_REASON ? (
         <Tooltip text={usage.error} className="mt-3 min-w-0" bubbleClassName="max-w-80 whitespace-normal">
           <div className="truncate text-xs text-danger">{usage.error}</div>
         </Tooltip>
