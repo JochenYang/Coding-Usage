@@ -10,15 +10,17 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
-## [Unreleased]
+## [v0.9.6] - 2026-11-11
 
 ### 中文
+- 本地 Agent 用量卡在扫描结果为空时显示正常空态，而不是红色未翻译的「no data」错误
 - 修复 Cursor 套餐卡额度不准：原先读 `cursor.com/api/usage-summary`，而该接口在改用周额度的账号上仍返回旧的月度池（实测显示 0%，面板实际 67%）。现在优先调用 Cursor 当前构建自己用的 `api2.cursor.sh/…/GetCurrentPeriodUsage`，读到的百分比与面板一致（实测 70%，重置日 2026-11-17 与面板相同）；该接口无可用池时回退旧接口，套餐名（Premium）从 `GetPlanInfo` 补上
 - 修复 Cursor 套餐卡不显示额度：新版 Cursor 用 Electron safeStorage 加密了 `cursorAuth/accessToken`，探针遇到加密值就直接放弃；现在按 Qoder 同一套方式（DPAPI 解出 Chromium 密钥 → AES-256-GCM 解 `v10`）在本机内解开，实测解出有效 JWT 并正常返回额度。仅 Windows 可解，其它平台仍报「无法读取」而不是「未登录」
 - 额度窗口按实际池呈现：周/统一额度下 total 与 Auto 是同一个数，只显示一行，不再重复打印两行相同百分比；旧式分开计量时仍分别列出
 - 本地 Agent 用量不再为 Cursor 保留特殊行：Cursor 不提供 token 级明细（官方事件接口对周额度账号返回空，本地会话与 CLI transcript 也不记录 token），因此 Cursor 只保留套餐额度卡，不再出现在本地用量统计中；tokscale 若日后能同步出数据，仍会像其他 agent 一样自动出现
 
 ### English
+- The local-agent usage card now shows its normal empty state when a scan finds nothing, instead of a red, untranslated "no data" error
 - Fix the Cursor plan card reporting the wrong allowance: it read `cursor.com/api/usage-summary`, which still answers with the legacy monthly pool on an account moved to the weekly allowance (measured: 0% there, 67% in the IDE). The probe now prefers `api2.cursor.sh/…/GetCurrentPeriodUsage`, the endpoint current builds themselves use, and its percentage matches the panel (measured 70%, reset 2026-11-17 as the panel shows); the legacy summary remains the fallback and the plan name (Premium) comes from `GetPlanInfo`
 - Fix the Cursor plan card showing no quota: current Cursor builds seal `cursorAuth/accessToken` with Electron safeStorage and the probe gave up on a sealed value; the token is now recovered in-process the same way the Qoder probe does it (DPAPI-unwrapped Chromium key → AES-256-GCM `v10`), measured on this machine as a valid JWT returning the quota. Windows only — other platforms keep reporting "cannot be read here" rather than "not signed in"
 - The windows now follow the real pool: under a weekly/unified allowance total and Auto are the same number, so it is printed once instead of twice; a legacy split allowance still lists them separately
