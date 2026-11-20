@@ -169,11 +169,11 @@ declare global {
     /** Kilo Pass from the CLI auth file or KILO_API_KEY. The token stays in the main process. */
     kiloQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Alibaba Cloud Coding Plan windows from the browser console session. */
-    alibabaCodingPlanQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
+    alibabaCodingPlanQuota(): Promise<{ available: boolean; body?: string; reason?: string; detail?: string }>
     /** Qwen Cloud individual Token Plan windows from the browser session. */
-    qwenCloudQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
+    qwenCloudQuota(): Promise<{ available: boolean; body?: string; reason?: string; detail?: string }>
     /** Alibaba Token Plan personal windows from the browser session. */
-    alibabaTokenPlanQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
+    alibabaTokenPlanQuota(): Promise<{ available: boolean; body?: string; reason?: string; detail?: string }>
     /**
      * Last known-good quota per provider key, with the fetch time. Shown while
      * the fresh probe runs; never contains a credential.
@@ -181,6 +181,26 @@ declare global {
     quotaSnapshot(): Promise<
       Record<string, { at: number; result: { available: boolean; body?: string; reason?: string } }>
     >
+    /**
+     * Open the Alibaba Cloud console in an in-app window so its session lands
+     * in the app's own cookie jar. Resolves when signed in, cancelled, or timed
+     * out. No credential crosses this boundary.
+     */
+    alibabaConnect(target: 'coding' | 'qwen' | 'token'): Promise<{ ok: boolean; reason?: string; detail?: string }>
+    /** Forget the in-app console session. */
+    alibabaDisconnect(): Promise<void>
+    /** Whether an in-app console session already exists. */
+    alibabaSession(): Promise<boolean>
+    /**
+     * Store a "copy as cURL" request for one console. It is encrypted with the
+     * OS keystore before it reaches disk; see pasted-requests.ts.
+     */
+    pastedRequestSet(
+      target: 'alibaba' | 'alitoken' | 'qwen',
+      text: string,
+    ): Promise<{ ok: boolean; reason?: string }>
+    /** Forget the pasted request for one console. */
+    pastedRequestClear(target: 'alibaba' | 'alitoken' | 'qwen'): Promise<void>
     /** Read one coding agent's provider configuration; credentials arrive masked */
     agentConfigRead(agent: AgentId): Promise<AgentConfigPayload>
     /** Reveal one provider's plaintext credential — only on an explicit user request */

@@ -465,15 +465,39 @@ export const enUS: Dict = {
     kiroReauth: 'The Kiro login has expired. Sign in to the Kiro CLI again.',
     kiloNoAuth: 'No Kilo login found (~/.local/share/kilo/auth.json). Run `kilo auth login` to show the quota.',
     kiloReauth: 'The Kilo login has expired. Run `kilo auth login` again.',
-    aliNoAuth:
-      'No Alibaba Cloud console login found in the browser (bailian.console.aliyun.com / modelstudio.console.alibabacloud.com).',
-    qwenNoAuth: 'No Qwen Cloud login found in the browser (home.qwencloud.com).',
-    alitokenNoAuth: 'No Bailian Token Plan login found in the browser (bailian.console.aliyun.com).',
+    aliNoAuth: 'Not connected to the Alibaba Cloud console. Use the button below to sign in once inside the app.',
+    qwenNoAuth: 'Not connected to Qwen Cloud. Use the button below to sign in once inside the app.',
+    alitokenNoAuth:
+      'Not connected to Bailian Token Plan. Use the button below to sign in once inside the app.',
     aliReauth: 'The Alibaba Cloud console login has expired. Sign in again and refresh.',
     aliCookieAppBound:
       'Chrome seals its newer cookies with app-bound encryption (v20) that only Chrome can open, so this app cannot read that login.',
     quotaUnsupportedPlatform:
       'Browser cookies can only be decrypted on Windows; this platform cannot read that login.',
+    alibabaConnect: 'Connect Alibaba Cloud',
+    alibabaConnecting: 'Waiting for sign-in…',
+    alibabaConnectHint:
+      'Sign in once in the in-app window and the quota is read from that session. Browser cookies are not touched.',
+    alibabaConnectFailed: 'Sign-in did not complete. Try again, or use this console\'s own entry.',
+    alibabaNoPlan: 'Signed in, but this account shows no plan allowance.',
+    detailToggle: 'Technical details',
+    subscriptionsManage: 'Manage cards',
+    subscriptionsEmpty: 'No subscription cards yet. Use "Manage cards" to pick which quotas to show.',
+    experimental: 'Experimental',
+    closeDrawer: 'Close',
+    pasteCurl: 'Paste cURL',
+    pasteCurlHint:
+      'In the console Network panel, right-click the quota request, choose Copy → Copy as cURL, then paste it here. The console\'s own request needs no token handling.',
+    pasteSave: 'Save',
+    pasteSaving: 'Saving…',
+    pasteSaved: 'Saved',
+    pasteClear: 'Clear',
+    pasteErrParse: 'This is not a Copy as cURL (bash) request that can be recognised.',
+    pasteErrNoCookie: 'This request carries no Cookie header, so the console would reject it.',
+    pasteErrHost: 'This request points outside the supported consoles.',
+    pasteErrConsole: 'Could not tell which console this request belongs to.',
+    pasteErrWrongConsole: 'This request belongs to another console; paste it on that card.',
+    pasteErrNoKeystore: 'The OS keystore is unavailable, so this request cannot be stored safely.',
     geminiNoAuth:
       'No Gemini CLI login found (~/.gemini/oauth_creds.json) — official subscription quota unavailable.',
     geminiReauth: 'Your Gemini login has expired. Run `gemini` again to sign in.',

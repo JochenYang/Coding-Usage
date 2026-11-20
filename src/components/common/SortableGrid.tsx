@@ -265,6 +265,9 @@ export function SortableGrid<T extends SortableItem>({
 
   /** Keyboard reorder: arrows move the focused card one slot at a time */
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>, key: string) => {
+    // A field inside the card owns its arrow keys: without this, editing text
+    // in a textarea would reorder (and persist) the grid instead.
+    if ((event.target as HTMLElement).closest('[data-no-drag]')) return
     const step =
       event.key === 'ArrowLeft' || event.key === 'ArrowUp'
         ? -1

@@ -20,6 +20,7 @@ import { KNOWN_CURRENCIES } from '@/lib/rates'
 import { clearSnapshots, getSnapshots, type AccountSnapshot } from '@/lib/snapshots'
 import { getUsageHistoryStats, purgeUsageHistory } from '@/lib/usage-store'
 import { resolveThresholds } from '@/lib/alerts'
+import { isKnownSubscriptionKey } from '@/lib/subscription-cards'
 import type { AlertThresholds, IntegrationsSettings, ProviderConfig } from '@/types'
 
 export interface SettingsPageProps {
@@ -168,6 +169,7 @@ function migrateSettings(
   alertThresholds: AlertThresholds | null
   planOrder: string[] | null
   subscriptionOrder: string[] | null
+  enabledSubscriptions: string[] | null
 } | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const obj = raw as Record<string, unknown>
@@ -208,6 +210,11 @@ function migrateSettings(
       : null,
     subscriptionOrder: Array.isArray(obj.subscriptionOrder)
       ? obj.subscriptionOrder.filter((key): key is string => typeof key === 'string')
+      : null,
+    enabledSubscriptions: Array.isArray(obj.enabledSubscriptions)
+      ? obj.enabledSubscriptions.filter(
+          (key): key is string => typeof key === 'string' && isKnownSubscriptionKey(key),
+        )
       : null,
   }
 }
@@ -339,6 +346,13 @@ export function SettingsPage({ className }: SettingsPageProps) {
         migrated.subscriptionOrder && migrated.subscriptionOrder.length > 0
           ? migrated.subscriptionOrder
           : settings.subscriptionOrder,
+      // null (absent) keeps the local selection; an explicitly empty list is
+      // also treated as "keep" because every other list field behaves that way
+      // and a fresh install's export must not wipe a configured machine.
+      enabledSubscriptions:
+        migrated.enabledSubscriptions && migrated.enabledSubscriptions.length > 0
+          ? migrated.enabledSubscriptions
+          : settings.enabledSubscriptions,
     })
     mergeSnapshots(wrapper.snapshots)
   }

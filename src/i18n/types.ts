@@ -472,6 +472,28 @@ export interface Dict {
     aliReauth: string
     aliCookieAppBound: string
     quotaUnsupportedPlatform: string
+    alibabaConnect: string
+    alibabaConnecting: string
+    alibabaConnectHint: string
+    alibabaConnectFailed: string
+    alibabaNoPlan: string
+    detailToggle: string
+    subscriptionsManage: string
+    subscriptionsEmpty: string
+    experimental: string
+    closeDrawer: string
+    pasteCurl: string
+    pasteCurlHint: string
+    pasteSave: string
+    pasteSaving: string
+    pasteSaved: string
+    pasteClear: string
+    pasteErrParse: string
+    pasteErrNoCookie: string
+    pasteErrHost: string
+    pasteErrConsole: string
+    pasteErrWrongConsole: string
+    pasteErrNoKeystore: string
     geminiNoAuth: string
     geminiReauth: string
     geminiGroups: {

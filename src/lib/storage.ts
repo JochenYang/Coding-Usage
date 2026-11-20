@@ -1,5 +1,6 @@
 import type { ProviderConfig, Settings } from '../types'
 import { DEFAULT_ALERT_THRESHOLDS, resolveThresholds } from './alerts'
+import { DEFAULT_ENABLED_SUBSCRIPTIONS, isKnownSubscriptionKey } from './subscription-cards'
 
 export const KEY_V3 = 'coding-usage.settings.v3'
 const KEY_V2 = 'coding-usage.settings.v2'
@@ -19,6 +20,7 @@ const DEFAULT_SETTINGS: Settings = {
   desktopIsland: true,
   planOrder: [],
   subscriptionOrder: [],
+  enabledSubscriptions: [],
   alertThresholds: { ...DEFAULT_ALERT_THRESHOLDS, lowBalance: { ...DEFAULT_ALERT_THRESHOLDS.lowBalance } },
   integrations: {
     alertPush: false,
@@ -72,6 +74,14 @@ function migrate(raw: unknown): Settings {
     subscriptionOrder: Array.isArray(obj.subscriptionOrder)
       ? obj.subscriptionOrder.filter((key): key is string => typeof key === 'string')
       : [],
+    // Absent on an older install: it already showed every non-experimental
+    // card, so seeding that set is the only change-free upgrade. A fresh
+    // install never reaches migrate() and keeps the empty default.
+    enabledSubscriptions: Array.isArray(obj.enabledSubscriptions)
+      ? obj.enabledSubscriptions.filter(
+          (key): key is string => typeof key === 'string' && isKnownSubscriptionKey(key),
+        )
+      : [...DEFAULT_ENABLED_SUBSCRIPTIONS],
     alertThresholds: resolveThresholds(obj.alertThresholds),
     integrations: {
       alertPush: intg?.alertPush === true,

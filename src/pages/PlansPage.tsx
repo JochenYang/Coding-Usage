@@ -26,6 +26,10 @@ import { KimiQuotaCard } from '@/components/overview/KimiQuotaCard'
 import { AntigravityQuotaCard } from '@/components/overview/AntigravityQuotaCard'
 import { LocalQuotaCard } from '@/components/overview/LocalQuotaCard'
 import { QoderQuotaCard } from '@/components/overview/QoderQuotaCard'
+import { SUBSCRIPTION_CARDS } from '@/lib/subscription-cards'
+import { Drawer } from '@/components/beui/drawer'
+import { Tooltip } from '@/components/beui/tooltip'
+import { Switch } from '@/components/beui/switch'
 import {
   Select,
   SelectContent,
@@ -248,6 +252,7 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
   const { sections, results, settings, updateSettings } = useData()
   const [planFilter, setPlanFilter] = useState(ALL_PLANS)
   const [accountFilter, setAccountFilter] = useState(ALL_ACCOUNTS)
+  const [manageOpen, setManageOpen] = useState(false)
   const now = useNowTick()
 
   const cards = useMemo(
@@ -324,26 +329,22 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
       { key: 'alitoken', node: <LocalQuotaCard kind="alitoken" /> },
       { key: 'qoder', node: <QoderQuotaCard /> },
     ]
-    return applyPlanOrder(all, settings.subscriptionOrder)
-  }, [settings.subscriptionOrder, antigravityWide])
+    // Only the cards the user added. An experimental card starts out absent,
+    // so the page is not a wall of "not connected".
+    const enabled = new Set(settings.enabledSubscriptions)
+    return applyPlanOrder(
+      all.filter((card) => enabled.has(card.key)),
+      settings.subscriptionOrder,
+    )
+  }, [settings.subscriptionOrder, settings.enabledSubscriptions, antigravityWide])
 
   const onSubscriptionOrderChange = useCallback(
     (keys: string[]) => updateSettings({ ...settings, subscriptionOrder: keys }),
     [settings, updateSettings],
   )
 
-  // No fetched cards at all: plain empty state with the same picker in the slot
-  if (cards.length === 0) {
-    return (
-      <EmptyState
-        icon={<CreditCard className="h-6 w-6" />}
-        title={t.overview.emptyTitle}
-        description={t.overview.emptyDesc}
-        action={<AddAccountMenu onAdd={onAddAccount} label={t.overview.addPlan} />}
-      />
-    )
-  }
-
+  // No early return: a fresh install has no plan cards yet still needs the
+  // subscription section, otherwise there is no way to add a quota card.
   return (
     <div className="space-y-4">
       <PageHeader
@@ -379,12 +380,20 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
               </SelectContent>
             </Select>
 
+
             <AddAccountMenu onAdd={onAddAccount} label={t.overview.addPlan} />
           </>
         }
       />
 
-      {filtered.length === 0 ? (
+      {cards.length === 0 ? (
+        <EmptyState
+          icon={<CreditCard className="h-6 w-6" />}
+          title={t.overview.emptyTitle}
+          description={t.overview.emptyDesc}
+          action={<AddAccountMenu onAdd={onAddAccount} label={t.overview.addPlan} />}
+        />
+      ) : filtered.length === 0 ? (
         // The selected account was deleted (or the two filters combined to
         // nothing): offer a one-click reset instead of a silent empty grid
         <EmptyState
@@ -419,17 +428,86 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
       )}
 
       <section className="space-y-2">
-        <h2 className="text-sm font-semibold text-foreground">{t.manage.subscriptionTitle}</h2>
-        <p className="text-[11px] text-subtle">{t.manage.reorderHint}</p>
-        <SortableGrid
-          items={subscriptionCards}
-          ariaLabel={t.manage.reorderHint}
-          announce={(position, total) => t.manage.reorderPosition(position, total)}
-          className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
-          renderItem={(item) => item.node}
-          onOrderChange={onSubscriptionOrderChange}
-        />
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-foreground">{t.manage.subscriptionTitle}</h2>
+          <button
+            type="button"
+            onClick={() => setManageOpen(true)}
+            className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted"
+          >
+            {t.manage.subscriptionsManage}
+          </button>
+        </div>
+        {subscriptionCards.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-xs text-subtle">
+            {t.manage.subscriptionsEmpty}
+          </p>
+        ) : (
+          <>
+            <p className="text-[11px] text-subtle">{t.manage.reorderHint}</p>
+            <SortableGrid
+              items={subscriptionCards}
+              ariaLabel={t.manage.reorderHint}
+              announce={(position, total) => t.manage.reorderPosition(position, total)}
+              className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
+              renderItem={(item) => item.node}
+              onOrderChange={onSubscriptionOrderChange}
+            />
+          </>
+        )}
       </section>
+
+      {/* A drawer, not a popover: the list is longer than a viewport-safe
+          panel, and this one scrolls on its own instead of running off screen. */}
+      <Drawer
+        open={manageOpen}
+        onOpenChange={setManageOpen}
+        ariaLabel={t.manage.subscriptionsManage}
+        className="max-w-[min(340px,92vw)] sm:min-w-[300px]"
+      >
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 pb-2.5 pt-8">
+          <h2 className="text-base font-semibold text-foreground">{t.manage.subscriptionsManage}</h2>
+          <button
+            type="button"
+            onClick={() => setManageOpen(false)}
+            className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted"
+          >
+            {t.manage.closeDrawer}
+          </button>
+        </div>
+        <div className="flex-1 space-y-px overflow-y-auto overscroll-contain px-2 py-2">
+          {SUBSCRIPTION_CARDS.map((card) => {
+            const checked = settings.enabledSubscriptions.includes(card.key)
+            return (
+              <div
+                key={card.key}
+                className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted"
+              >
+                <span className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-foreground">
+                  <Tooltip content={card.name} side="left" wrapperClassName="min-w-0 flex-1">
+                    <span className="block truncate">{card.name}</span>
+                  </Tooltip>
+                  {card.experimental && (
+                    <span className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10px] text-subtle">
+                      {t.manage.experimental}
+                    </span>
+                  )}
+                </span>
+                <Switch
+                  checked={checked}
+                  ariaLabel={card.name}
+                  onCheckedChange={(on) => {
+                    const next = new Set(settings.enabledSubscriptions)
+                    if (on) next.add(card.key)
+                    else next.delete(card.key)
+                    updateSettings({ ...settings, enabledSubscriptions: [...next] })
+                  }}
+                />
+              </div>
+            )
+          })}
+        </div>
+      </Drawer>
     </div>
   )
 }

@@ -99,7 +99,7 @@ describe('Qwen Cloud probe', () => {
     ).run('.qwencloud.com', 'session', '', Buffer.from('v20-bound'), '/', 0, 1)
     db.close()
     const outcome = await fetchQwenCloudQuota(async () => new Response('unused'), { userDataDirs: [root], key: KEY })
-    expect(outcome).toEqual({ available: false, reason: 'cookie-app-bound' })
+    expect(outcome).toMatchObject({ available: false, reason: 'cookie-app-bound' })
   })
 
   it('posts the form body and keeps the cookie out of the result', async () => {
@@ -134,9 +134,95 @@ describe('Qwen Cloud probe', () => {
       'CREATE TABLE cookies (host_key TEXT, name TEXT, value TEXT, encrypted_value BLOB, path TEXT, expires_utc INTEGER, is_secure INTEGER)',
     )
     db.close()
-    expect(await fetchQwenCloudQuota(async () => new Response('unused'), { userDataDirs: [root], key: KEY })).toEqual({
+    expect(await fetchQwenCloudQuota(async () => new Response('unused'), { userDataDirs: [root], key: KEY })).toMatchObject({
       available: false,
       reason: 'no-auth',
     })
+  })
+
+  it('uses an injected cookie source instead of the browser store', async () => {
+    const seen: string[] = []
+    const outcome = await fetchQwenCloudQuota(
+      async (url, init) => {
+        if (String(url).includes('/billing/')) return new Response('<html></html>', { status: 200 })
+        seen.push(new Headers(init?.headers).get('cookie') ?? '')
+        return new Response(
+          JSON.stringify({ data: { per5HourUsedQuota: 1, per5HourTotalQuota: 10 } }),
+          { status: 200 },
+        )
+      },
+      {
+        cookieSource: async (requestUrl) => {
+          if (!requestUrl.includes('cs-data.qwencloud.com')) {
+            return { ok: false as const, reason: 'no-auth' }
+          }
+          return { ok: true as const, header: 'login_aliyunid_ticket=abc; login_aliyunid_pk=1' }
+        },
+      },
+    )
+    expect(outcome.available).toBe(true)
+    expect(seen[0]).toContain('login_aliyunid_ticket=abc')
+    expect(outcome.body).not.toContain('abc')
+  })
+
+  it('reports a signed-in account without a plan as no-plan', async () => {
+    const outcome = await fetchQwenCloudQuota(
+      async (url) => {
+        if (String(url).includes('/billing/')) return new Response('<html></html>', { status: 200 })
+        return new Response(
+          JSON.stringify({
+            code: '200',
+            data: { success: true, httpStatus: 200, errorCode: '' },
+            httpStatusCode: 200,
+            requestId: 'r',
+            successResponse: true,
+          }),
+          { status: 200 },
+        )
+      },
+      { cookieSource: async () => ({ ok: true as const, header: 'login_aliyunid_ticket=abc' }) },
+    )
+    expect(outcome).toMatchObject({ available: false, reason: 'no-plan' })
+    expect(outcome.detail).toContain('success=true')
+  })
+
+  it('keeps a real error code a failure instead of calling it no plan', async () => {
+    const outcome = await fetchQwenCloudQuota(
+      async (url) => {
+        if (String(url).includes('/billing/')) return new Response('<html></html>', { status: 200 })
+        return new Response(
+          JSON.stringify({
+            code: '200',
+            data: { success: false, httpStatus: 403, errorCode: 'Forbidden.RAM' },
+            successResponse: true,
+          }),
+          { status: 200 },
+        )
+      },
+      { cookieSource: async () => ({ ok: true as const, header: 'login_aliyunid_ticket=abc' }) },
+    )
+    expect(outcome).toMatchObject({ available: false, reason: 'parse-failed' })
+    expect(outcome.detail).toContain('errorCode=Forbidden.RAM')
+  })
+
+  it('still reports parse-failed when a successful envelope carries unknown data', async () => {
+    const outcome = await fetchQwenCloudQuota(
+      async (url) => {
+        if (String(url).includes('/billing/')) return new Response('<html></html>', { status: 200 })
+        return new Response(JSON.stringify({ code: '200', data: { somethingElse: 1 }, successResponse: true }), {
+          status: 200,
+        })
+      },
+      { cookieSource: async () => ({ ok: true as const, header: 'login_aliyunid_ticket=abc' }) },
+    )
+    expect(outcome).toMatchObject({ available: false, reason: 'parse-failed' })
+    expect(outcome.detail).toContain('dataKeys=somethingElse')
+  })
+
+  it('maps an injected source failure to the card reason', async () => {
+    const outcome = await fetchQwenCloudQuota(async () => new Response('unused'), {
+      cookieSource: async () => ({ ok: false as const, reason: 'no-auth' }),
+    })
+    expect(outcome).toMatchObject({ available: false, reason: 'no-auth' })
   })
 })

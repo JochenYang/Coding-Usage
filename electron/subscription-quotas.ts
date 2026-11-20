@@ -16,6 +16,12 @@ export interface QuotaOutcome {
   available: boolean
   body?: string
   reason?: string
+  /**
+   * Short diagnostic for the card (counts and flag names only — never a cookie
+   * value, header or response body). It exists so a failed probe can say *why*
+   * without the user hunting for a log.
+   */
+  detail?: string
 }
 
 type FetchImpl = (url: string, init: RequestInit) => Promise<Response>

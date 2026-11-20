@@ -65,8 +65,13 @@ electron/
   windsurf-quota.ts       # Windsurf：只读 state.vscdb 的 cachedPlanInfo，不读浏览器会话
   kiro-quota.ts           # Kiro：只读 kiro-cli 的 data.sqlite3，请求 GetUsageLimits，不启动聊天
   kilo-quota.ts           # Kilo：读 CLI auth.json 或 KILO_API_KEY，请求 app.kilo.ai 的额度
-  aliyun-quota.ts         # 阿里云 Coding Plan / 千问 Cloud / Token Plan：走浏览器控制台会话，
-                          # 带域名白名单；解不开的 v20 Cookie 报 cookie-app-bound，不猜额度
+  aliyun-quota.ts         # 阿里云 Coding Plan / 千问 Cloud / Token Plan：走控制台网关；
+                          # Cookie 来自应用内控制台会话（见 alibaba-connect.ts），
+                          # 解不开的 v20 浏览器 Cookie 报 cookie-app-bound，不猜额度
+  alibaba-connect.ts      # 阿里云控制台内嵌登录窗：用户登录一次，主进程用
+                          # session.cookies.get 读自己的 jar（含 HttpOnly），不碰 Chrome 的 v20
+  pasted-requests.ts      # 手动粘贴的控制台请求（Copy as cURL）：加密落盘、重放；
+                          # 重建请求会被网关判未登录，只有控制台自己的请求可用
   safe-storage.ts         # 读另一个 Electron 应用的 safeStorage 密钥（Windows DPAPI → Chromium
                           # `v10` AES-256-GCM）；qoder / cursor 两个探针共用
   browser-cookies.ts      # 只读 Chrome / Edge Cookie：必须带域名白名单，只解 `v10`；
@@ -104,8 +109,11 @@ electron/
    内置快照 `builtin-pricing.ts`（生成脚本 `scripts/gen-builtin-pricing.ts`）标注生成日期。
 5. **持久化**：`settings`（v1→v2→v3 迁移，v3 为 safeStorage 加密）、`snapshots`（本地时序）、
    `results`（启动缓存，读取时做字段归一化）、`quota-cache.json`（上次成功的套餐额度，按 provider
-   存、不含凭据或凭据指纹、30 天过期；卡片先显它再静默刷新）。
-6. **窗口与后台**：关闭到托盘会**销毁**窗口及其渲染进程（空闲时常驻内存因此少约 110 MB），
+   存、不含凭据或凭据指纹、30 天过期；卡片先显它再静默刷新）、`pasted-requests.json`
+   （手动粘贴的控制台请求，safeStorage 加密；无 keystore 时拒绝保存而不是写明文）。
+6. **订阅卡可见性**：`settings.enabledSubscriptions` 决定渲染哪些卡；未列出的不渲染。
+   老配置缺该字段时回填「非实验性全部」，新安装从空开始由用户添加。
+7. **窗口与后台**：关闭到托盘会**销毁**窗口及其渲染进程（空闲时常驻内存因此少约 110 MB），
    而不是隐藏；托盘、`second-instance`、灵动岛点击都会重建窗口并恢复上次的位置
    （如果保存的矩形已不在任何显示器上，则丢弃并居中）。无窗口期间，主进程按
    `autoRefreshMin` 定时开一个**隐藏窗口**（`#/background`）跑一轮完整的刷新、告警推导、
@@ -119,6 +127,10 @@ electron/
 - 桌面端 `localStorage` 中的密钥为 `enc:v3:` 密文（safeStorage），无桥接时退回 v2 明文。
 - 探针只读本地登录文件，不修改、不上传；写入类操作（Agent 配置）先备份再 CAS 写入。
 - 浏览器 Cookie 读取只在主进程、只针对调用方给出的域名。空名单直接拒绝。解不开的 `v20` 值不回传。
+- 阿里云控制台会在应用内窗口登录：窗口没有 preload、无 Node 权限、开启 sandbox，不读页面内容、
+  不注入脚本、不代填凭据；只从应用自己的 cookie jar 读会话，且只发给对应控制台域名。
+  窗口会拒绝服务端重定向到非控制台域名（`will-navigate` 不管 3xx），并拒绝一切权限请求。
+  这个 jar 由 Chromium 自己写入，Windows 下经 OSCrypt（DPAPI）加密，不是明文。
 - 禁止把渲染层流量引到第三方代理（唯一例外是浏览器模式的 corsproxy.io 兜底）。
 
 ## 5. 已知架构约束（易踩点）

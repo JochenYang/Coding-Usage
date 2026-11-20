@@ -30,7 +30,7 @@ function unavailable(reason: string | null): LocalPlanQuotaVM {
 }
 
 export function summarizeSessionQuota(raw: LocalPlanRaw): LocalPlanQuotaVM {
-  if (!raw.available || !raw.body) return unavailable(raw.reason ?? null)
+  if (!raw.available || !raw.body) return { ...unavailable(raw.reason ?? null), detail: raw.detail ?? null }
   let parsed: unknown
   try {
     parsed = JSON.parse(raw.body)
@@ -59,7 +59,7 @@ export function summarizeSessionQuota(raw: LocalPlanRaw): LocalPlanQuotaVM {
     : []
   const topUp = body.topUpCredits
   const topUpCredits = typeof topUp === 'number' && Number.isFinite(topUp) && topUp >= 0 ? topUp : null
-  if (windows.length === 0 && topUpCredits == null) return unavailable('parse-failed')
+  if (windows.length === 0 && topUpCredits == null) return { ...unavailable('parse-failed'), detail: raw.detail ?? null }
   return {
     available: true,
     plan,

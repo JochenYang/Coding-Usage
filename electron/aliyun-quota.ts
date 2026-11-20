@@ -32,7 +32,6 @@ interface Endpoint {
   consoleSite: string
   /** Dashboard host, used to pick same-origin cookies */
   consoleDomain: string
-  referer: string
   /** Hosts a cookie is read from. Anything not listed is never read. */
   cookieHosts: string[]
 }
@@ -45,7 +44,6 @@ const CODING_INTERNATIONAL: Endpoint = {
   language: 'en-US',
   consoleSite: 'MODELSTUDIO_ALIBABACLOUD',
   consoleDomain: 'modelstudio.console.alibabacloud.com',
-  referer: 'https://modelstudio.console.alibabacloud.com/ap-southeast-1/?tab=coding-plan',
   cookieHosts: [
     'modelstudio.console.alibabacloud.com',
     'bailian-singapore-cs.alibabacloud.com',
@@ -63,7 +61,6 @@ const CODING_CHINA: Endpoint = {
   language: 'zh-CN',
   consoleSite: 'BAILIAN_ALIYUN',
   consoleDomain: 'bailian.console.aliyun.com',
-  referer: 'https://bailian.console.aliyun.com/cn-beijing/?tab=model',
   cookieHosts: [
     'bailian.console.aliyun.com',
     'bailian-cs.console.aliyun.com',
@@ -82,7 +79,6 @@ const QWEN_CLOUD: Endpoint = {
   language: 'en-US',
   consoleSite: 'QWENCLOUD',
   consoleDomain: 'home.qwencloud.com',
-  referer: 'https://home.qwencloud.com/billing/subscription/token-plan-individual',
   cookieHosts: ['home.qwencloud.com', 'cs-data.qwencloud.com', 'qwencloud.com'],
 }
 
@@ -94,7 +90,6 @@ const TOKEN_CHINA: Endpoint = {
   language: 'zh-CN',
   consoleSite: 'BAILIAN_ALIYUN',
   consoleDomain: 'bailian.console.aliyun.com',
-  referer: 'https://bailian.console.aliyun.com/cn-beijing/?tab=plan',
   cookieHosts: [
     'bailian.console.aliyun.com',
     'bailian-cs.console.aliyun.com',
@@ -203,10 +198,12 @@ async function postRpc(fetchImpl: FetchImpl, options: RequestOptions): Promise<R
     'Content-Type': 'application/x-www-form-urlencoded',
     Accept: 'application/json, text/plain, */*',
     'User-Agent': USER_AGENT,
-    // Origin is the console page the user is on; Referer is that same page.
-    // A data-host Origin contradicts the Referer and trips the CSRF check.
+    // Origin and Referer are both the console origin. Chromium rejects a
+    // Referer carrying a path or query on a cross-origin request
+    // (ERR_BLOCKED_BY_CLIENT, "invalid referrer"), so the request would never
+    // leave the app; a data-host Origin would also contradict the page.
     Origin: `https://${endpoint.consoleDomain}`,
-    Referer: endpoint.referer,
+    Referer: `https://${endpoint.consoleDomain}/`,
     'X-Requested-With': 'XMLHttpRequest',
   }
   const csrf = cookieValue(header, 'login_aliyunid_csrf') ?? cookieValue(header, 'csrf')
@@ -360,6 +357,10 @@ function planName(payload: unknown): string | null {
 
 /** Map the cookie layer's result to a card reason. */
 function cookieFailure(reason: string): QuotaOutcome {
+  // Reasons a source can report directly (the in-app session does this).
+  if (reason === 'no-auth' || reason === 'reauth' || reason === 'probe-failed' || reason === 'timeout') {
+    return { available: false, reason }
+  }
   if (reason === 'app-bound') return { available: false, reason: 'cookie-app-bound' }
   if (reason === 'no-match') return { available: false, reason: 'no-auth' }
   if (reason === 'unsupported-platform') return { available: false, reason: 'unsupported-platform' }
@@ -387,6 +388,139 @@ function bestReason(primary: QuotaOutcome, secondary: QuotaOutcome): QuotaOutcom
   return b > a ? secondary : primary
 }
 
+/** Top-level key names of a payload, for a failure detail that names no values. */
+function topLevelKeys(payload: unknown): string {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return 'none'
+  return Object.keys(payload).slice(0, 8).join(',') || 'none'
+}
+
+/**
+ * The OneConsole envelope (`code`, `data`, `httpStatusCode`, `successResponse`)
+ * in one short line. Values here are status codes and counts only — never
+ * account data — so the card can explain itself without a log file.
+ */
+function envelopeSummary(payload: unknown): string {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return 'envelope=none'
+  const body = payload as Record<string, unknown>
+  const parts: string[] = []
+  if ('code' in body) parts.push(`code=${String(body.code).slice(0, 12)}`)
+  if ('httpStatusCode' in body) parts.push(`status=${String(body.httpStatusCode).slice(0, 6)}`)
+  if ('successResponse' in body) parts.push(`success=${String(body.successResponse)}`)
+  const data = body.data
+  if (data == null) parts.push('data=null')
+  else if (Array.isArray(data)) parts.push(`data=array(${data.length})`)
+  else if (typeof data === 'object') {
+    // Shapes, not values: `instances[0]` says "signed in, no subscription",
+    // while a populated `instances[1]` means the window keys moved.
+    const entries = Object.entries(data as Record<string, unknown>)
+      .slice(0, 6)
+      .map(([key, value]) => {
+        if (Array.isArray(value)) return `${key}[${value.length}]`
+        if (value === null) return `${key}=null`
+        if (typeof value === 'object') return `${key}{${Object.keys(value as object).length}}`
+        return `${key}=${typeof value}`
+      })
+    parts.push(`dataKeys=${entries.join('|') || '-'}`)
+  } else parts.push(`data=${typeof data}`)
+  return parts.join(' ')
+}
+
+/** The console answered successfully, even if it carried nothing. */
+function isSuccessEnvelope(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false
+  const body = payload as Record<string, unknown>
+  if (body.successResponse === true) return true
+  return body.code === 200 || body.code === '200'
+}
+
+/** Keys inside `data` that carry a status, not a payload. */
+const STATUS_KEYS = new Set([
+  'success',
+  'httpStatus',
+  'httpStatusCode',
+  'errorCode',
+  'errorMessage',
+  'code',
+  'message',
+  'requestId',
+])
+
+/**
+ * What `data` actually carries.
+ *
+ * A signed-in account with no subscription answers `success` with a `data`
+ * object that holds nothing but status fields (`success`, `httpStatus`,
+ * `errorCode`). That is a real answer, not a shape we failed to parse. A
+ * non-empty `errorCode` still means something went wrong, so it is reported
+ * separately rather than as "no plan".
+ */
+function dataStatus(payload: unknown): { onlyStatus: boolean; errorCode: string | null } {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return { onlyStatus: false, errorCode: null }
+  }
+  const data = (payload as Record<string, unknown>).data
+  if (data == null) return { onlyStatus: true, errorCode: null }
+  if (Array.isArray(data)) return { onlyStatus: data.length === 0, errorCode: null }
+  if (typeof data !== 'object') return { onlyStatus: false, errorCode: null }
+  const keys = Object.keys(data)
+  const onlyStatus = keys.length === 0 || keys.every((key) => STATUS_KEYS.has(key))
+  const raw = (data as Record<string, unknown>).errorCode
+  const errorCode = typeof raw === 'string' && raw.trim() !== '' ? raw.trim().slice(0, 32) : null
+  return { onlyStatus, errorCode }
+}
+
+/** `secToken` / `sec_token` anywhere in a small JSON tree. */
+function findSecToken(value: unknown, depth = 0): string | null {
+  if (depth > 6 || !value || typeof value !== 'object') return null
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findSecToken(item, depth + 1)
+      if (found) return found
+    }
+    return null
+  }
+  const record = value as Record<string, unknown>
+  for (const key of ['secToken', 'sec_token']) {
+    const candidate = record[key]
+    if (typeof candidate === 'string' && candidate.trim() !== '') return candidate.trim()
+  }
+  for (const child of Object.values(record)) {
+    const found = findSecToken(child, depth + 1)
+    if (found) return found
+  }
+  return null
+}
+
+/** The console's own user-info endpoint, which publishes the RPC token. */
+async function secTokenFromUserInfo(
+  fetchImpl: FetchImpl,
+  endpoint: Endpoint,
+  header: string,
+): Promise<string | null> {
+  try {
+    const res = await fetchImpl(`https://${endpoint.consoleDomain}/tool/user/info.json`, {
+      headers: {
+        Cookie: header,
+        'User-Agent': USER_AGENT,
+        Accept: 'application/json, text/plain, */*',
+        Referer: `https://${endpoint.consoleDomain}/`,
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!res.ok) return null
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(await res.text())
+    } catch {
+      return null
+    }
+    return findSecToken(parsed)
+  } catch {
+    return null
+  }
+}
+
 function hostOf(url: string): string {
   try {
     return new URL(url).hostname.toLowerCase()
@@ -395,56 +529,146 @@ function hostOf(url: string): string {
   }
 }
 
+export type CookieSourceResult =
+  | { ok: true; header: string; detail?: string }
+  | { ok: false; reason: string; detail?: string }
+
+function isCookieSourceOk(
+  result: CookieSourceResult,
+): result is { ok: true; header: string; detail?: string } {
+  return result.ok
+}
+
+/**
+ * Where a probe gets its cookie header. The Electron console session is the
+ * default in the app; tests and non-Electron callers fall back to reading the
+ * browser's store.
+ */
+export type ConsoleCookieSource = (requestUrl: string) => Promise<CookieSourceResult>
+
+export interface AliyunProbeOptions extends CookieReadOptions {
+  /** Overrides the browser-store reader (the app injects its own session). */
+  cookieSource?: ConsoleCookieSource
+}
+
+async function browserCookieSource(
+  hosts: string[],
+  requestUrl: string,
+  options?: CookieReadOptions,
+): Promise<
+  | { ok: true; header: string; detail?: string }
+  | { ok: false; reason: string; detail?: string }
+> {
+  const read = await readAllowlistedCookies(hosts, { ...options, forHost: hostOf(requestUrl) })
+  const detail = read.ok
+    ? `browser-cookies=${read.cookies.length}`
+    : `browser-cookies=${read.reason}`
+  return read.ok
+    ? { ok: true, header: cookieHeader(read.cookies), detail }
+    : { ok: false, reason: read.reason, detail }
+}
 async function fetchConsoleQuota(
   fetchImpl: FetchImpl,
   endpoint: Endpoint,
   api: string,
   data: Record<string, unknown>,
   withRegionField: boolean,
-  options?: CookieReadOptions,
+  options?: AliyunProbeOptions,
 ): Promise<QuotaOutcome> {
   try {
     const dataHost = hostOf(endpoint.dataHost)
     const dashboardHost = hostOf(endpoint.dashboardUrl)
-    // Each request carries only what the browser would send to that host. The
-    // dashboard and the data gateway are different origins, so the session
-    // cookie is never forwarded from one to the other.
-    const apiRead = await readAllowlistedCookies(endpoint.cookieHosts, { ...options, forHost: dataHost })
-    if (!apiRead.ok) return cookieFailure(apiRead.reason)
-    const header = cookieHeader(apiRead.cookies)
-    const dashboardRead =
-      dashboardHost === dataHost
-        ? apiRead
-        : await readAllowlistedCookies(endpoint.cookieHosts, { ...options, forHost: dashboardHost })
-    const dashboardHeader = dashboardRead.ok ? cookieHeader(dashboardRead.cookies) : header
-    let secToken = cookieValue(header, 'sec_token') ?? cookieValue(dashboardHeader, 'sec_token') ?? ''
-    if (!secToken) {
+    const source: ConsoleCookieSource =
+      options?.cookieSource ?? ((url: string) => browserCookieSource(endpoint.cookieHosts, url, options))
+    // Each request carries only what its own origin would send. The dashboard
+    // and the data gateway are different origins, so the session cookie is
+    // never forwarded from one to the other.
+    const apiRead = await source(`${endpoint.dataHost}/data/api.json`)
+    if (!apiRead.ok) return { ...cookieFailure(apiRead.reason), detail: apiRead.detail }
+    const header = apiRead.header
+    const dashboardRead: CookieSourceResult =
+      dashboardHost === dataHost ? apiRead : await source(endpoint.dashboardUrl)
+    // A type guard rather than a discriminant read: the two branches of the
+    // expression above widen `.ok` to `boolean`.
+    const secJar = isCookieSourceOk(dashboardRead) ? dashboardRead.header : null
+    let secToken = cookieValue(header, 'sec_token') ?? ''
+    let secFrom = secToken ? 'cookie' : 'none'
+    if (!secToken && secJar) {
+      secToken = cookieValue(secJar, 'sec_token') ?? ''
+      if (secToken) secFrom = 'cookie'
+    }
+    // Only talk to the dashboard when its own jar exists. Sending the data
+    // host's jar to the dashboard would hand the session cookie to a third
+    // origin.
+    if (!secToken && secJar) {
       try {
+        const dashboardHeaders: Record<string, string> = {
+          'User-Agent': USER_AGENT,
+          Accept: 'text/html,application/xhtml+xml',
+          Referer: `https://${endpoint.consoleDomain}/`,
+        }
+        dashboardHeaders.Cookie = secJar
         const dashboard = await fetchImpl(endpoint.dashboardUrl, {
-          // The dashboard is its own origin: it gets the dashboard jar, not the
-          // data host's.
-          headers: { Cookie: dashboardHeader, 'User-Agent': USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
-          redirect: 'error',
+          headers: dashboardHeaders,
           signal: AbortSignal.timeout(12_000),
         })
-        if (dashboard.ok) secToken = secTokenFromHtml(await dashboard.text()) ?? ''
+        if (dashboard.ok) {
+          const fromHtml = secTokenFromHtml(await dashboard.text())
+          if (fromHtml) {
+            secToken = fromHtml
+            secFrom = 'html'
+          }
+        }
       } catch {
         // A dashboard miss leaves the token empty; the RPC still carries the cookie.
       }
     }
+    // The console also publishes the token on its own user-info endpoint. This
+    // is the reliable source: the HTML may be a shell with the token injected
+    // later, which is why the dashboard scrape came back empty on a signed-in
+    // session.
+    if (!secToken && secJar) {
+      const fromUserInfo = await secTokenFromUserInfo(fetchImpl, endpoint, secJar)
+      if (fromUserInfo) {
+        secToken = fromUserInfo
+        secFrom = 'userinfo'
+      }
+    }
+    // `sec` is the OneConsole security token the RPC requires; whether we found
+    // one is the difference between "not logged in" and "logged in but the
+    // token was not handed over".
+    const trace = `${apiRead.detail ?? ''} sec=${secToken ? `yes:${secFrom}` : 'no'}`
     const res = await postRpc(fetchImpl, { api, endpoint, header, secToken, data, withRegionField })
-    if (res.status === 401 || res.status === 403) return { available: false, reason: 'reauth' }
-    if (!res.ok) return { available: false, reason: `http-${res.status}` }
+    if (res.status === 401 || res.status === 403) {
+      return { available: false, reason: 'reauth', detail: `http-${res.status} ${trace}`.trim() }
+    }
+    if (!res.ok) return { available: false, reason: `http-${res.status}`, detail: trace }
     const text = await res.text()
-    if (text.includes('ConsoleNeedLogin')) return { available: false, reason: 'reauth' }
+    if (text.includes('ConsoleNeedLogin')) return { available: false, reason: 'reauth', detail: `need-login ${trace}`.trim() }
     let payload: unknown
     try {
       payload = JSON.parse(text)
     } catch {
-      return { available: false, reason: 'parse-failed' }
+      return { available: false, reason: 'parse-failed', detail: `not-json bytes=${text.length} ${trace}`.trim() }
     }
     const windows = windowsFromConsolePayload(payload)
-    if (!windows) return { available: false, reason: 'parse-failed' }
+    if (!windows) {
+      const keys = topLevelKeys(payload)
+      const envelope = envelopeSummary(payload)
+      const shape = dataStatus(payload)
+      // A successful envelope whose data holds only status fields is the honest
+      // "this account has no plan" answer. A real error code or an unexpected
+      // shape stays a failure, so nothing is reported as a business fact unless
+      // the response says so.
+      if (isSuccessEnvelope(payload) && shape.onlyStatus && !shape.errorCode) {
+        return { available: false, reason: 'no-plan', detail: `${envelope} ${trace}`.trim() }
+      }
+      return {
+        available: false,
+        reason: 'parse-failed',
+        detail: `no-window keys=${keys} ${envelope}${shape.errorCode ? ` errorCode=${shape.errorCode}` : ''} ${trace}`.trim(),
+      }
+    }
     return {
       available: true,
       body: JSON.stringify({ plan: planName(payload), windows, topUpCredits: null, stale: false }),
@@ -457,20 +681,71 @@ async function fetchConsoleQuota(
 }
 
 /**
- * Alibaba Cloud Coding Plan. Tries the international console first, then the
- * China mainland one; a rejected session is not retried against the other host,
- * but a sealed or empty intl jar still lets the mainland console answer, and
- * the more explanatory failure wins when both miss.
+ * Replay a request the user pasted from the console's own Network panel.
+ *
+ * This exists because a reconstructed request is rejected: the console's
+ * session token lives in page runtime state, so only its own request carries
+ * everything the gateway wants.
+ */
+export async function fetchPastedQuota(
+  fetchImpl: FetchImpl,
+  request: { url: string; method: string; headers: Record<string, string>; body: string },
+): Promise<QuotaOutcome> {
+  const trace = `pasted ${request.method}`
+  try {
+    const res = await fetchImpl(request.url, {
+      method: request.method,
+      headers: request.headers,
+      body: request.method === 'GET' ? undefined : request.body,
+      redirect: 'error',
+      signal: AbortSignal.timeout(20_000),
+    })
+    if (res.status === 401 || res.status === 403) {
+      return { available: false, reason: 'reauth', detail: `http-${res.status} ${trace}` }
+    }
+    if (!res.ok) return { available: false, reason: `http-${res.status}`, detail: trace }
+    const text = await res.text()
+    if (text.includes('ConsoleNeedLogin') || text.includes('Login.NotLogined')) {
+      return { available: false, reason: 'reauth', detail: `need-login ${trace}` }
+    }
+    let payload: unknown
+    try {
+      payload = JSON.parse(text)
+    } catch {
+      return { available: false, reason: 'parse-failed', detail: `not-json bytes=${text.length} ${trace}` }
+    }
+    const windows = windowsFromConsolePayload(payload)
+    if (!windows) {
+      const shape = dataStatus(payload)
+      if (isSuccessEnvelope(payload) && shape.onlyStatus && !shape.errorCode) {
+        return { available: false, reason: 'no-plan', detail: `${envelopeSummary(payload)} ${trace}` }
+      }
+      return {
+        available: false,
+        reason: 'parse-failed',
+        detail: `no-window ${envelopeSummary(payload)}${shape.errorCode ? ` errorCode=${shape.errorCode}` : ''} ${trace}`,
+      }
+    }
+    return {
+      available: true,
+      body: JSON.stringify({ plan: planName(payload), windows, topUpCredits: null, stale: false }),
+      detail: trace,
+    }
+  } catch (error) {
+    return { available: false, reason: error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'network', detail: trace }
+  }
+}
+
+/**
+ * Alibaba Cloud Coding Plan. The China mainland console is tried first: this
+ * build targets a Chinese install, and the international host has no session
+ * for a mainland login, so leading with it reported "not logged in" while the
+ * mainland console would have answered.
  */
 export async function fetchAlibabaCodingPlanQuota(
   fetchImpl: FetchImpl,
-  options?: CookieReadOptions,
+  options?: AliyunProbeOptions,
 ): Promise<QuotaOutcome> {
-  const data = {
-    queryCodingPlanInstanceInfoRequest: { commodityCode: 'sfm_codingplan_public_intl', onlyLatestOne: true },
-  }
-  const intl = await fetchConsoleQuota(fetchImpl, CODING_INTERNATIONAL, CODING_PLAN_API, data, true, options)
-  if (intl.available) return intl
   const cn = await fetchConsoleQuota(
     fetchImpl,
     CODING_CHINA,
@@ -479,15 +754,24 @@ export async function fetchAlibabaCodingPlanQuota(
     true,
     options,
   )
-  return bestReason(intl, cn)
+  if (cn.available) return cn
+  const intl = await fetchConsoleQuota(
+    fetchImpl,
+    CODING_INTERNATIONAL,
+    CODING_PLAN_API,
+    { queryCodingPlanInstanceInfoRequest: { commodityCode: 'sfm_codingplan_public_intl', onlyLatestOne: true } },
+    true,
+    options,
+  )
+  return bestReason(cn, intl)
 }
 
 /** Qwen Cloud individual Token Plan (international gateway). */
-export function fetchQwenCloudQuota(fetchImpl: FetchImpl, options?: CookieReadOptions): Promise<QuotaOutcome> {
+export function fetchQwenCloudQuota(fetchImpl: FetchImpl, options?: AliyunProbeOptions): Promise<QuotaOutcome> {
   return fetchConsoleQuota(fetchImpl, QWEN_CLOUD, PERSONAL_USAGE_API, {}, false, options)
 }
 
 /** Alibaba Token Plan, personal/Solo windows on the mainland gateway. */
-export function fetchAlibabaTokenPlanQuota(fetchImpl: FetchImpl, options?: CookieReadOptions): Promise<QuotaOutcome> {
+export function fetchAlibabaTokenPlanQuota(fetchImpl: FetchImpl, options?: AliyunProbeOptions): Promise<QuotaOutcome> {
   return fetchConsoleQuota(fetchImpl, TOKEN_CHINA, PERSONAL_USAGE_API, {}, false, options)
 }

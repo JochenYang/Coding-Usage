@@ -134,6 +134,11 @@ export interface Settings {
   planOrder: string[]
   /** Official subscription-card keys in the user's order; unknown keys are appended */
   subscriptionOrder: string[]
+  /**
+   * Subscription cards the user has added. A card not listed is not rendered;
+   * an upgrade seeds this with the previously always-shown set.
+   */
+  enabledSubscriptions: string[]
 }
 
 export interface ProviderResult {

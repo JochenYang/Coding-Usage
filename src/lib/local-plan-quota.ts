@@ -48,12 +48,16 @@ export interface LocalPlanQuotaVM {
   topUpCredits?: number | null
   /** Windsurf's cache updates only when the IDE is opened. */
   stale?: boolean
+  /** Short diagnostic from the probe (counts and names only, never a value). */
+  detail?: string | null
 }
 
 export interface LocalPlanRaw {
   available: boolean
   body?: string
   reason?: string
+  /** Short probe diagnostic (counts and flag names only, never a value). */
+  detail?: string
 }
 
 function num(value: unknown): number | null {

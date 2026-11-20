@@ -31,7 +31,16 @@ import { fetchJetBrainsQuota } from './jetbrains-quota'
 import { fetchWindsurfQuota } from './windsurf-quota'
 import { fetchKiroQuota } from './kiro-quota'
 import { fetchKiloQuota } from './kilo-quota'
-import { fetchAlibabaCodingPlanQuota, fetchAlibabaTokenPlanQuota, fetchQwenCloudQuota } from './aliyun-quota'
+import { fetchAlibabaCodingPlanQuota, fetchAlibabaTokenPlanQuota, fetchPastedQuota, fetchQwenCloudQuota } from './aliyun-quota'
+import { clearConsoleSession, connectAlibabaConsole, hasConsoleSession, readConsoleCookieHeader } from './alibaba-connect'
+import {
+  clearPastedRequest,
+  initPastedRequests,
+  parseCurl,
+  readPastedRequest,
+  savePastedRequest,
+  type PastedTarget,
+} from './pasted-requests'
 import { flushQuotaStoreSync, initQuotaStore, readQuotaSnapshot, saveQuotaOutcome } from './quota-store'
 import { getPricingMeta, getPricingTable, priceTokens, type PricingMeta } from './model-pricing'
 import { hasClientEntries, mergeGraphPayloads } from './tokscale-merge'
@@ -443,6 +452,7 @@ const QUOTA_CONCURRENCY = 2
 const quotaCache = new Map<string, { at: number; ttl: number; result: QuotaOutcome }>()
 const quotaInflight = new Map<string, Promise<QuotaOutcome>>()
 let quotaActive = 0
+let quotaGeneration = 0
 const quotaQueue: Array<() => void> = []
 
 async function acquireQuotaSlot(): Promise<void> {
@@ -481,18 +491,21 @@ async function cachedQuotaOutcome(
   // Two cards asking for the same provider on one tick share one probe run.
   const running = quotaInflight.get(key)
   if (running) return running
+  const generation = quotaGeneration
   const run = (async (): Promise<QuotaOutcome> => {
     await acquireQuotaSlot()
     try {
       const result = await probe()
-      quotaCache.set(key, {
-        at: Date.now(),
-        ttl: result.available ? QUOTA_CACHE_MS : QUOTA_FAIL_CACHE_MS,
-        result,
-      })
-      // Only a success is persisted: the cards paint the last good reading on
-      // the next visit instead of waiting for this probe again.
-      saveQuotaOutcome(key, result)
+      if (generation === quotaGeneration) {
+        quotaCache.set(key, {
+          at: Date.now(),
+          ttl: result.available ? QUOTA_CACHE_MS : QUOTA_FAIL_CACHE_MS,
+          result,
+        })
+        // Only a success is persisted: the cards paint the last good reading on
+        // the next visit instead of waiting for this probe again.
+        saveQuotaOutcome(key, result)
+      }
       return result
     } finally {
       releaseQuotaSlot()
@@ -1279,20 +1292,93 @@ function registerIpc(): void {
     async (): Promise<QuotaOutcome> =>
       cachedQuotaOutcome('kilo', () => fetchKiloQuota(net.fetch, homedir(), process.env)),
   )
-  // Alibaba Cloud consoles reuse the browser session. The cookie layer only
-  // reads the listed hosts and reports `cookie-app-bound` when Chrome's v20
-  // encryption makes the session unreadable here.
+  // Alibaba Cloud consoles reuse an in-app console session: Chrome's v20
+  // cookies cannot be read on Windows, but Electron's own jar can.
+  const clearAlibabaQuotaCache = (): void => {
+    // A probe that was already running would write its stale failure back a
+    // moment after sign-in, leaving the card on "not signed in" for the whole
+    // failure TTL. Bump the generation so that run is not stored.
+    quotaGeneration += 1
+    for (const key of ['alibaba', 'qwen', 'alitoken']) {
+      quotaCache.delete(key)
+      quotaInflight.delete(key)
+    }
+  }
+  ipcMain.handle(
+    'alibaba:connect',
+    async (
+      _event,
+      target?: unknown,
+    ): Promise<{ ok: boolean; reason?: string; detail?: string }> => {
+      const console = target === 'qwen' || target === 'token' ? target : 'coding'
+      const result = await connectAlibabaConsole(mainWindow, console)
+      if (result.ok) clearAlibabaQuotaCache()
+      return result
+    },
+  )
+  ipcMain.handle(
+    'alibaba:disconnect',
+    async (): Promise<void> => {
+      await clearConsoleSession()
+      clearAlibabaQuotaCache()
+    },
+  )
+  ipcMain.handle('alibaba:session', async (): Promise<boolean> => hasConsoleSession())
+  // A pasted console request wins over any reconstructed one: it is the only
+  // variant the gateway accepts. See pasted-requests.ts.
+  const probe = (target: PastedTarget, build: () => Promise<QuotaOutcome>): Promise<QuotaOutcome> =>
+    cachedQuotaOutcome(target, async () => {
+      const pasted = await readPastedRequest(target)
+      return pasted ? fetchPastedQuota(net.fetch, pasted) : build()
+    })
   ipcMain.handle(
     'alibaba:quota',
-    async (): Promise<QuotaOutcome> => cachedQuotaOutcome('alibaba', () => fetchAlibabaCodingPlanQuota(net.fetch)),
+    async (): Promise<QuotaOutcome> =>
+      probe('alibaba', () => fetchAlibabaCodingPlanQuota(net.fetch, { cookieSource: readConsoleCookieHeader })),
   )
   ipcMain.handle(
     'qwen:quota',
-    async (): Promise<QuotaOutcome> => cachedQuotaOutcome('qwen', () => fetchQwenCloudQuota(net.fetch)),
+    async (): Promise<QuotaOutcome> =>
+      probe('qwen', () => fetchQwenCloudQuota(net.fetch, { cookieSource: readConsoleCookieHeader })),
   )
   ipcMain.handle(
     'alitoken:quota',
-    async (): Promise<QuotaOutcome> => cachedQuotaOutcome('alitoken', () => fetchAlibabaTokenPlanQuota(net.fetch)),
+    async (): Promise<QuotaOutcome> =>
+      probe('alitoken', () => fetchAlibabaTokenPlanQuota(net.fetch, { cookieSource: readConsoleCookieHeader })),
+  )
+  ipcMain.handle(
+    'pasted:set',
+    async (
+      _event,
+      target: unknown,
+      text: unknown,
+    ): Promise<{ ok: boolean; reason?: string }> => {
+      if (target !== 'alibaba' && target !== 'alitoken' && target !== 'qwen') {
+        return { ok: false, reason: 'unknown-target' }
+      }
+      if (typeof text !== 'string' || text.length > 40_000) return { ok: false, reason: 'too-large' }
+      const parsed = parseCurl(text)
+      if (!parsed.ok) return { ok: false, reason: parsed.reason }
+      // A pasted request must belong to the card it was pasted into, or the two
+      // would send each other's bodies to each other's console.
+      if (parsed.target !== target) return { ok: false, reason: 'wrong-console' }
+      const saved = await savePastedRequest(target, parsed.request)
+      if (!saved.ok) return { ok: false, reason: saved.reason }
+      quotaCache.delete(target)
+      quotaInflight.delete(target)
+      quotaGeneration += 1
+      return { ok: true }
+    },
+  )
+  ipcMain.handle(
+    'pasted:clear',
+    async (_event, target: unknown): Promise<void> => {
+      if (target !== 'alibaba' && target !== 'alitoken' && target !== 'qwen') return
+      await clearPastedRequest(target)
+      quotaCache.delete(target)
+      quotaInflight.delete(target)
+      quotaGeneration += 1
+    },
   )
 
   // Trae CN credits usage. The login state is an encrypted "tc" blob in the
@@ -1616,6 +1702,7 @@ if (!gotSingleInstanceLock) {
     // The quota snapshot must be loaded before the renderer asks for it, or the
     // cards would paint the empty state and then jump to the stored numbers.
     await initQuotaStore(app.getPath('userData'))
+    initPastedRequests(app.getPath('userData'))
     await loadWindowState()
     registerIpc()
     createWindow()
