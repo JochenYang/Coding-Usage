@@ -150,6 +150,9 @@ export const enUS: Dict = {
     windsurfWeekly: 'Weekly allowance',
     windsurfMessages: 'Message allowance',
     windsurfFlow: 'Flow allowance',
+    kiroMonthly: 'Monthly credits',
+    kiloCredits: 'Credits',
+    kiloPass: 'Kilo Pass',
   },
   regions: {
     zhipuCN: 'China · bigmodel.cn',
@@ -455,6 +458,10 @@ export const enUS: Dict = {
     jetbrainsTopUp: (credits: string) => `${credits} top-up credits left`,
     windsurfNoAuth: 'No Windsurf local quota cache found (state.vscdb). Open Windsurf once and try again.',
     windsurfStale: 'From the local cache. It updates the next time Windsurf is opened.',
+    kiroNoAuth: 'No Kiro CLI login found (kiro-cli data.sqlite3).',
+    kiroReauth: 'The Kiro login has expired. Sign in to the Kiro CLI again.',
+    kiloNoAuth: 'No Kilo login found (~/.local/share/kilo/auth.json). Run `kilo auth login` to show the quota.',
+    kiloReauth: 'The Kilo login has expired. Run `kilo auth login` again.',
     geminiNoAuth:
       'No Gemini CLI login found (~/.gemini/oauth_creds.json) — official subscription quota unavailable.',
     geminiReauth: 'Your Gemini login has expired. Run `gemini` again to sign in.',

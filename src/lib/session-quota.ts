@@ -17,6 +17,9 @@ const WINDOW_IDS = new Set<LocalPlanWindowId>([
   'windsurfWeekly',
   'windsurfMessages',
   'windsurfFlow',
+  'kiroMonthly',
+  'kiloCredits',
+  'kiloPass',
 ])
 
 function unavailable(reason: string | null): LocalPlanQuotaVM {

@@ -151,6 +151,9 @@ export const zhCN: Dict = {
     windsurfWeekly: '每周额度',
     windsurfMessages: '消息额度',
     windsurfFlow: 'Flow 额度',
+    kiroMonthly: '月度 credits',
+    kiloCredits: 'Credits',
+    kiloPass: 'Kilo Pass',
   },
   regions: {
     zhipuCN: '国内 bigmodel.cn',
@@ -443,6 +446,10 @@ export const zhCN: Dict = {
     jetbrainsTopUp: (credits: string) => `充值剩余 ${credits} credits`,
     windsurfNoAuth: '未检测到 Windsurf 本地额度缓存（state.vscdb）。打开一次 Windsurf 后再试。',
     windsurfStale: '来自本地缓存，打开 Windsurf 后才会更新。',
+    kiroNoAuth: '未检测到 Kiro CLI 登录（kiro-cli 的 data.sqlite3）。',
+    kiroReauth: 'Kiro 登录已失效，请在终端重新登录 Kiro CLI。',
+    kiloNoAuth: '未检测到 Kilo 登录（~/.local/share/kilo/auth.json）。运行 `kilo auth login` 后可看额度。',
+    kiloReauth: 'Kilo 登录已失效，请重新运行 `kilo auth login`。',
     geminiNoAuth: '未检测到 Gemini CLI 登录（~/.gemini/oauth_creds.json），官方订阅额度不可用。',
     geminiReauth: 'Gemini 登录态已失效，请重新运行 `gemini` 完成登录。',
     geminiGroups: {

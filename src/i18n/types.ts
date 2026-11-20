@@ -150,6 +150,9 @@ export interface Dict {
     windsurfWeekly: string
     windsurfMessages: string
     windsurfFlow: string
+    kiroMonthly: string
+    kiloCredits: string
+    kiloPass: string
   }
   regions: {
     zhipuCN: string
@@ -456,6 +459,10 @@ export interface Dict {
     jetbrainsTopUp: (credits: string) => string
     windsurfNoAuth: string
     windsurfStale: string
+    kiroNoAuth: string
+    kiroReauth: string
+    kiloNoAuth: string
+    kiloReauth: string
     geminiNoAuth: string
     geminiReauth: string
     geminiGroups: {

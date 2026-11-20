@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Cline, Cursor, GithubCopilot, Windsurf } from '@lobehub/icons'
+import { Cline, Cursor, GithubCopilot, KiloCode, Kiro, Windsurf } from '@lobehub/icons'
 import { useT } from '@/i18n/useT'
 import { formatCountdown } from '@/lib/format'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
@@ -26,7 +26,7 @@ import { cn } from '@/lib/cn'
  * request on every render.
  */
 
-export type LocalQuotaKind = 'cursor' | 'copilot' | 'cline' | 'jetbrains' | 'windsurf'
+export type LocalQuotaKind = 'cursor' | 'copilot' | 'cline' | 'jetbrains' | 'windsurf' | 'kiro' | 'kilo'
 
 const SOURCES = {
   cursor: {
@@ -65,6 +65,20 @@ const SOURCES = {
     load: (): Promise<LocalPlanRaw> => window.desktopBridge!.windsurfQuota(),
     summarize: summarizeSessionQuota,
   },
+  kiro: {
+    name: 'Kiro',
+    logo: <Kiro.Avatar size={16} />,
+    watermark: <Kiro />,
+    load: (): Promise<LocalPlanRaw> => window.desktopBridge!.kiroQuota(),
+    summarize: summarizeSessionQuota,
+  },
+  kilo: {
+    name: 'Kilo',
+    logo: <KiloCode.Avatar size={16} />,
+    watermark: <KiloCode />,
+    load: (): Promise<LocalPlanRaw> => window.desktopBridge!.kiloQuota(),
+    summarize: summarizeSessionQuota,
+  },
 } as const
 
 export function LocalQuotaCard({ kind, className }: { kind: LocalQuotaKind; className?: string }) {
@@ -96,6 +110,8 @@ export function LocalQuotaCard({ kind, className }: { kind: LocalQuotaKind; clas
     cline: vm?.reason === 'reauth' ? t.manage.clineReauth : t.manage.clineNoAuth,
     jetbrains: t.manage.jetbrainsNoAuth,
     windsurf: t.manage.windsurfNoAuth,
+    kiro: vm?.reason === 'reauth' ? t.manage.kiroReauth : t.manage.kiroNoAuth,
+    kilo: vm?.reason === 'reauth' ? t.manage.kiloReauth : t.manage.kiloNoAuth,
   }[kind]
   // A sealed Cursor token cannot be read by this app at all: point at the
   // manual path instead of telling the user to log in again (which would not help).

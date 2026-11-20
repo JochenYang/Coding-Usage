@@ -164,6 +164,10 @@ declare global {
     jetbrainsQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Windsurf plan cache from state.vscdb. Stale until the IDE is opened again. */
     windsurfQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /** Kiro credits from the CLI state database. The token stays in the main process. */
+    kiroQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /** Kilo Pass from the CLI auth file or KILO_API_KEY. The token stays in the main process. */
+    kiloQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Read one coding agent's provider configuration; credentials arrive masked */
     agentConfigRead(agent: AgentId): Promise<AgentConfigPayload>
     /** Reveal one provider's plaintext credential — only on an explicit user request */

@@ -22,6 +22,9 @@ export type LocalPlanWindowId =
   | 'windsurfWeekly'
   | 'windsurfMessages'
   | 'windsurfFlow'
+  | 'kiroMonthly'
+  | 'kiloCredits'
+  | 'kiloPass'
 
 export interface LocalPlanWindowVM {
   /** Also the i18n key under `windows` */

@@ -29,6 +29,8 @@ import { fetchCopilotUsage, fetchCursorUsage } from './local-plan-quota'
 import { fetchClineQuota } from './cline-quota'
 import { fetchJetBrainsQuota } from './jetbrains-quota'
 import { fetchWindsurfQuota } from './windsurf-quota'
+import { fetchKiroQuota } from './kiro-quota'
+import { fetchKiloQuota } from './kilo-quota'
 import { getPricingMeta, getPricingTable, priceTokens, type PricingMeta } from './model-pricing'
 import { hasClientEntries, mergeGraphPayloads } from './tokscale-merge'
 import {
@@ -1215,6 +1217,17 @@ function registerIpc(): void {
     'windsurf:quota',
     async (): Promise<QuotaOutcome> =>
       cachedQuotaOutcome('windsurf', () => fetchWindsurfQuota(homedir(), process.env)),
+  )
+  // Kiro and Kilo reuse the CLI's own login. Kiro never starts a chat session.
+  ipcMain.handle(
+    'kiro:quota',
+    async (): Promise<QuotaOutcome> =>
+      cachedQuotaOutcome('kiro', () => fetchKiroQuota(net.fetch, homedir(), process.env)),
+  )
+  ipcMain.handle(
+    'kilo:quota',
+    async (): Promise<QuotaOutcome> =>
+      cachedQuotaOutcome('kilo', () => fetchKiloQuota(net.fetch, homedir(), process.env)),
   )
 
   // Trae CN credits usage. The login state is an encrypted "tc" blob in the

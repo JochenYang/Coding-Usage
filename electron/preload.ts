@@ -48,6 +48,8 @@ const desktopBridge: DesktopBridge = {
   clineQuota: () => ipcRenderer.invoke('cline:quota'),
   jetbrainsQuota: () => ipcRenderer.invoke('jetbrains:quota'),
   windsurfQuota: () => ipcRenderer.invoke('windsurf:quota'),
+  kiroQuota: () => ipcRenderer.invoke('kiro:quota'),
+  kiloQuota: () => ipcRenderer.invoke('kilo:quota'),
   agentConfigRead: (agent) => ipcRenderer.invoke('agentConfig:read', agent),
   agentConfigReveal: (agent, providerId) =>
     ipcRenderer.invoke('agentConfig:reveal', agent, providerId),

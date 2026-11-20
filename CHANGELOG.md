@@ -14,9 +14,11 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 
 ### 中文
 - 套餐页新增三张只读本地状态的额度卡：Cline Pass 读 `cline auth` 的会话并显示 5 小时 / 每周 / 每月窗口；JetBrains AI 读 IDE 配置里的月度 credits（较新的 idea.log 可替换过期的 XML）；Windsurf 读本机 `state.vscdb` 缓存，并标明打开客户端后才会更新。凭据不出主进程
+- 套餐页再加 Kiro 与 Kilo：Kiro 只读 CLI 的 data.sqlite3 并请求 GetUsageLimits，不启动会写会话的聊天命令；Kilo 读 `kilo auth login` 的 auth.json
 
 ### English
 - The plans page adds three quota cards that read local state only: Cline Pass uses the `cline auth` session for the 5-hour / weekly / monthly windows; JetBrains AI reads monthly credits from the IDE config (a newer idea.log can replace a stale XML file); Windsurf reads the local `state.vscdb` cache and says it updates the next time the app is opened. Credentials never leave the main process
+- The plans page also adds Kiro and Kilo: Kiro reads the CLI data.sqlite3 and calls GetUsageLimits without starting a chat that would write a session; Kilo reads the auth.json from `kilo auth login`
 
 ## [v0.9.6] - 2026-11-11
 
