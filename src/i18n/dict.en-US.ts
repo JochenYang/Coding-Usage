@@ -153,6 +153,9 @@ export const enUS: Dict = {
     kiroMonthly: 'Monthly credits',
     kiloCredits: 'Credits',
     kiloPass: 'Kilo Pass',
+    ali5h: '5-hour window',
+    aliWeekly: 'Weekly window',
+    aliMonthly: 'Monthly window',
   },
   regions: {
     zhipuCN: 'China · bigmodel.cn',
@@ -462,6 +465,15 @@ export const enUS: Dict = {
     kiroReauth: 'The Kiro login has expired. Sign in to the Kiro CLI again.',
     kiloNoAuth: 'No Kilo login found (~/.local/share/kilo/auth.json). Run `kilo auth login` to show the quota.',
     kiloReauth: 'The Kilo login has expired. Run `kilo auth login` again.',
+    aliNoAuth:
+      'No Alibaba Cloud console login found in the browser (bailian.console.aliyun.com / modelstudio.console.alibabacloud.com).',
+    qwenNoAuth: 'No Qwen Cloud login found in the browser (home.qwencloud.com).',
+    alitokenNoAuth: 'No Bailian Token Plan login found in the browser (bailian.console.aliyun.com).',
+    aliReauth: 'The Alibaba Cloud console login has expired. Sign in again and refresh.',
+    aliCookieAppBound:
+      'Chrome seals its newer cookies with app-bound encryption (v20) that only Chrome can open, so this app cannot read that login.',
+    quotaUnsupportedPlatform:
+      'Browser cookies can only be decrypted on Windows; this platform cannot read that login.',
     geminiNoAuth:
       'No Gemini CLI login found (~/.gemini/oauth_creds.json) — official subscription quota unavailable.',
     geminiReauth: 'Your Gemini login has expired. Run `gemini` again to sign in.',

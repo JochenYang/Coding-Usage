@@ -50,6 +50,10 @@ const desktopBridge: DesktopBridge = {
   windsurfQuota: () => ipcRenderer.invoke('windsurf:quota'),
   kiroQuota: () => ipcRenderer.invoke('kiro:quota'),
   kiloQuota: () => ipcRenderer.invoke('kilo:quota'),
+  alibabaCodingPlanQuota: () => ipcRenderer.invoke('alibaba:quota'),
+  qwenCloudQuota: () => ipcRenderer.invoke('qwen:quota'),
+  alibabaTokenPlanQuota: () => ipcRenderer.invoke('alitoken:quota'),
+  quotaSnapshot: () => ipcRenderer.invoke('quota:snapshot'),
   agentConfigRead: (agent) => ipcRenderer.invoke('agentConfig:read', agent),
   agentConfigReveal: (agent, providerId) =>
     ipcRenderer.invoke('agentConfig:reveal', agent, providerId),

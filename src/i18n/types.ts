@@ -153,6 +153,9 @@ export interface Dict {
     kiroMonthly: string
     kiloCredits: string
     kiloPass: string
+    ali5h: string
+    aliWeekly: string
+    aliMonthly: string
   }
   regions: {
     zhipuCN: string
@@ -463,6 +466,12 @@ export interface Dict {
     kiroReauth: string
     kiloNoAuth: string
     kiloReauth: string
+    aliNoAuth: string
+    qwenNoAuth: string
+    alitokenNoAuth: string
+    aliReauth: string
+    aliCookieAppBound: string
+    quotaUnsupportedPlatform: string
     geminiNoAuth: string
     geminiReauth: string
     geminiGroups: {

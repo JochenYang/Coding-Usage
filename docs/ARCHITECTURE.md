@@ -65,8 +65,12 @@ electron/
   windsurf-quota.ts       # Windsurf：只读 state.vscdb 的 cachedPlanInfo，不读浏览器会话
   kiro-quota.ts           # Kiro：只读 kiro-cli 的 data.sqlite3，请求 GetUsageLimits，不启动聊天
   kilo-quota.ts           # Kilo：读 CLI auth.json 或 KILO_API_KEY，请求 app.kilo.ai 的额度
+  aliyun-quota.ts         # 阿里云 Coding Plan / 千问 Cloud / Token Plan：走浏览器控制台会话，
+                          # 带域名白名单；解不开的 v20 Cookie 报 cookie-app-bound，不猜额度
   safe-storage.ts         # 读另一个 Electron 应用的 safeStorage 密钥（Windows DPAPI → Chromium
                           # `v10` AES-256-GCM）；qoder / cursor 两个探针共用
+  browser-cookies.ts      # 只读 Chrome / Edge Cookie：必须带域名白名单，只解 `v10`；
+                          # `v20` 应用绑定加密不解、不猜。值不出主进程，没有对应的 IPC
   trae-usage.ts / trae-local-usage.ts
                           # Trae CN：登录解密探针 / SQLCipher 本地用量
   codebuddy-usage.ts / qoder-usage.ts / cindy-usage.ts / dsh-usage.ts / workbuddy-aliases.ts
@@ -74,6 +78,8 @@ electron/
                           # dsh 自己读多帧 zstd 转录 + DSH 应用自己的用量插件存储：tokscale 的 dsh 读者
                           # 遇到一个坏事件会丢弃整份会话，而转录只覆盖仍在磁盘的会话）
   qoder-quota.ts          # Qoder 国际版额度：解 IDE 本地登录（DPAPI 密钥 + safe-storage.ts）→ 官方 credits 接口
+  quota-store.ts          # 套餐额度上次成功结果（`quota-cache.json`）：卡片首屏直接显示并标注时间，
+                          # 只存数值、不存凭据；失败不覆盖上次成功
   model-pricing.ts / model-pricing-core.ts / builtin-pricing.ts
                           # 模型价格投影（models.dev 官方价优先，OpenRouter 兜底）
   agent-config-paths.ts / agent-config-io.ts / agent-config-service.ts
@@ -89,7 +95,7 @@ electron/
 
 1. **Provider 用量/余额**：`src/lib/query.ts#fetchUsage` → `ProviderDef.buildRequest/parseResponse`
    → 桌面经 `net:fetch` IPC、浏览器直连（失败回退 corsproxy）。结果写入 `results` 与启动缓存。
-2. **订阅额度（Codex / Claude / Gemini / Grok / Kimi / Antigravity / Trae / Cursor / Copilot / Qoder 国际版 / Cline Pass / JetBrains AI / Windsurf / Kiro / Kilo）**：
+2. **订阅额度（Codex / Claude / Gemini / Grok / Kimi / Antigravity / Trae / Cursor / Copilot / Qoder 国际版 / Cline Pass / JetBrains AI / Windsurf / Kiro / Kilo / 阿里云 Coding Plan / 千问 Cloud / 阿里云 Token Plan）**：
    主进程读本地登录或本地额度文件 → 需要时调官方接口 → **只把数值**回传渲染层；凭据不出主进程。
    JetBrains 与 Windsurf 不联网：前者读 IDE 配置，后者读 IDE 本地缓存（打开 Windsurf 后才会更新）。
 3. **本地 Agent 用量**：主进程 `tokscale:scan` 扫描本地会话日志，四类 tokscale 覆盖不到的
@@ -97,7 +103,8 @@ electron/
 4. **模型价格**：`electron/model-pricing.ts` 按 models.dev 官方厂商价为主、OpenRouter 兜底，
    内置快照 `builtin-pricing.ts`（生成脚本 `scripts/gen-builtin-pricing.ts`）标注生成日期。
 5. **持久化**：`settings`（v1→v2→v3 迁移，v3 为 safeStorage 加密）、`snapshots`（本地时序）、
-   `results`（启动缓存，读取时做字段归一化）。
+   `results`（启动缓存，读取时做字段归一化）、`quota-cache.json`（上次成功的套餐额度，按 provider
+   存、不含凭据或凭据指纹、30 天过期；卡片先显它再静默刷新）。
 6. **窗口与后台**：关闭到托盘会**销毁**窗口及其渲染进程（空闲时常驻内存因此少约 110 MB），
    而不是隐藏；托盘、`second-instance`、灵动岛点击都会重建窗口并恢复上次的位置
    （如果保存的矩形已不在任何显示器上，则丢弃并居中）。无窗口期间，主进程按
@@ -111,6 +118,7 @@ electron/
 - 明文凭据只存在于**主进程内存**；渲染层默认只见掩码，点「小眼睛」才经独立 IPC 取该条明文。
 - 桌面端 `localStorage` 中的密钥为 `enc:v3:` 密文（safeStorage），无桥接时退回 v2 明文。
 - 探针只读本地登录文件，不修改、不上传；写入类操作（Agent 配置）先备份再 CAS 写入。
+- 浏览器 Cookie 读取只在主进程、只针对调用方给出的域名。空名单直接拒绝。解不开的 `v20` 值不回传。
 - 禁止把渲染层流量引到第三方代理（唯一例外是浏览器模式的 corsproxy.io 兜底）。
 
 ## 5. 已知架构约束（易踩点）

@@ -154,6 +154,9 @@ export const zhCN: Dict = {
     kiroMonthly: '月度 credits',
     kiloCredits: 'Credits',
     kiloPass: 'Kilo Pass',
+    ali5h: '5 小时窗口',
+    aliWeekly: '每周窗口',
+    aliMonthly: '每月窗口',
   },
   regions: {
     zhipuCN: '国内 bigmodel.cn',
@@ -450,6 +453,13 @@ export const zhCN: Dict = {
     kiroReauth: 'Kiro 登录已失效，请在终端重新登录 Kiro CLI。',
     kiloNoAuth: '未检测到 Kilo 登录（~/.local/share/kilo/auth.json）。运行 `kilo auth login` 后可看额度。',
     kiloReauth: 'Kilo 登录已失效，请重新运行 `kilo auth login`。',
+    aliNoAuth: '未在浏览器中找到阿里云控制台登录（bailian.console.aliyun.com / modelstudio.console.alibabacloud.com）。',
+    qwenNoAuth: '未在浏览器中找到千问 Cloud 登录（home.qwencloud.com）。',
+    alitokenNoAuth: '未在浏览器中找到百炼 Token Plan 登录（bailian.console.aliyun.com）。',
+    aliReauth: '阿里云控制台登录已失效，请重新登录后再刷新。',
+    aliCookieAppBound:
+      'Chrome 的新 Cookie 用应用绑定加密（v20），只能由 Chrome 自己解开，本应用无法读取其中的登录态。',
+    quotaUnsupportedPlatform: '浏览器 Cookie 目前只能在 Windows 上解密，当前平台无法读取登录态。',
     geminiNoAuth: '未检测到 Gemini CLI 登录（~/.gemini/oauth_creds.json），官方订阅额度不可用。',
     geminiReauth: 'Gemini 登录态已失效，请重新运行 `gemini` 完成登录。',
     geminiGroups: {

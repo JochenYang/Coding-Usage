@@ -20,6 +20,9 @@ const WINDOW_IDS = new Set<LocalPlanWindowId>([
   'kiroMonthly',
   'kiloCredits',
   'kiloPass',
+  'ali5h',
+  'aliWeekly',
+  'aliMonthly',
 ])
 
 function unavailable(reason: string | null): LocalPlanQuotaVM {

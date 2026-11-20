@@ -319,6 +319,9 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
       { key: 'windsurf', node: <LocalQuotaCard kind="windsurf" /> },
       { key: 'kiro', node: <LocalQuotaCard kind="kiro" /> },
       { key: 'kilo', node: <LocalQuotaCard kind="kilo" /> },
+      { key: 'alibaba', node: <LocalQuotaCard kind="alibaba" /> },
+      { key: 'qwen', node: <LocalQuotaCard kind="qwen" /> },
+      { key: 'alitoken', node: <LocalQuotaCard kind="alitoken" /> },
       { key: 'qoder', node: <QoderQuotaCard /> },
     ]
     return applyPlanOrder(all, settings.subscriptionOrder)

@@ -31,6 +31,8 @@ import { fetchJetBrainsQuota } from './jetbrains-quota'
 import { fetchWindsurfQuota } from './windsurf-quota'
 import { fetchKiroQuota } from './kiro-quota'
 import { fetchKiloQuota } from './kilo-quota'
+import { fetchAlibabaCodingPlanQuota, fetchAlibabaTokenPlanQuota, fetchQwenCloudQuota } from './aliyun-quota'
+import { flushQuotaStoreSync, initQuotaStore, readQuotaSnapshot, saveQuotaOutcome } from './quota-store'
 import { getPricingMeta, getPricingTable, priceTokens, type PricingMeta } from './model-pricing'
 import { hasClientEntries, mergeGraphPayloads } from './tokscale-merge'
 import {
@@ -429,9 +431,33 @@ let tokScanInflight: Promise<TokScanResult> | null = null
 
 // Subscription probes cost upstream API calls (Gemini up to three round-trips),
 // so successful outcomes are cached briefly to survive Plans-page revisits.
-// Failures stay uncached: a fresh login must show up on the very next visit.
+//
+// A failure is cached too, for a shorter window. Some probes cost a PowerShell
+// child plus a DPAPI unwrap (browser cookies) or a 4 MB log tail; re-running
+// them on every refresh tick is what made the plans page stop scrolling. A
+// failure still expires quickly, so a fresh login shows up on the next visit.
 const QUOTA_CACHE_MS = 2 * 60_000
-const quotaCache = new Map<string, { at: number; result: QuotaOutcome }>()
+const QUOTA_FAIL_CACHE_MS = 45_000
+/** Bounded fan-out: the cards all request at once, and each miss can spawn a child. */
+const QUOTA_CONCURRENCY = 2
+const quotaCache = new Map<string, { at: number; ttl: number; result: QuotaOutcome }>()
+const quotaInflight = new Map<string, Promise<QuotaOutcome>>()
+let quotaActive = 0
+const quotaQueue: Array<() => void> = []
+
+async function acquireQuotaSlot(): Promise<void> {
+  if (quotaActive < QUOTA_CONCURRENCY) {
+    quotaActive += 1
+    return
+  }
+  await new Promise<void>((resolve) => quotaQueue.push(resolve))
+  quotaActive += 1
+}
+
+function releaseQuotaSlot(): void {
+  quotaActive -= 1
+  quotaQueue.shift()?.()
+}
 
 /**
  * Cache identity for a probe, with the credential folded in as a digest. Two
@@ -449,12 +475,32 @@ async function cachedQuotaOutcome(
   key: string,
   probe: () => Promise<QuotaOutcome>,
 ): Promise<QuotaOutcome> {
-  const hit = quotaCache.get(key)
   const now = Date.now()
-  if (hit && now - hit.at < QUOTA_CACHE_MS) return hit.result
-  const result = await probe()
-  if (result.available) quotaCache.set(key, { at: now, result })
-  return result
+  const hit = quotaCache.get(key)
+  if (hit && now - hit.at < hit.ttl) return hit.result
+  // Two cards asking for the same provider on one tick share one probe run.
+  const running = quotaInflight.get(key)
+  if (running) return running
+  const run = (async (): Promise<QuotaOutcome> => {
+    await acquireQuotaSlot()
+    try {
+      const result = await probe()
+      quotaCache.set(key, {
+        at: Date.now(),
+        ttl: result.available ? QUOTA_CACHE_MS : QUOTA_FAIL_CACHE_MS,
+        result,
+      })
+      // Only a success is persisted: the cards paint the last good reading on
+      // the next visit instead of waiting for this probe again.
+      saveQuotaOutcome(key, result)
+      return result
+    } finally {
+      releaseQuotaSlot()
+      quotaInflight.delete(key)
+    }
+  })()
+  quotaInflight.set(key, run)
+  return run
 }
 
 /**
@@ -1110,6 +1156,10 @@ function registerIpc(): void {
   /** Read-only snapshot for late subscribers (top bar badge, update toast) */
   ipcMain.handle('app:update-state', (): typeof updateState => updateState)
 
+  // Last known-good quota per provider, so a subscription card can paint the
+  // previous reading immediately and then refresh behind the user's back.
+  ipcMain.handle('quota:snapshot', (): ReturnType<typeof readQuotaSnapshot> => readQuotaSnapshot())
+
   // Codex subscription quota: reads the local ChatGPT OAuth login and queries
   // the official wham endpoint. The credential stays on this machine; only the
   // request to chatgpt.com is made. Returns {available:false, reason} when
@@ -1228,6 +1278,21 @@ function registerIpc(): void {
     'kilo:quota',
     async (): Promise<QuotaOutcome> =>
       cachedQuotaOutcome('kilo', () => fetchKiloQuota(net.fetch, homedir(), process.env)),
+  )
+  // Alibaba Cloud consoles reuse the browser session. The cookie layer only
+  // reads the listed hosts and reports `cookie-app-bound` when Chrome's v20
+  // encryption makes the session unreadable here.
+  ipcMain.handle(
+    'alibaba:quota',
+    async (): Promise<QuotaOutcome> => cachedQuotaOutcome('alibaba', () => fetchAlibabaCodingPlanQuota(net.fetch)),
+  )
+  ipcMain.handle(
+    'qwen:quota',
+    async (): Promise<QuotaOutcome> => cachedQuotaOutcome('qwen', () => fetchQwenCloudQuota(net.fetch)),
+  )
+  ipcMain.handle(
+    'alitoken:quota',
+    async (): Promise<QuotaOutcome> => cachedQuotaOutcome('alitoken', () => fetchAlibabaTokenPlanQuota(net.fetch)),
   )
 
   // Trae CN credits usage. The login state is an encrypted "tc" blob in the
@@ -1548,6 +1613,9 @@ if (!gotSingleInstanceLock) {
     // Point the usage history store at userData before any scan can run, so a
     // first refresh already merges into the persistent history.
     initUsageStore(app.getPath('userData'))
+    // The quota snapshot must be loaded before the renderer asks for it, or the
+    // cards would paint the empty state and then jump to the stored numbers.
+    await initQuotaStore(app.getPath('userData'))
     await loadWindowState()
     registerIpc()
     createWindow()
@@ -1587,5 +1655,9 @@ if (!gotSingleInstanceLock) {
     background?.stop()
     void stopIlinkSession()
     closeUsageStore()
+    // The quota cache is written on a short delay, and Electron does not await
+    // a promise here; write synchronously so a quit cannot drop the reading the
+    // user just waited for.
+    flushQuotaStoreSync()
   })
 }

@@ -116,6 +116,23 @@ export function decryptChromiumV10(blob: Buffer, key: Buffer): string | null {
 }
 
 /**
+ * Keys already unwrapped in this process, keyed by userData root.
+ *
+ * Unwrapping costs a PowerShell child, and the subscription cards all ask on
+ * the same tick. The key is stable for the life of the browser profile, so it
+ * is read once; a miss is remembered briefly so a broken profile cannot spawn
+ * a child on every refresh. A rejected DPAPI call is never cached for long.
+ */
+const KEY_CACHE = new Map<string, { at: number; key: Buffer | null }>()
+const KEY_HIT_MS = 10 * 60_000
+const KEY_MISS_MS = 60_000
+
+/** Test hook: forget cached keys. */
+export function resetChromiumKeyCache(): void {
+  KEY_CACHE.clear()
+}
+
+/**
  * The app's 32-byte Chromium key, DPAPI-unwrapped from `<userData>/Local State`.
  *
  * `null` covers every reason it cannot be obtained — wrong platform, no such
@@ -124,6 +141,15 @@ export function decryptChromiumV10(blob: Buffer, key: Buffer): string | null {
  */
 export async function readChromiumKey(userDataDir: string): Promise<Buffer | null> {
   if (process.platform !== 'win32') return null
+  const now = Date.now()
+  const cached = KEY_CACHE.get(userDataDir)
+  if (cached && now - cached.at < (cached.key ? KEY_HIT_MS : KEY_MISS_MS)) return cached.key
+  const key = await unwrapChromiumKey(userDataDir)
+  KEY_CACHE.set(userDataDir, { at: now, key })
+  return key
+}
+
+async function unwrapChromiumKey(userDataDir: string): Promise<Buffer | null> {
   let localState: unknown
   try {
     localState = JSON.parse(await readFile(join(userDataDir, 'Local State'), 'utf8'))

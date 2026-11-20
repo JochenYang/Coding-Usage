@@ -25,6 +25,9 @@ export type LocalPlanWindowId =
   | 'kiroMonthly'
   | 'kiloCredits'
   | 'kiloPass'
+  | 'ali5h'
+  | 'aliWeekly'
+  | 'aliMonthly'
 
 export interface LocalPlanWindowVM {
   /** Also the i18n key under `windows` */

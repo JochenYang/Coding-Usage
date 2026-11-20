@@ -15,10 +15,16 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 ### 中文
 - 套餐页新增三张只读本地状态的额度卡：Cline Pass 读 `cline auth` 的会话并显示 5 小时 / 每周 / 每月窗口；JetBrains AI 读 IDE 配置里的月度 credits（较新的 idea.log 可替换过期的 XML）；Windsurf 读本机 `state.vscdb` 缓存，并标明打开客户端后才会更新。凭据不出主进程
 - 套餐页再加 Kiro 与 Kilo：Kiro 只读 CLI 的 data.sqlite3 并请求 GetUsageLimits，不启动会写会话的聊天命令；Kilo 读 `kilo auth login` 的 auth.json
+- 新增只读浏览器 Cookie 层（Chrome / Edge，必须带域名白名单，只解 v10），并接入阿里云 Coding Plan、千问 Cloud、阿里云 Token Plan 三张卡；Chrome 新的 v20 应用绑定 Cookie 无法在本应用解密，卡片会直接说明而不是当成未登录
+- 修复套餐页卡顿无法滚动：本地探针额度卡（Cursor、Cline、JetBrains、Windsurf、Kiro、Kilo、阿里云三张）只在滚到附近时才请求；主进程记住已解开的 Chromium 密钥并缓存失败结果（成功 2 分钟、失败 45 秒），探针并发限制为 2；阿里云三张卡首次加载从约 17.6 秒降到约 4.2 秒，之后命中缓存（实测 5 毫秒内）
+- 套餐额度改为先显上次结果再静默刷新：每次成功的结果写进 `quota-cache.json`（按 provider 存，不带凭据或凭据指纹，30 天后自动丢弃），卡片首屏直接显示并标注更新时间，再在后台重新取；失败不会覆盖上一次成功的数字
 
 ### English
 - The plans page adds three quota cards that read local state only: Cline Pass uses the `cline auth` session for the 5-hour / weekly / monthly windows; JetBrains AI reads monthly credits from the IDE config (a newer idea.log can replace a stale XML file); Windsurf reads the local `state.vscdb` cache and says it updates the next time the app is opened. Credentials never leave the main process
 - The plans page also adds Kiro and Kilo: Kiro reads the CLI data.sqlite3 and calls GetUsageLimits without starting a chat that would write a session; Kilo reads the auth.json from `kilo auth login`
+- A read-only browser cookie layer (Chrome / Edge, host allowlist required, v10 only) now backs three more cards: Alibaba Cloud Coding Plan, Qwen Cloud and Alibaba Token Plan. Chrome's newer v20 app-bound cookies cannot be decrypted by this app, and the card says so instead of reporting no login
+- Fix the plans page freezing so it cannot be scrolled: the local-probe quota cards (Cursor, Cline, JetBrains, Windsurf, Kiro, Kilo and the three Alibaba cards) request only once they are near the viewport; the main process caches the unwrapped Chromium key and failure results (2 minutes on success, 45 seconds on failure) and caps probe concurrency at 2; the three Alibaba cards went from about 17.6 s on first load to about 4.2 s, and later reads hit the cache (measured under 5 ms)
+- Subscription quota now paints the previous reading first and refreshes silently: every success is written to `quota-cache.json` keyed by provider (no credential or credential fingerprint, entries expire after 30 days), the card shows it immediately with its fetch time and re-queries in the background; a failure never replaces the last good numbers
 
 ## [v0.9.6] - 2026-11-11
 

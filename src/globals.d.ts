@@ -168,6 +168,19 @@ declare global {
     kiroQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Kilo Pass from the CLI auth file or KILO_API_KEY. The token stays in the main process. */
     kiloQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /** Alibaba Cloud Coding Plan windows from the browser console session. */
+    alibabaCodingPlanQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /** Qwen Cloud individual Token Plan windows from the browser session. */
+    qwenCloudQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /** Alibaba Token Plan personal windows from the browser session. */
+    alibabaTokenPlanQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /**
+     * Last known-good quota per provider key, with the fetch time. Shown while
+     * the fresh probe runs; never contains a credential.
+     */
+    quotaSnapshot(): Promise<
+      Record<string, { at: number; result: { available: boolean; body?: string; reason?: string } }>
+    >
     /** Read one coding agent's provider configuration; credentials arrive masked */
     agentConfigRead(agent: AgentId): Promise<AgentConfigPayload>
     /** Reveal one provider's plaintext credential — only on an explicit user request */
