@@ -60,6 +60,9 @@ electron/
   local-plan-quota.ts     # Cursor / GitHub Copilot 本地登录探针（Cursor 的 sealed token
                           # 走 safe-storage.ts 解开；额度读 Cursor 当前的 GetCurrentPeriodUsage，
                           # 不提供 token 级用量，因此不计入本地用量）
+  cline-quota.ts          # Cline Pass：只读 `cline auth` 的 providers.json，请求官方套餐窗口
+  jetbrains-quota.ts      # JetBrains AI：只读 IDE 的额度 XML，较新的 idea.log 记录可替换它
+  windsurf-quota.ts       # Windsurf：只读 state.vscdb 的 cachedPlanInfo，不读浏览器会话
   safe-storage.ts         # 读另一个 Electron 应用的 safeStorage 密钥（Windows DPAPI → Chromium
                           # `v10` AES-256-GCM）；qoder / cursor 两个探针共用
   trae-usage.ts / trae-local-usage.ts
@@ -84,8 +87,9 @@ electron/
 
 1. **Provider 用量/余额**：`src/lib/query.ts#fetchUsage` → `ProviderDef.buildRequest/parseResponse`
    → 桌面经 `net:fetch` IPC、浏览器直连（失败回退 corsproxy）。结果写入 `results` 与启动缓存。
-2. **订阅额度（Codex / Claude / Gemini / Grok / Kimi / Antigravity / Trae / Cursor / Copilot / Qoder 国际版）**：
-   主进程读本地登录 → 调官方接口 → **只把数值**回传渲染层；凭据不出主进程。
+2. **订阅额度（Codex / Claude / Gemini / Grok / Kimi / Antigravity / Trae / Cursor / Copilot / Qoder 国际版 / Cline Pass / JetBrains AI / Windsurf）**：
+   主进程读本地登录或本地额度文件 → 需要时调官方接口 → **只把数值**回传渲染层；凭据不出主进程。
+   JetBrains 与 Windsurf 不联网：前者读 IDE 配置，后者读 IDE 本地缓存（打开 Windsurf 后才会更新）。
 3. **本地 Agent 用量**：主进程 `tokscale:scan` 扫描本地会话日志，四类 tokscale 覆盖不到的
    存储由主进程直读后合并（CodeBuddy / Cindy / Qoder / Trae CN），聚合在 `src/lib/agent-usage.ts`。
 4. **模型价格**：`electron/model-pricing.ts` 按 models.dev 官方厂商价为主、OpenRouter 兜底，

@@ -314,6 +314,9 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
       },
       { key: 'cursor', node: <LocalQuotaCard kind="cursor" /> },
       { key: 'copilot', node: <LocalQuotaCard kind="copilot" /> },
+      { key: 'cline', node: <LocalQuotaCard kind="cline" /> },
+      { key: 'jetbrains', node: <LocalQuotaCard kind="jetbrains" /> },
+      { key: 'windsurf', node: <LocalQuotaCard kind="windsurf" /> },
       { key: 'qoder', node: <QoderQuotaCard /> },
     ]
     return applyPlanOrder(all, settings.subscriptionOrder)

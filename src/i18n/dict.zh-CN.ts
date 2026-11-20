@@ -143,6 +143,14 @@ export const zhCN: Dict = {
     cursorApi: '套餐 · API 模型',
     copilotPremium: '高级请求',
     copilotChat: 'Chat 请求',
+    clineFiveHour: '5 小时窗口',
+    clineWeekly: '每周窗口',
+    clineMonthly: '每月窗口',
+    jetbrainsMonthly: '月度 credits',
+    windsurfDaily: '每日额度',
+    windsurfWeekly: '每周额度',
+    windsurfMessages: '消息额度',
+    windsurfFlow: 'Flow 额度',
   },
   regions: {
     zhipuCN: '国内 bigmodel.cn',
@@ -429,6 +437,12 @@ export const zhCN: Dict = {
       'Cursor 把登录信息加密保存在系统钥匙串里，本应用无法读取。可在服务商页手动粘贴 token 查询额度。',
     copilotNoAuth:
       '未检测到 GitHub Copilot 登录（%LOCALAPPDATA%\\github-copilot\\hosts.json），额度不可用。',
+    clineNoAuth: '未检测到 Cline 登录（~/.cline/data/settings/providers.json）。运行 `cline auth` 后可看套餐额度。',
+    clineReauth: 'Cline 登录已失效，请重新运行 `cline auth`。',
+    jetbrainsNoAuth: '未检测到 JetBrains AI 额度（IDE 配置里的 AIAssistantQuotaManager2.xml）。',
+    jetbrainsTopUp: (credits: string) => `充值剩余 ${credits} credits`,
+    windsurfNoAuth: '未检测到 Windsurf 本地额度缓存（state.vscdb）。打开一次 Windsurf 后再试。',
+    windsurfStale: '来自本地缓存，打开 Windsurf 后才会更新。',
     geminiNoAuth: '未检测到 Gemini CLI 登录（~/.gemini/oauth_creds.json），官方订阅额度不可用。',
     geminiReauth: 'Gemini 登录态已失效，请重新运行 `gemini` 完成登录。',
     geminiGroups: {

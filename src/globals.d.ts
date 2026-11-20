@@ -158,6 +158,12 @@ declare global {
     cursorUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** GitHub Copilot plan quota from the extension's hosts.json login */
     copilotUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /** Cline Pass windows from the local `cline auth` session. The token stays in the main process. */
+    clineQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /** JetBrains AI monthly credits from the IDE config. Local files only. */
+    jetbrainsQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /** Windsurf plan cache from state.vscdb. Stale until the IDE is opened again. */
+    windsurfQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Read one coding agent's provider configuration; credentials arrive masked */
     agentConfigRead(agent: AgentId): Promise<AgentConfigPayload>
     /** Reveal one provider's plaintext credential — only on an explicit user request */

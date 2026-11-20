@@ -45,6 +45,9 @@ const desktopBridge: DesktopBridge = {
   traeUsage: () => ipcRenderer.invoke('trae:usage'),
   cursorUsage: () => ipcRenderer.invoke('cursor:usage'),
   copilotUsage: () => ipcRenderer.invoke('copilot:usage'),
+  clineQuota: () => ipcRenderer.invoke('cline:quota'),
+  jetbrainsQuota: () => ipcRenderer.invoke('jetbrains:quota'),
+  windsurfQuota: () => ipcRenderer.invoke('windsurf:quota'),
   agentConfigRead: (agent) => ipcRenderer.invoke('agentConfig:read', agent),
   agentConfigReveal: (agent, providerId) =>
     ipcRenderer.invoke('agentConfig:reveal', agent, providerId),

@@ -142,6 +142,14 @@ export const enUS: Dict = {
     cursorApi: 'Plan · API models',
     copilotPremium: 'Premium requests',
     copilotChat: 'Chat requests',
+    clineFiveHour: '5-hour window',
+    clineWeekly: 'Weekly window',
+    clineMonthly: 'Monthly window',
+    jetbrainsMonthly: 'Monthly credits',
+    windsurfDaily: 'Daily allowance',
+    windsurfWeekly: 'Weekly allowance',
+    windsurfMessages: 'Message allowance',
+    windsurfFlow: 'Flow allowance',
   },
   regions: {
     zhipuCN: 'China · bigmodel.cn',
@@ -440,6 +448,13 @@ export const enUS: Dict = {
       'Cursor keeps its login sealed in the OS keychain, which this app cannot read. Paste a token on the providers page to query the quota.',
     copilotNoAuth:
       'No GitHub Copilot login found (%LOCALAPPDATA%\\github-copilot\\hosts.json) — quota unavailable.',
+    clineNoAuth:
+      'No Cline login found (~/.cline/data/settings/providers.json). Run `cline auth` to show the plan quota.',
+    clineReauth: 'The Cline login has expired. Run `cline auth` again.',
+    jetbrainsNoAuth: 'No JetBrains AI quota found (AIAssistantQuotaManager2.xml in the IDE config).',
+    jetbrainsTopUp: (credits: string) => `${credits} top-up credits left`,
+    windsurfNoAuth: 'No Windsurf local quota cache found (state.vscdb). Open Windsurf once and try again.',
+    windsurfStale: 'From the local cache. It updates the next time Windsurf is opened.',
     geminiNoAuth:
       'No Gemini CLI login found (~/.gemini/oauth_creds.json) — official subscription quota unavailable.',
     geminiReauth: 'Your Gemini login has expired. Run `gemini` again to sign in.',

@@ -8,7 +8,20 @@
  * payload that yields no window degrades to an honest unavailable state.
  */
 
-export type LocalPlanWindowId = 'cursorTotal' | 'cursorAuto' | 'cursorApi' | 'copilotPremium' | 'copilotChat'
+export type LocalPlanWindowId =
+  | 'cursorTotal'
+  | 'cursorAuto'
+  | 'cursorApi'
+  | 'copilotPremium'
+  | 'copilotChat'
+  | 'clineFiveHour'
+  | 'clineWeekly'
+  | 'clineMonthly'
+  | 'jetbrainsMonthly'
+  | 'windsurfDaily'
+  | 'windsurfWeekly'
+  | 'windsurfMessages'
+  | 'windsurfFlow'
 
 export interface LocalPlanWindowVM {
   /** Also the i18n key under `windows` */
@@ -25,6 +38,10 @@ export interface LocalPlanQuotaVM {
   reason: string | null
   windows: LocalPlanWindowVM[]
   fetchedAt: number | null
+  /** JetBrains purchased credits, already converted from quota units. */
+  topUpCredits?: number | null
+  /** Windsurf's cache updates only when the IDE is opened. */
+  stale?: boolean
 }
 
 export interface LocalPlanRaw {

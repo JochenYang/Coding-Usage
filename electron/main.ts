@@ -26,6 +26,9 @@ import { fetchTraeUsage } from './trae-usage'
 import { fetchKimiUsage } from './kimi-usage'
 import { fetchAntigravityUsage } from './antigravity-quota'
 import { fetchCopilotUsage, fetchCursorUsage } from './local-plan-quota'
+import { fetchClineQuota } from './cline-quota'
+import { fetchJetBrainsQuota } from './jetbrains-quota'
+import { fetchWindsurfQuota } from './windsurf-quota'
 import { getPricingMeta, getPricingTable, priceTokens, type PricingMeta } from './model-pricing'
 import { hasClientEntries, mergeGraphPayloads } from './tokscale-merge'
 import {
@@ -1193,6 +1196,25 @@ function registerIpc(): void {
     'copilot:usage',
     async (): Promise<QuotaOutcome> =>
       cachedQuotaOutcome('copilot', () => fetchCopilotUsage(net.fetch, homedir(), process.env)),
+  )
+  // Cline Pass: read the CLI's own providers.json and query the plan endpoint.
+  // The bearer token never leaves this process and is never logged.
+  ipcMain.handle(
+    'cline:quota',
+    async (): Promise<QuotaOutcome> =>
+      cachedQuotaOutcome('cline', () => fetchClineQuota(net.fetch, homedir(), process.env)),
+  )
+  // JetBrains AI and Windsurf read local files only. Windsurf's cache can be
+  // stale; the card says so. Neither probe copies the IDE database.
+  ipcMain.handle(
+    'jetbrains:quota',
+    async (): Promise<QuotaOutcome> =>
+      cachedQuotaOutcome('jetbrains', () => fetchJetBrainsQuota(homedir(), process.env)),
+  )
+  ipcMain.handle(
+    'windsurf:quota',
+    async (): Promise<QuotaOutcome> =>
+      cachedQuotaOutcome('windsurf', () => fetchWindsurfQuota(homedir(), process.env)),
   )
 
   // Trae CN credits usage. The login state is an encrypted "tc" blob in the

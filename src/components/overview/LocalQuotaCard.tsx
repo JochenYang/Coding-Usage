@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Cursor, GithubCopilot } from '@lobehub/icons'
+import { Cline, Cursor, GithubCopilot, Windsurf } from '@lobehub/icons'
 import { useT } from '@/i18n/useT'
 import { formatCountdown } from '@/lib/format'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
@@ -11,6 +11,7 @@ import {
   type LocalPlanQuotaVM,
   type LocalPlanRaw,
 } from '@/lib/local-plan-quota'
+import { summarizeSessionQuota } from '@/lib/session-quota'
 import { ProgressBar } from '@/components/common/ProgressBar'
 import { CardWatermark } from '@/components/common/CardWatermark'
 import { cn } from '@/lib/cn'
@@ -25,7 +26,7 @@ import { cn } from '@/lib/cn'
  * request on every render.
  */
 
-export type LocalQuotaKind = 'cursor' | 'copilot'
+export type LocalQuotaKind = 'cursor' | 'copilot' | 'cline' | 'jetbrains' | 'windsurf'
 
 const SOURCES = {
   cursor: {
@@ -42,6 +43,27 @@ const SOURCES = {
     watermark: <GithubCopilot />,
     load: (): Promise<LocalPlanRaw> => window.desktopBridge!.copilotUsage(),
     summarize: summarizeCopilotQuota,
+  },
+  cline: {
+    name: 'Cline Pass',
+    logo: <Cline.Avatar size={16} />,
+    watermark: <Cline />,
+    load: (): Promise<LocalPlanRaw> => window.desktopBridge!.clineQuota(),
+    summarize: summarizeSessionQuota,
+  },
+  jetbrains: {
+    name: 'JetBrains AI',
+    logo: <span className="text-[11px] font-semibold leading-none text-foreground">JB</span>,
+    watermark: <span className="text-7xl font-semibold leading-none">JB</span>,
+    load: (): Promise<LocalPlanRaw> => window.desktopBridge!.jetbrainsQuota(),
+    summarize: summarizeSessionQuota,
+  },
+  windsurf: {
+    name: 'Windsurf',
+    logo: <Windsurf.Avatar size={16} />,
+    watermark: <Windsurf />,
+    load: (): Promise<LocalPlanRaw> => window.desktopBridge!.windsurfQuota(),
+    summarize: summarizeSessionQuota,
   },
 } as const
 
@@ -68,8 +90,13 @@ export function LocalQuotaCard({ kind, className }: { kind: LocalQuotaKind; clas
   }, [refreshTick, source])
 
   const now = useNowTick()
-  const emptyText =
-    kind === 'cursor' ? t.manage.cursorNoAuth : t.manage.copilotNoAuth
+  const emptyText = {
+    cursor: t.manage.cursorNoAuth,
+    copilot: t.manage.copilotNoAuth,
+    cline: vm?.reason === 'reauth' ? t.manage.clineReauth : t.manage.clineNoAuth,
+    jetbrains: t.manage.jetbrainsNoAuth,
+    windsurf: t.manage.windsurfNoAuth,
+  }[kind]
   // A sealed Cursor token cannot be read by this app at all: point at the
   // manual path instead of telling the user to log in again (which would not help).
   const sealed = vm?.reason === 'sealed-token' && kind === 'cursor'
@@ -127,6 +154,10 @@ export function LocalQuotaCard({ kind, className }: { kind: LocalQuotaKind; clas
               )}
             </div>
           ))}
+          {vm.topUpCredits != null && (
+            <p className="text-xs text-muted-foreground">{t.manage.jetbrainsTopUp(vm.topUpCredits.toFixed(2))}</p>
+          )}
+          {vm.stale && <p className="text-[11px] leading-relaxed text-subtle">{t.manage.windsurfStale}</p>}
         </div>
       )}
     </section>

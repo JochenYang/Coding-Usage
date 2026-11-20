@@ -142,6 +142,14 @@ export interface Dict {
     cursorApi: string
     copilotPremium: string
     copilotChat: string
+    clineFiveHour: string
+    clineWeekly: string
+    clineMonthly: string
+    jetbrainsMonthly: string
+    windsurfDaily: string
+    windsurfWeekly: string
+    windsurfMessages: string
+    windsurfFlow: string
   }
   regions: {
     zhipuCN: string
@@ -442,6 +450,12 @@ export interface Dict {
     cursorNoAuth: string
     cursorSealed: string
     copilotNoAuth: string
+    clineNoAuth: string
+    clineReauth: string
+    jetbrainsNoAuth: string
+    jetbrainsTopUp: (credits: string) => string
+    windsurfNoAuth: string
+    windsurfStale: string
     geminiNoAuth: string
     geminiReauth: string
     geminiGroups: {
