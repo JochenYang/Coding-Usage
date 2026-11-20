@@ -3,6 +3,7 @@ import { Trae } from '@lobehub/icons'
 import { useT } from '@/i18n/useT'
 import { formatCountdown } from '@/lib/format'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
+import { useInView } from '@/lib/hooks/use-in-view'
 import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
 import { useData } from '@/lib/data-context'
 import { summarizeTraeQuota, type TraeQuotaVM } from '@/lib/trae-quota'
@@ -28,11 +29,13 @@ export function TraeQuotaCard({ className }: { className?: string }) {
   const [loading, setLoading] = useState(false)
   // Follows the shared refresh cycle like every other official-quota card.
   const { refreshTick } = useData()
+  const { ref: sectionRef, inView } = useInView<HTMLElement>()
   // Wrapper catches the brand mark's own <title> before it can pop a native
   // hover tooltip (see useStripSvgTitle)
   const brandRef = useStripSvgTitle<HTMLSpanElement>()
 
   useEffect(() => {
+    if (!inView) return
     const bridge = window.desktopBridge
     if (!bridge) return
     setLoading(true)
@@ -48,14 +51,17 @@ export function TraeQuotaCard({ className }: { className?: string }) {
       .catch(() => setVm(summarizeTraeQuota({ available: false, reason: 'timeout' })))
       .finally(() => setLoading(false))
     return () => clearTimeout(timer)
-  }, [refreshTick])
+  }, [refreshTick, inView])
 
   const now = useNowTick()
   const staleLogin =
     vm != null && ['http-401', 'http-403', 'token-expired', 'no-auth-token'].includes(vm.reason ?? '')
 
   return (
-    <section className={cn('relative z-0 flex h-full flex-col rounded-2xl border border-border bg-card p-5', className)}>
+    <section
+      ref={sectionRef}
+      className={cn('relative z-0 flex h-full flex-col rounded-2xl border border-border bg-card p-5', className)}
+    >
       <CardWatermark icon={<Trae />} />
       <div className="flex items-center gap-2.5">
         <span ref={brandRef} className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted [&>svg]:h-5 [&>svg]:w-5" aria-hidden>

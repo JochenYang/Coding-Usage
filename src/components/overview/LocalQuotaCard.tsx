@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AlibabaCloud, Cline, Cursor, GithubCopilot, KiloCode, Kiro, Qwen, Windsurf } from '@lobehub/icons'
 import { useT } from '@/i18n/useT'
 import { formatAgo, formatCountdown } from '@/lib/format'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
+import { useInView } from '@/lib/hooks/use-in-view'
 import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
 import { useData } from '@/lib/data-context'
 import {
@@ -127,38 +128,13 @@ export function LocalQuotaCard({ kind, className }: { kind: LocalQuotaKind; clas
   const source = SOURCES[kind]
   const [vm, setVm] = useState<LocalPlanQuotaVM | null>(null)
   const [loading, setLoading] = useState(false)
-  /**
-   * Only ask for a quota once the card is near the viewport. A dozen cards each
-   * firing an IPC on mount meant a dozen probes at once, several of which spawn
-   * a PowerShell child; the page then could not be scrolled. Off-screen cards
-   * request when they are scrolled into view instead.
-   */
-  const sectionRef = useRef<HTMLElement>(null)
-  const [inView, setInView] = useState(false)
   // Follows the shared refresh cycle like every other subscription card
   const { refreshTick } = useData()
   const brandRef = useStripSvgTitle<HTMLSpanElement>()
-
-  useEffect(() => {
-    if (inView) return
-    const element = sectionRef.current
-    // Without observer support (older webview, tests) load immediately.
-    if (!element || typeof IntersectionObserver === 'undefined') {
-      setInView(true)
-      return
-    }
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setInView(true)
-          observer.disconnect()
-        }
-      },
-      { rootMargin: '240px' },
-    )
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [inView])
+  // Only ask for a quota once the card is near the viewport: a dozen cards each
+  // firing an IPC on mount meant a dozen probes at once, several of which spawn
+  // a PowerShell child.
+  const { ref: sectionRef, inView } = useInView<HTMLElement>()
 
   useEffect(() => {
     if (!inView) return

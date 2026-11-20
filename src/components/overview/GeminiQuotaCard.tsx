@@ -3,6 +3,7 @@ import { Gemini } from '@lobehub/icons'
 import { useT } from '@/i18n/useT'
 import { formatCountdown } from '@/lib/format'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
+import { useInView } from '@/lib/hooks/use-in-view'
 import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
 import { useData } from '@/lib/data-context'
 import { summarizeGeminiQuota, type GeminiQuotaVM } from '@/lib/gemini-quota'
@@ -25,11 +26,13 @@ export function GeminiQuotaCard({ className }: { className?: string }) {
   // bars until the page was remounted). The tick moves when a cycle finishes,
   // whatever the provider fetches did.
   const { refreshTick } = useData()
+  const { ref: sectionRef, inView } = useInView<HTMLElement>()
   // Wrapper catches the brand mark's own <title> before it can pop a native
   // hover tooltip (see useStripSvgTitle)
   const brandRef = useStripSvgTitle<HTMLSpanElement>()
 
   useEffect(() => {
+    if (!inView) return
     const bridge = window.desktopBridge
     if (!bridge) return
     setLoading(true)
@@ -42,7 +45,7 @@ export function GeminiQuotaCard({ className }: { className?: string }) {
       .then((raw) => setVm(summarizeGeminiQuota(raw)))
       .catch(() => setVm(summarizeGeminiQuota({ available: false, reason: 'timeout' })))
       .finally(() => setLoading(false))
-  }, [refreshTick])
+  }, [refreshTick, inView])
 
   // Minute-resolution clock so reset countdowns stay live on this card alone
   const now = useNowTick()
@@ -50,7 +53,10 @@ export function GeminiQuotaCard({ className }: { className?: string }) {
   const staleLogin = vm != null && ['http-401', 'http-403', 'refresh-failed'].includes(vm.reason ?? '')
 
   return (
-    <section className={cn('relative z-0 flex h-full flex-col rounded-2xl border border-border bg-card p-5', className)}>
+    <section
+      ref={sectionRef}
+      className={cn('relative z-0 flex h-full flex-col rounded-2xl border border-border bg-card p-5', className)}
+    >
       <CardWatermark icon={<Gemini />} />
       <div className="flex items-center gap-2.5">
         <span ref={brandRef} className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted [&>svg]:h-5 [&>svg]:w-5" aria-hidden>
