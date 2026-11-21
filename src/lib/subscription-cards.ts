@@ -11,11 +11,16 @@
  * order still comes from `settings.subscriptionOrder`.
  */
 
+/** How a card gets its data — drives the manage-drawer grouping. */
+export type SubscriptionCardGroup = 'plan' | 'console' | 'local'
+
 export interface SubscriptionCardDef {
   /** Stable key used by settings, drag order and the page's card list */
   key: string
   /** Brand name, not translated */
   name: string
+  /** Which drawer section the card lists under */
+  group: SubscriptionCardGroup
   /**
    * Not enabled by default. These need a manual sign-in or are still being
    * validated, so presenting them first would look like a defect.
@@ -24,28 +29,32 @@ export interface SubscriptionCardDef {
 }
 
 export const SUBSCRIPTION_CARDS: SubscriptionCardDef[] = [
-  { key: 'codex', name: 'Codex' },
-  { key: 'claude', name: 'Claude Code' },
-  { key: 'gemini', name: 'Gemini CLI' },
-  { key: 'grok', name: 'Grok' },
-  { key: 'trae', name: 'Trae CN' },
-  { key: 'trae-intl', name: 'Trae Intl' },
-  { key: 'kimi', name: 'Kimi Code' },
-  { key: 'antigravity', name: 'Antigravity' },
-  { key: 'cursor', name: 'Cursor' },
-  { key: 'copilot', name: 'GitHub Copilot' },
-  { key: 'qoder', name: 'Qoder' },
-  { key: 'cline', name: 'Cline Pass' },
-  { key: 'jetbrains', name: 'JetBrains AI' },
-  { key: 'windsurf', name: 'Windsurf' },
-  { key: 'kiro', name: 'Kiro' },
-  { key: 'kilo', name: 'Kilo' },
-  { key: 'factory', name: 'Factory Droid' },
-  { key: 'devin', name: 'Devin' },
-  { key: 'amp', name: 'Amp' },
-  { key: 'alibaba', name: 'Alibaba Cloud Coding Plan', experimental: true },
-  { key: 'qwen', name: 'Qwen Cloud', experimental: true },
-  { key: 'alitoken', name: 'Alibaba Token Plan', experimental: true },
+  { key: 'codex', name: 'Codex', group: 'plan' },
+  { key: 'claude', name: 'Claude Code', group: 'plan' },
+  { key: 'gemini', name: 'Gemini CLI', group: 'plan' },
+  { key: 'grok', name: 'Grok', group: 'plan' },
+  { key: 'trae', name: 'Trae CN', group: 'plan' },
+  { key: 'trae-intl', name: 'Trae Intl', group: 'plan' },
+  { key: 'kimi', name: 'Kimi Code', group: 'plan' },
+  { key: 'antigravity', name: 'Antigravity', group: 'plan' },
+  { key: 'cursor', name: 'Cursor', group: 'plan' },
+  { key: 'copilot', name: 'GitHub Copilot', group: 'plan' },
+  { key: 'qoder', name: 'Qoder', group: 'plan' },
+  { key: 'cline', name: 'Cline Pass', group: 'plan' },
+  { key: 'jetbrains', name: 'JetBrains AI', group: 'local' },
+  { key: 'windsurf', name: 'Windsurf', group: 'local' },
+  { key: 'kiro', name: 'Kiro', group: 'plan' },
+  { key: 'kilo', name: 'Kilo', group: 'plan' },
+  { key: 'factory', name: 'Factory Droid', group: 'plan' },
+  { key: 'devin', name: 'Devin', group: 'plan' },
+  { key: 'amp', name: 'Amp', group: 'plan' },
+  // The OpenDesign credential needs a manual device-code approval or a pasted
+  // cookie, and the endpoint is undocumented — stay opt-in like the console
+  // cards until it has been verified against a live account.
+  { key: 'opendesign', name: 'OpenDesign', group: 'plan', experimental: true },
+  { key: 'alibaba', name: 'Alibaba Cloud Coding Plan', group: 'console', experimental: true },
+  { key: 'qwen', name: 'Qwen Cloud', group: 'console', experimental: true },
+  { key: 'alitoken', name: 'Alibaba Token Plan', group: 'console', experimental: true },
 ]
 
 /**

@@ -26,11 +26,12 @@ import { TraeIntlQuotaCard } from '@/components/overview/TraeIntlQuotaCard'
 import { FactoryQuotaCard } from '@/components/overview/FactoryQuotaCard'
 import { DevinQuotaCard } from '@/components/overview/DevinQuotaCard'
 import { AmpQuotaCard } from '@/components/overview/AmpQuotaCard'
+import { OpenDesignQuotaCard } from '@/components/overview/OpenDesignQuotaCard'
 import { KimiQuotaCard } from '@/components/overview/KimiQuotaCard'
 import { AntigravityQuotaCard } from '@/components/overview/AntigravityQuotaCard'
 import { LocalQuotaCard } from '@/components/overview/LocalQuotaCard'
 import { QoderQuotaCard } from '@/components/overview/QoderQuotaCard'
-import { SUBSCRIPTION_CARDS } from '@/lib/subscription-cards'
+import { SUBSCRIPTION_CARDS, type SubscriptionCardGroup } from '@/lib/subscription-cards'
 import { Drawer } from '@/components/beui/drawer'
 import { Tooltip } from '@/components/beui/tooltip'
 import { Switch } from '@/components/beui/switch'
@@ -257,6 +258,7 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
   const [planFilter, setPlanFilter] = useState(ALL_PLANS)
   const [accountFilter, setAccountFilter] = useState(ALL_ACCOUNTS)
   const [manageOpen, setManageOpen] = useState(false)
+  const [cardFilter, setCardFilter] = useState('')
   const now = useNowTick()
 
   const cards = useMemo(
@@ -332,6 +334,7 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
       { key: 'factory', node: <FactoryQuotaCard /> },
       { key: 'devin', node: <DevinQuotaCard /> },
       { key: 'amp', node: <AmpQuotaCard /> },
+      { key: 'opendesign', node: <OpenDesignQuotaCard /> },
       { key: 'alibaba', node: <LocalQuotaCard kind="alibaba" /> },
       { key: 'qwen', node: <LocalQuotaCard kind="qwen" /> },
       { key: 'alitoken', node: <LocalQuotaCard kind="alitoken" /> },
@@ -345,6 +348,23 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
       settings.subscriptionOrder,
     )
   }, [settings.subscriptionOrder, settings.enabledSubscriptions, antigravityWide])
+
+  // Manage-drawer state: enabled counter, name/key filter (dims non-matching
+  // rows instead of unmounting them — see the drawer note) and the fixed group
+  // order the drawer lists the cards under.
+  const enabledCardCount = SUBSCRIPTION_CARDS.filter((card) =>
+    settings.enabledSubscriptions.includes(card.key),
+  ).length
+  const filterQuery = cardFilter.trim().toLowerCase()
+  const matchesCardFilter = (card: { name: string; key: string }): boolean =>
+    filterQuery === '' || card.name.toLowerCase().includes(filterQuery) || card.key.toLowerCase().includes(filterQuery)
+  const matchCount = SUBSCRIPTION_CARDS.filter((card) => matchesCardFilter(card)).length
+  const groupTitles: Record<SubscriptionCardGroup, string> = {
+    plan: t.manage.groupPlan,
+    console: t.manage.groupConsole,
+    local: t.manage.groupLocal,
+  }
+  const manageGroups: SubscriptionCardGroup[] = ['plan', 'console', 'local']
 
   const onSubscriptionOrderChange = useCallback(
     (keys: string[]) => updateSettings({ ...settings, subscriptionOrder: keys }),
@@ -473,47 +493,75 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
         ariaLabel={t.manage.subscriptionsManage}
         className="max-w-[min(340px,92vw)] sm:min-w-[300px]"
       >
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 pb-2.5 pt-8">
-          <h2 className="text-base font-semibold text-foreground">{t.manage.subscriptionsManage}</h2>
-          <button
-            type="button"
-            onClick={() => setManageOpen(false)}
-            className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted"
-          >
-            {t.manage.closeDrawer}
-          </button>
-        </div>
-        <div className="flex-1 space-y-px overflow-y-auto overscroll-contain px-2 py-2">
-          {SUBSCRIPTION_CARDS.map((card) => {
-            const checked = settings.enabledSubscriptions.includes(card.key)
-            return (
-              <div
-                key={card.key}
-                className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted"
+        <div className="flex shrink-0 flex-col gap-2 border-b border-border px-4 pb-2.5 pt-8">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-foreground">{t.manage.subscriptionsManage}</h2>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-subtle">
+                {t.manage.enabledCount(enabledCardCount, SUBSCRIPTION_CARDS.length)}
+              </span>
+              <button
+                type="button"
+                onClick={() => setManageOpen(false)}
+                className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted"
               >
-                <span className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-foreground">
-                  <Tooltip content={card.name} side="left" wrapperClassName="min-w-0 flex-1">
-                    <span className="block truncate">{card.name}</span>
-                  </Tooltip>
-                  {card.experimental && (
-                    <span className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10px] text-subtle">
-                      {t.manage.experimental}
-                    </span>
-                  )}
-                </span>
-                <Switch
-                  checked={checked}
-                  ariaLabel={card.name}
-                  onCheckedChange={(on) => {
-                    const next = new Set(settings.enabledSubscriptions)
-                    if (on) next.add(card.key)
-                    else next.delete(card.key)
-                    updateSettings({ ...settings, enabledSubscriptions: [...next] })
-                  }}
-                />
+                {t.manage.closeDrawer}
+              </button>
+            </div>
+          </div>
+          <input
+            type="text"
+            value={cardFilter}
+            onChange={(event) => setCardFilter(event.target.value)}
+            placeholder={t.manage.filterPlaceholder}
+            className="w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs text-foreground outline-none placeholder:text-subtle focus:border-accent"
+          />
+        </div>
+        <div className="flex-1 overflow-y-auto overscroll-contain px-2 py-2">
+          {manageGroups.map((group) => {
+            const cards = SUBSCRIPTION_CARDS.filter((card) => card.group === group && matchesCardFilter(card))
+            if (cards.length === 0) return null
+            return (
+              <div key={group} className="pb-2">
+                <p className="px-2 pb-1 pt-2 text-[10px] uppercase tracking-wide text-subtle">
+                  {groupTitles[group]}
+                </p>
+                {cards.map((card) => {
+                  const checked = settings.enabledSubscriptions.includes(card.key)
+                  return (
+                    <div
+                      key={card.key}
+                      className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted"
+                    >
+                      <span className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-foreground">
+                        <Tooltip content={card.name} side="left" wrapperClassName="min-w-0 flex-1">
+                          <span className="block truncate">{card.name}</span>
+                        </Tooltip>
+                        {card.experimental && (
+                          <span className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10px] text-subtle">
+                            {t.manage.experimental}
+                          </span>
+                        )}
+                      </span>
+                      <Switch
+                        checked={checked}
+                        ariaLabel={card.name}
+                        onCheckedChange={(on) => {
+                          const next = new Set(settings.enabledSubscriptions)
+                          if (on) next.add(card.key)
+                          else next.delete(card.key)
+                          updateSettings({ ...settings, enabledSubscriptions: [...next] })
+                        }}
+                      />
+                    </div>
+                  )
+                })}
               </div>
             )
           })}
+          {matchCount === 0 && (
+            <p className="px-2 py-6 text-center text-xs text-subtle">{t.manage.filterEmpty}</p>
+          )}
         </div>
       </Drawer>
     </div>

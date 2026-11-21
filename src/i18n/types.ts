@@ -506,9 +506,33 @@ export interface Dict {
     alibabaConnectHint: string
     alibabaConnectFailed: string
     alibabaNoPlan: string
+    /** OpenDesign quota card: device-code login + manual cookie fallback */
+    opendesignLogin: string
+    opendesignLoggingIn: string
+    opendesignLoginCode: (code: string) => string
+    opendesignLoginExpired: string
+    opendesignLoginDenied: string
+    opendesignLoginRetry: string
+    opendesignCancel: string
+    opendesignManual: string
+    opendesignPasteHint: string
+    opendesignPasteInvalid: string
+    opendesignSaveFailed: string
+    opendesignNoAuth: string
+    opendesignReauth: string
+    opendesignNoPlan: string
+    opendesignUnavailable: string
+    opendesignClear: string
+    opendesignSignOut: string
     detailToggle: string
     subscriptionsManage: string
     subscriptionsEmpty: string
+    groupPlan: string
+    groupConsole: string
+    groupLocal: string
+    filterPlaceholder: string
+    filterEmpty: string
+    enabledCount: (enabled: number, total: number) => string
     experimental: string
     closeDrawer: string
     pasteCurl: string
