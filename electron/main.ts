@@ -21,7 +21,7 @@ import { Background } from './background'
 import { fetchClaudeUsage, fetchGeminiUsage, type QuotaOutcome } from './subscription-quotas'
 import { fetchGrokUsage } from './grok-usage'
 import { qoderStoreBody, readQoderQuota, type QoderQuotaOutcome } from './qoder-quota'
-import { fetchTraeUsage } from './trae-usage'
+import { fetchTraeIntlUsage, fetchTraeUsage } from './trae-usage'
 import { fetchKimiUsage } from './kimi-usage'
 import { fetchAntigravityUsage } from './antigravity-quota'
 import { fetchCopilotUsage, fetchCursorUsage } from './local-plan-quota'
@@ -30,6 +30,10 @@ import { fetchJetBrainsQuota } from './jetbrains-quota'
 import { fetchWindsurfQuota } from './windsurf-quota'
 import { fetchKiroQuota } from './kiro-quota'
 import { fetchKiloQuota } from './kilo-quota'
+import { fetchFactoryQuota } from './factory-quota'
+import { fetchDevinQuota } from './devin-quota'
+import { fetchAmpUsage } from './amp-quota'
+import { fetchCodexResetCredits, mergeCodexResetCredits } from './codex-reset-credits'
 import { fetchAlibabaCodingPlanQuota, fetchAlibabaTokenPlanQuota, fetchPastedQuota, fetchQwenCloudQuota } from './aliyun-quota'
 import { clearConsoleSession, connectAlibabaConsole, hasConsoleSession, readConsoleCookieHeader } from './alibaba-connect'
 import {
@@ -999,7 +1003,7 @@ function registerIpc(): void {
   // renderer that can run arbitrary code is outside this handler's threat model.
   ipcMain.handle(
     'net:fetch',
-    async (_event, url: unknown, headers: unknown): Promise<DesktopFetchResult> => {
+    async (_event, url: unknown, headers: unknown, init: unknown): Promise<DesktopFetchResult> => {
       if (typeof url !== 'string' || url === '') return { status: 0, body: 'invalid url' }
       // Only http/https: this handler is the renderer's one outbound path, so
       // file://, ftp:// or custom schemes must not be reachable through it.
@@ -1018,10 +1022,26 @@ function registerIpc(): void {
           if (typeof v === 'string') cleanHeaders[k] = v
         }
       }
+      // Optional POST override for GraphQL-style adapters (see ParseContext.fetch).
+      // Shape-checked like everything else over this boundary: anything but an
+      // explicit POST with a string body degrades to the default GET, so the
+      // trust premise is unchanged — the renderer was already trusted to name
+      // the URL and the headers, and a JSON body carries nothing new.
+      let method = 'GET'
+      let body: string | undefined
+      if (init && typeof init === 'object') {
+        const requested = init as { method?: unknown; body?: unknown }
+        if (requested.method === 'POST') {
+          method = 'POST'
+          if (typeof requested.body === 'string') body = requested.body
+        }
+      }
       try {
         // Bounded: a hung provider connection must not keep refreshAll's
         // Promise.all (and the manual-refresh spinner) pending forever
         const res = await net.fetch(url, {
+          method,
+          body,
           headers: cleanHeaders,
           signal: AbortSignal.timeout(30_000),
           // Redirects are refused: every bridge consumer is a direct JSON API
@@ -1248,11 +1268,18 @@ function registerIpc(): void {
             Accept: 'application/json',
           }
           if (auth.tokens.account_id) headers['ChatGPT-Account-Id'] = auth.tokens.account_id
-          const res = await net.fetch('https://chatgpt.com/backend-api/wham/usage', {
-            headers,
-            redirect: 'error',
-            signal: AbortSignal.timeout(10_000),
-          })
+          // The banked-reset companion read rides along in parallel (same
+          // headers, same 10s bound): it only ever adds the expiry date /
+          // fallback count to the narrowed body, so its failure costs the
+          // extra field and never the windows (see codex-reset-credits.ts).
+          const [res, resetCredits] = await Promise.all([
+            net.fetch('https://chatgpt.com/backend-api/wham/usage', {
+              headers,
+              redirect: 'error',
+              signal: AbortSignal.timeout(10_000),
+            }),
+            fetchCodexResetCredits(net.fetch, headers),
+          ])
           if (!res.ok) return { available: false, reason: `http-${res.status}` }
           // Narrowed before returning: quota-cache.json persists this body
           // verbatim (see narrowCodexUsage). An unparsable response maps to the
@@ -1263,7 +1290,7 @@ function registerIpc(): void {
           } catch {
             return { available: false, reason: 'bad-response' }
           }
-          return { available: true, body: JSON.stringify(narrowCodexUsage(parsed)) }
+          return { available: true, body: JSON.stringify(mergeCodexResetCredits(narrowCodexUsage(parsed), resetCredits)) }
         } catch (e) {
           // Distinguish "never logged in" from "the request failed" — the
           // card copy differs (no-auth-file reads as an honest empty state)
@@ -1359,6 +1386,32 @@ function registerIpc(): void {
     'kilo:quota',
     async (): Promise<QuotaOutcome> =>
       cachedQuotaOutcome('kilo', () => fetchKiloQuota(net.fetch, homedir(), process.env)),
+  )
+  // Factory (Droid) subscription quota via the user's own Factory API key
+  // (FACTORY_API_KEY or ~/.factory/.env). The droid CLI's keyring login is not
+  // readable on Windows without a native module, so the API key is the
+  // supported credential; the token never leaves this process.
+  ipcMain.handle(
+    'factory:quota',
+    async (): Promise<QuotaOutcome> =>
+      cachedQuotaOutcome('factory', () => fetchFactoryQuota(net.fetch, homedir(), process.env)),
+  )
+  // Devin subscription quota via the Devin CLI's own credentials.toml, posted
+  // as the Connect-RPC metadata apiKey. The key is read in memory and never
+  // returned — only the daily/weekly window numbers cross IPC.
+  ipcMain.handle(
+    'devin:quota',
+    async (): Promise<QuotaOutcome> =>
+      cachedQuotaOutcome('devin', () => fetchDevinQuota(net.fetch, homedir(), process.env)),
+  )
+  // Amp balance via the official CLI's own `amp usage` sheet: Amp Free daily
+  // meter, subscription pools, individual and workspace credits. The CLI
+  // resolves its own login; the probe spawns it and parses the printed sheet,
+  // so a missing CLI is the honest no-auth state and a sheet no meter can be
+  // read from fails closed (see amp-quota.ts).
+  ipcMain.handle(
+    'amp:usage',
+    async (): Promise<QuotaOutcome> => cachedQuotaOutcome('amp', () => fetchAmpUsage()),
   )
   // Alibaba Cloud consoles reuse an in-app console session: Chrome's v20
   // cookies cannot be read on Windows, but Electron's own jar can.
@@ -1457,6 +1510,17 @@ function registerIpc(): void {
     'trae:usage',
     async (): Promise<QuotaOutcome> =>
       cachedQuotaOutcome('trae', () => fetchTraeUsage(net.fetch, homedir())),
+  )
+
+  // Trae international (SG/US deployment) entitlement usage. The international
+  // IDE keeps the same storage key — plaintext JSON or the same "tc" blob — in
+  // its own app-data dirs; the token is decrypted in-memory (see trae-usage.ts)
+  // and never crosses IPC. An explicit US region hint in the storage routes to
+  // the us-east host; everything else stays on SG.
+  ipcMain.handle(
+    'trae:intl-usage',
+    async (): Promise<QuotaOutcome> =>
+      cachedQuotaOutcome('trae-intl', () => fetchTraeIntlUsage(net.fetch, homedir())),
   )
 
   // Kimi Code subscription quota. Two distinct billing surfaces exist and the

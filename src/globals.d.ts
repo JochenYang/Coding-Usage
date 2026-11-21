@@ -83,8 +83,17 @@ declare global {
 
   /** Shape exposed as `window.desktopBridge` by `electron/preload.ts` */
   interface DesktopBridge {
-    /** Main-process fetch (not subject to CORS); status 0 means the request failed entirely */
-    fetch(url: string, headers: Record<string, string>): Promise<DesktopFetchResult>
+    /**
+     * Main-process fetch (not subject to CORS); status 0 means the request
+     * failed entirely. `init` is an opt-in POST override for GraphQL-style
+     * endpoints whose query travels in a JSON body; omitted means GET, so
+     * every existing caller is unchanged.
+     */
+    fetch(
+      url: string,
+      headers: Record<string, string>,
+      init?: { method?: 'POST'; body?: string },
+    ): Promise<DesktopFetchResult>
     /** POST a markdown message to a WeCom group-robot webhook; the payload shape is owned by main */
     webhookSend(channel: WebhookChannel, cred: WebhookCredential, title: string, text: string): Promise<WebhookSendResult>
     /**
@@ -154,6 +163,14 @@ declare global {
     }>
     /** Trae CN credits usage via the IDE's encrypted local login; body is a normalized {percent,consumed,total,resetsAt,plan,packs} */
     traeUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /**
+     * Trae international (SG/US deployment) entitlement usage via the
+     * international IDE's local login (plaintext JSON or the same "tc" blob in
+     * the international app-data dirs). Body is a normalized
+     * {percent,consumed,total,resetsAt,plan,packs} with USD-denominated
+     * numbers; the token never crosses this boundary.
+     */
+    traeIntlUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Cursor plan quota from the editor/CLI login (current-period body, or the legacy summary as fallback) */
     cursorUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** GitHub Copilot plan quota from the extension's hosts.json login */
@@ -168,6 +185,32 @@ declare global {
     kiroQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Kilo Pass from the CLI auth file or KILO_API_KEY. The token stays in the main process. */
     kiloQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /**
+     * Factory (Droid) plan windows from the user's own Factory API key
+     * (FACTORY_API_KEY or ~/.factory/.env). Body is a normalized
+     * {plan, windows:[{id:'factoryFiveHour'|'factoryWeekly'|'factoryMonthly'|
+     * 'factoryCore*'|'factoryStandard'|'factoryPremium', percent, resetsAt}],
+     * topUpCredits (extra-usage balance in USD)}; the credential stays in the
+     * main process.
+     */
+    factoryQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /**
+     * Devin daily/weekly quota via the Devin CLI's own credentials.toml,
+     * posted as the Connect-RPC metadata apiKey. Body is a normalized
+     * {plan, windows:[{id:'devinDaily'|'devinWeekly', percent, resetsAt}]};
+     * the key never crosses this boundary.
+     */
+    devinQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /**
+     * Amp balance via the official `amp usage` CLI sheet (the CLI resolves its
+     * own login; nothing is sent anywhere). Body is a normalized
+     * {plan, windows:[{id:'ampFree'|'ampSubscriptionOther'|'ampSubscriptionOrb',
+     * percent, resetsAt}], topUpCredits (individual credits balance, USD),
+     * workspaceCredits (USD), stale} — balance-type semantics: `percent` is
+     * consumed, `topUpCredits`/`workspaceCredits` are plain USD figures and a
+     * meter the CLI did not print stays absent rather than zeroed.
+     */
+    ampUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Alibaba Cloud Coding Plan windows from the browser console session. */
     alibabaCodingPlanQuota(): Promise<{ available: boolean; body?: string; reason?: string; detail?: string }>
     /** Qwen Cloud individual Token Plan windows from the browser session. */

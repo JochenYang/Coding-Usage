@@ -8,7 +8,7 @@ import type { AlertItem } from '../src/lib/alerts'
  * backed by handlers registered in electron/main.ts.
  */
 const desktopBridge: DesktopBridge = {
-  fetch: (url, headers) => ipcRenderer.invoke('net:fetch', url, headers),
+  fetch: (url, headers, init) => ipcRenderer.invoke('net:fetch', url, headers, init),
   webhookSend: (channel, cred, title, text) =>
     ipcRenderer.invoke('webhook:send', channel, cred, title, text),
   backgroundDone: () => ipcRenderer.invoke('background:done'),
@@ -43,6 +43,7 @@ const desktopBridge: DesktopBridge = {
   grokUsage: () => ipcRenderer.invoke('grok:usage'),
   qoderQuota: () => ipcRenderer.invoke('qoder:quota'),
   traeUsage: () => ipcRenderer.invoke('trae:usage'),
+  traeIntlUsage: () => ipcRenderer.invoke('trae:intl-usage'),
   cursorUsage: () => ipcRenderer.invoke('cursor:usage'),
   copilotUsage: () => ipcRenderer.invoke('copilot:usage'),
   clineQuota: () => ipcRenderer.invoke('cline:quota'),
@@ -50,6 +51,9 @@ const desktopBridge: DesktopBridge = {
   windsurfQuota: () => ipcRenderer.invoke('windsurf:quota'),
   kiroQuota: () => ipcRenderer.invoke('kiro:quota'),
   kiloQuota: () => ipcRenderer.invoke('kilo:quota'),
+  factoryQuota: () => ipcRenderer.invoke('factory:quota'),
+  devinQuota: () => ipcRenderer.invoke('devin:quota'),
+  ampUsage: () => ipcRenderer.invoke('amp:usage'),
   alibabaCodingPlanQuota: () => ipcRenderer.invoke('alibaba:quota'),
   qwenCloudQuota: () => ipcRenderer.invoke('qwen:quota'),
   alibabaTokenPlanQuota: () => ipcRenderer.invoke('alitoken:quota'),
