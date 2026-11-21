@@ -295,10 +295,28 @@ export function SettingsPage({ className }: SettingsPageProps) {
         snapshots[`${pid}-${i}`] = getSnapshots(`${pid}-${i}`)
       })
     }
+    // Credentials never leave the machine in plaintext (AGENTS.md hard rule):
+    // strip API keys and the webhook/bot secrets from the exported copy. The
+    // import path still accepts old backups that carry keys, so existing
+    // backups keep working; after importing a stripped export the user
+    // re-enters their keys.
+    const safeProviders: Record<string, ProviderConfig[]> = {}
+    for (const [pid, entries] of Object.entries(settings.providers)) {
+      safeProviders[pid] = entries.map((entry) => ({ ...entry, apiKey: '' }))
+    }
+    const safeIntegrations: IntegrationsSettings = {
+      ...settings.integrations,
+      // Webhook URLs embed the channel key; telegram/weixin bot tokens are
+      // credentials. Chat id / user id are not secrets and are kept.
+      wecomWebhook: '',
+      feishuWebhook: '',
+      telegramBotToken: '',
+      weixinBotToken: '',
+    }
     const payload = {
       app: 'coding-usage',
       exportedAt: new Date().toISOString(),
-      settings,
+      settings: { ...settings, providers: safeProviders, integrations: safeIntegrations },
       snapshots,
     }
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
@@ -464,6 +482,7 @@ export function SettingsPage({ className }: SettingsPageProps) {
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 space-y-1">
             <p className="text-xs text-muted-foreground">{t.prefs.exportHint}</p>
+            <p className="text-xs text-muted-foreground">{t.prefs.exportNoKeys}</p>
             <p className="text-xs text-muted-foreground">{t.prefs.importHint}</p>
             {importError && <p className="text-xs text-danger">{importError}</p>}
           </div>

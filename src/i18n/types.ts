@@ -400,8 +400,8 @@ export interface Dict {
     seriesSpeed: string
     /** Model filter */
     filterTitle: string
+    /** The single reset button: clearing the pick list IS "show all models" */
     filterAll: string
-    filterClear: string
     filterSelected: (n: number) => string
     /** States */
     emptyTitle: string
@@ -556,6 +556,10 @@ export interface Dict {
     confirm: string
     confirmTitle: string
     chartKeyboardHint: string
+    /** Unit suffix for token counts ("123 token" zh / "123 tokens" en) */
+    unitTokens: string
+    /** Unit suffix for message counts ("12 条" zh / "12 msgs" en) */
+    unitMsgs: string
   }
   prefs: {
     appearance: string
@@ -588,6 +592,8 @@ export interface Dict {
     purgeFailed: string
     repoLink: string
     exportHint: string
+    /** Export copy stating the backup carries no credentials */
+    exportNoKeys: string
     importHint: string
     importBad: string
     about: string
@@ -649,6 +655,32 @@ export interface Dict {
     kimiWrongSurface: string
     kimiQuotaUnavailable: string
     kimiQuotaNoServer: string
+    /** query.ts 401/403 for opencode */
+    keyNoGoSubscription: string
+    /** query.ts 401/403 for every other adapter */
+    keyInvalidNoPermission: string
+    /** query.ts: preflight body is not a JSON object */
+    badJson: string
+    /** query.ts: thrown transport error caught in fetchUsage */
+    networkBlocked: string
+    /** balance adapters (deepseek/novita/stepfun/openrouter): unusable key or drifted shape */
+    keyOrShapeChanged: string
+    /** siliconflow 20012 / zhipu 401 */
+    keyExpiredOrInvalid: string
+    /** siliconflow / zhipu: request rejected without a specific reason */
+    queryFailed: string
+    /** siliconflow/minimax: a required response field is absent */
+    missingField: (field: string) => string
+    /** minimax: server gave no status_msg, surface its numeric status */
+    errorCode: (code: number) => string
+    /** minimax 1004/2049: key rejected, server message appended */
+    keyInvalidWithReason: (msg: string) => string
+    /** minimax: model_remains missing or empty */
+    noModelRemains: string
+    /** minimax: subscription active but no parseable quota fields */
+    subscriptionUnparsed: string
+    /** zhipu: 200 OK but no quota rows */
+    noQuotaData: string
   }
   updater: {
     readyTitle: string

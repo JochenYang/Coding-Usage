@@ -403,7 +403,6 @@ export const enUS: Dict = {
     seriesSpeed: 'Output speed',
     filterTitle: 'Models',
     filterAll: 'All',
-    filterClear: 'Clear',
     filterSelected: (n) => `${n} model${n === 1 ? '' : 's'} selected`,
     emptyTitle: 'No local usage data yet',
     emptyDesc: 'Local usage comes from scanning this machine’s agent session logs.',
@@ -561,6 +560,8 @@ export const enUS: Dict = {
     confirm: 'Confirm',
     confirmTitle: 'Please confirm',
     chartKeyboardHint: 'Use the left and right arrow keys to step through the points',
+    unitTokens: 'tokens',
+    unitMsgs: 'msgs',
   },
   prefs: {
     appearance: 'Appearance',
@@ -596,8 +597,9 @@ export const enUS: Dict = {
     purgeDone: (removed: number) => `Removed ${removed} days of history.`,
     purgeFailed: 'Purge failed; the history is unchanged.',
     repoLink: 'Project repository',
-    exportHint:
-      'Export settings and account quota snapshots as a JSON backup. Note: the file contains API keys in plain text.',
+    exportHint: 'Export settings and account quota snapshots as a JSON backup.',
+    exportNoKeys:
+      'The backup contains no credentials (API keys and webhook/bot tokens are not written into the export); re-enter them after importing on a new machine.',
     importHint: 'Restore settings and account quota snapshots from a backup JSON.',
     importBad: 'Invalid backup file',
     about: 'About',
@@ -614,7 +616,7 @@ export const enUS: Dict = {
       installNow: 'Restart & install',
       error: 'Update check failed, will retry later',
       devMode: 'Not available in dev mode',
-      via: (mirror: string) => `via ${mirror} mirror`,
+      via: (mirror: string) => `via ${mirror} mirror (mirror updates are not independently verified)`,
     },
   },
   kimiQuota: {
@@ -668,6 +670,20 @@ export const enUS: Dict = {
       'Could not read the Kimi Code subscription quota (local server not running, or the key lacks permission).',
     kimiQuotaNoServer:
       'No local Kimi Code service or login found, so the subscription quota could not be read.',
+    keyNoGoSubscription: 'Invalid key, or this account has no Go subscription',
+    keyInvalidNoPermission: 'Invalid key or no permission',
+    badJson: 'Unexpected response: empty body or non-JSON',
+    networkBlocked: 'Network request failed or was blocked',
+    keyOrShapeChanged: 'Invalid key, or the response shape changed',
+    keyExpiredOrInvalid: 'Key invalid or expired',
+    queryFailed: 'Query failed',
+    missingField: (field) => `Response shape changed: missing ${field}`,
+    errorCode: (code) => `Error code ${code}`,
+    keyInvalidWithReason: (msg) => `Invalid key: ${msg}`,
+    noModelRemains: 'No model_remains data in the response',
+    subscriptionUnparsed:
+      'Subscription is active, but the response fields cannot be parsed yet — feedback welcome',
+    noQuotaData: 'No quota data in the response',
   },
   updater: {
     readyTitle: 'Update ready',
