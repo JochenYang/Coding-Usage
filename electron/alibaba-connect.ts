@@ -319,20 +319,27 @@ export function connectAlibabaConsole(
       win = null
       // Closing the window after signing in is success, not cancellation: the
       // user may finish before the ticket/account pair is visible, and a
-      // console may issue a ticket name this build does not know yet. A non-empty
-      // jar is enough to let the probe report the real state instead of leaving
-      // the card on "not connected".
+      // console may issue a ticket name this build does not know yet. A ticket
+      // cookie is the proof; a merely non-empty jar is not (cna/locale are set
+      // without signing in, and would report ok while the card's own
+      // hasConsoleSession check says "not connected"). The jar size stays a
+      // detail string — cookie values never cross this boundary.
       const why = failure
       void ses.cookies
         .get({ url: spec.sessionUrl })
         .then((cookies) => {
           const known = hasConsoleTicket(cookies, target)
           const anyTicket = cookies.some((cookie) => /ticket/i.test(cookie.name))
-          finish(
-            known || anyTicket || cookies.length > 0
-              ? { ok: true }
-              : { ok: false, reason: 'cancelled', detail: why ?? undefined },
-          )
+          if (known || anyTicket) {
+            finish({ ok: true })
+            return
+          }
+          const jar = `jar=${cookies.length}`
+          finish({
+            ok: false,
+            reason: 'cancelled',
+            detail: [why, jar].filter(Boolean).join(' · ') || undefined,
+          })
         })
         .catch(() => finish({ ok: false, reason: 'cancelled', detail: why ?? undefined }))
     })

@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { createDecipheriv, createHash } from 'node:crypto'
-import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 /**
@@ -578,12 +578,39 @@ async function writeCache(userData: string, payload: unknown): Promise<void> {
 }
 
 /**
+ * Deletes scan tmp files a killed process left behind.
+ *
+ * The decrypted copies hold plaintext chat content, and their `finally` removal
+ * never runs if the process dies mid-scan — so every entry into the reader
+ * sweeps the directory first. Only this app's own `scan-*` regular files inside
+ * its own userData directory are removed: any other name (and any directory,
+ * whoever created it) is left untouched, so nothing foreign can be deleted.
+ */
+async function cleanStaleScans(userData: string): Promise<void> {
+  try {
+    const dir = join(userData, 'trae-local')
+    const entries = await readdir(dir, { withFileTypes: true })
+    await Promise.all(
+      entries
+        .filter((entry) => entry.isFile() && entry.name.startsWith('scan-'))
+        .map((entry) => rm(join(dir, entry.name), { force: true }).catch(() => {})),
+    )
+  } catch {
+    // no directory yet / unreadable: nothing to clean
+  }
+}
+
+/**
  * Read Trae CN / SOLO CN local usage into a `tokscale graph`-shaped payload.
  * Best-effort by contract: no running IDE, no compiler, a failed scan or a
  * changed encryption scheme all degrade to the cached aggregate (or null),
  * never to wrong numbers.
  */
 export async function readTraeLocalUsage(home: string, userData: string): Promise<unknown | null> {
+  // First: leftovers from a previous run (process killed mid-decrypt) so the
+  // plaintext copies never sit on disk longer than one scan. In-flight scans of
+  // this app cannot collide: the caller dedupes overlapping scan cycles.
+  await cleanStaleScans(userData)
   try {
     const appData = process.env.APPDATA?.trim() || join(home, 'AppData', 'Roaming')
     const products: Array<{ dir: string; exe: string; dbPath: string }> = []

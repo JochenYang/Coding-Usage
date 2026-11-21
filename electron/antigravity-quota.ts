@@ -1,9 +1,11 @@
-import { execFileSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { request as httpsRequest } from 'node:https'
 import { readFile } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { promisify } from 'node:util'
 
 /**
  * Antigravity subscription quota probe (main process).
@@ -418,10 +420,17 @@ interface ProjectInfo {
   project: string
 }
 
-// Keyed by refresh token: switching accounts in the IDE swaps the token, and a
-// project cached for the previous account would 403 every quota request.
+// Keyed by a digest of the refresh token: switching accounts in the IDE swaps
+// the token, and a project cached for the previous account would 403 every
+// quota request. The digest — never the raw token — is what sits in the
+// long-lived cache variable, where a heap snapshot could otherwise expose it;
+// same rule as cachedCursorPlanName in local-plan-quota.ts.
 let cachedProject: { key: string; value: ProjectInfo; at: number } | null = null
 const PROJECT_TTL_MS = 60 * 60_000
+
+function accountCacheKey(refreshToken: string): string {
+  return createHash('sha256').update(refreshToken).digest('hex').slice(0, 16)
+}
 
 /** `cloudaicompanionProject` arrives as an id or as `{ id, name }` */
 function projectId(raw: unknown): string {
@@ -602,7 +611,8 @@ interface LoadAssistReply {
  * is left out.
  */
 async function loadCodeAssist(accessToken: string, accountKey: string): Promise<ProjectInfo | null> {
-  if (cachedProject && cachedProject.key === accountKey && Date.now() - cachedProject.at < PROJECT_TTL_MS) {
+  const key = accountCacheKey(accountKey)
+  if (cachedProject && cachedProject.key === key && Date.now() - cachedProject.at < PROJECT_TTL_MS) {
     return cachedProject.value
   }
   const ua = await userAgent()
@@ -623,7 +633,7 @@ async function loadCodeAssist(accessToken: string, accountKey: string): Promise<
       const project = projectId(reply.cloudaicompanionProject)
       if (!project) return null
       const value: ProjectInfo = { project }
-      cachedProject = { key: accountKey, value, at: Date.now() }
+      cachedProject = { key, value, at: Date.now() }
       return value
     } catch {
       // host unreachable: try the next one
@@ -840,17 +850,25 @@ function flagValue(commandLine: string, flag: string): string {
   return match?.[1] ?? ''
 }
 
+/** `execFile` as a promise: the loopback fallback must not block the event loop
+ * (a sync 2×15 s worst case froze window/tray IPC for its whole duration). */
+const execFileP = promisify(execFile)
+
 /**
  * Running language servers and the ports they listen on.
  *
  * The command line is the only place the CSRF token appears, and the port is
  * only discoverable from the OS (the process picks a free one at start), so both
  * come from one query rather than a fixed endpoint.
+ *
+ * Async because both child processes are the expensive part; the only shared
+ * state it touches is none — the probe itself is read-only, so overlapping
+ * runs at worst spawn a duplicate PowerShell query.
  */
-function findCandidates(): Candidate[] {
+async function findCandidates(): Promise<Candidate[]> {
   let processes: Array<{ ProcessId: number; Name?: string; CommandLine?: string | null }> = []
   try {
-    const raw = execFileSync(
+    const { stdout } = await execFileP(
       'powershell',
       [
         '-NoProfile',
@@ -859,7 +877,7 @@ function findCandidates(): Candidate[] {
       ],
       { encoding: 'utf8', timeout: 15_000, windowsHide: true },
     )
-    const parsed: unknown = JSON.parse(raw)
+    const parsed: unknown = JSON.parse(stdout)
     processes = (Array.isArray(parsed) ? parsed : [parsed]).filter(Boolean) as typeof processes
   } catch {
     return [] // no PowerShell / no process: the card shows its empty state
@@ -869,7 +887,11 @@ function findCandidates(): Candidate[] {
   const pids = new Set(processes.map((p) => String(p.ProcessId)))
   const portsByPid = new Map<string, number[]>()
   try {
-    const netstat = execFileSync('netstat', ['-ano'], { encoding: 'utf8', timeout: 15_000, windowsHide: true })
+    const { stdout: netstat } = await execFileP('netstat', ['-ano'], {
+      encoding: 'utf8',
+      timeout: 15_000,
+      windowsHide: true,
+    })
     for (const line of netstat.split('\n')) {
       const cols = line.trim().split(/\s+/)
       if (cols.length < 5 || cols[3] !== 'LISTENING') continue
@@ -943,7 +965,7 @@ function callMethod(port: number, method: string, csrf: string): Promise<{ statu
 
 /** Route 2: ask a running IDE's language server (needs the IDE open) */
 async function fetchViaLanguageServer(): Promise<{ available: boolean; body?: string; reason?: string }> {
-  const candidates = findCandidates()
+  const candidates = await findCandidates()
   if (candidates.length === 0) return { available: false, reason: 'no-server' }
 
   let lastStatus = 0

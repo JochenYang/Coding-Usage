@@ -143,6 +143,9 @@ export class Background {
   }
 }
 
+/** Highest auto-refresh interval we arm; anything beyond it counts as off. */
+const MAX_REFRESH_MINUTES = 120
+
 /** The user's refresh interval, read from the settings mirror. */
 async function refreshMinutes(userData: string): Promise<number> {
   try {
@@ -151,7 +154,16 @@ async function refreshMinutes(userData: string): Promise<number> {
     )
     if (parsed == null || typeof parsed !== 'object') return 0
     const minutes = (parsed as { autoRefreshMin?: unknown }).autoRefreshMin
-    return typeof minutes === 'number' && Number.isFinite(minutes) ? minutes : 0
+    // Clamped, not passed through: an imported backup can carry an unbounded
+    // value, and past Node's 2^31-1 ms setTimeout cap `minutes * 60_000`
+    // overflows into an immediate fire — the cycle window would close and
+    // reopen in a ~90 s loop for the whole session. Off-by-default beats that.
+    return typeof minutes === 'number' &&
+      Number.isFinite(minutes) &&
+      minutes >= 0 &&
+      minutes <= MAX_REFRESH_MINUTES
+      ? minutes
+      : 0
   } catch {
     // No mirror yet: nothing to refresh on a schedule
     return 0
