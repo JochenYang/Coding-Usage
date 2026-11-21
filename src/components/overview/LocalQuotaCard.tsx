@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { AlibabaCloud, Cline, Cursor, GithubCopilot, KiloCode, Kiro, Qwen, Windsurf } from '@lobehub/icons'
 import { useT } from '@/i18n/useT'
-import { formatAgo, formatCountdown } from '@/lib/format'
+import { useLocale } from '@/i18n/LocaleProvider'
+import { formatAgo, formatAmount, formatCountdown } from '@/lib/format'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
 import { useInView } from '@/lib/hooks/use-in-view'
 import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
@@ -125,6 +126,7 @@ const SOURCES = {
 
 export function LocalQuotaCard({ kind, className }: { kind: LocalQuotaKind; className?: string }) {
   const t = useT()
+  const { locale } = useLocale()
   const source = SOURCES[kind]
   const [vm, setVm] = useState<LocalPlanQuotaVM | null>(null)
   const [loading, setLoading] = useState(false)
@@ -439,6 +441,17 @@ export function LocalQuotaCard({ kind, className }: { kind: LocalQuotaKind; clas
               )}
             </div>
           ))}
+          {/* Cursor's visible credit grant (the spending page's balance): the
+              probe sorts grants earliest-expiring first, so the first one is
+              the balance to spend before it lapses. A failed grants read
+              costs this line and nothing else. */}
+          {kind === 'cursor' && vm.creditBalance && (
+            <p className="text-xs text-muted-foreground">
+              {t.manage.cursorCreditsLeft(`$${formatAmount(vm.creditBalance.remainingUsd)}`)}
+              {vm.creditBalance.expiresAt != null &&
+                ` · ${t.manage.cursorCreditsExpire(new Date(vm.creditBalance.expiresAt).toLocaleDateString(locale))}`}
+            </p>
+          )}
           {vm.topUpCredits != null && (
             <p className="text-xs text-muted-foreground">{t.manage.jetbrainsTopUp(vm.topUpCredits.toFixed(2))}</p>
           )}

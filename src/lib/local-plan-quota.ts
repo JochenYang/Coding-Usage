@@ -46,6 +46,12 @@ export interface LocalPlanQuotaVM {
   fetchedAt: number | null
   /** JetBrains purchased credits, already converted from quota units. */
   topUpCredits?: number | null
+  /**
+   * Cursor's soonest-lapsing visible credit grant (the probe sorts grants
+   * earliest-expiring first). Absent for every other provider and whenever the
+   * grants read failed — the usage pools stand on their own.
+   */
+  creditBalance?: { remainingUsd: number; expiresAt: number | null } | null
   /** Windsurf's cache updates only when the IDE is opened. */
   stale?: boolean
   /** Short diagnostic from the probe (counts and names only, never a value). */
@@ -114,6 +120,8 @@ export function summarizeCursorQuota(raw: LocalPlanRaw): LocalPlanQuotaVM {
       planUsage?: { totalPercentUsed?: unknown; autoPercentUsed?: unknown }
       /** Plan name the probe attached from GetPlanInfo */
       cursorPlanName?: unknown
+      /** Visible credit grants (the spending page's own list), probe-narrowed */
+      creditGrants?: Array<{ remainingUsd?: unknown; expiresAt?: unknown }>
       individual_usage?: {
         plan?: {
           total_percent_used?: unknown
@@ -165,7 +173,26 @@ export function summarizeCursorQuota(raw: LocalPlanRaw): LocalPlanQuotaVM {
     }
     if (windows.length === 0) return unavailable('no-windows')
     const plan = typeof parsed.cursorPlanName === 'string' && parsed.cursorPlanName ? parsed.cursorPlanName : null
-    return { available: true, plan, reason: null, windows, fetchedAt: Date.now() }
+    // The probe sorts grants earliest-expiring first and drops grants whose
+    // numbers contradict themselves; the first usable one is the balance the
+    // card shows. A grant missing from the payload is a missing field, not 0.
+    const grant = Array.isArray(parsed.creditGrants)
+      ? parsed.creditGrants.find(
+          (g): g is { remainingUsd: number; expiresAt?: unknown } =>
+            !!g &&
+            typeof g === 'object' &&
+            typeof (g as { remainingUsd?: unknown }).remainingUsd === 'number' &&
+            Number.isFinite((g as { remainingUsd?: unknown }).remainingUsd as number),
+        )
+      : undefined
+    const creditBalance = grant
+      ? {
+          remainingUsd: grant.remainingUsd,
+          expiresAt:
+            typeof grant.expiresAt === 'number' && Number.isFinite(grant.expiresAt) ? grant.expiresAt : null,
+        }
+      : null
+    return { available: true, plan, reason: null, windows, fetchedAt: Date.now(), creditBalance }
   } catch {
     return unavailable('bad-response')
   }

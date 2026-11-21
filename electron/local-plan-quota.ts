@@ -46,6 +46,8 @@ const PROBE_TIMEOUT_MS = 10_000
 const CURSOR_PERIOD_URL = 'https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage'
 /** Same Connect service: the plan name and whether the pool is weekly */
 const CURSOR_PLAN_URL = 'https://api2.cursor.sh/aiserver.v1.DashboardService/GetPlanInfo'
+/** Same Connect service: the spending page's visible credit grants */
+const CURSOR_CREDITS_URL = 'https://api2.cursor.sh/aiserver.v1.DashboardService/GetClientVisibleCreditGrants'
 const CURSOR_USAGE_URL = 'https://cursor.com/api/usage-summary'
 /** The endpoint gates on a client identity, not on the token alone */
 const CURSOR_UA = 'cursor-agent/2026.07.07'
@@ -461,6 +463,92 @@ async function fetchCursorPeriodUsage(fetchImpl: FetchImpl, token: string): Prom
   }
 }
 
+// ===== Cursor credit grants (enhancement) =====
+
+/** The spending page's visible credit grant, in the family's USD figures */
+export interface CursorCreditGrant {
+  /** Remaining grant balance in USD */
+  remainingUsd: number
+  /** Grant size in USD; a non-positive total is a shape this probe drops */
+  totalUsd: number
+  /** Epoch ms when the grant lapses, null when the endpoint omits it */
+  expiresAt: number | null
+}
+
+/**
+ * A bounded number of grants: the body is the account's own grant list, and a
+ * hostile payload must not turn the quota snapshot into a ledger.
+ */
+const GRANTS_CAP = 8
+
+/** Proto3 JSON sends int64 cents as strings; a fractional value is not cents */
+function intOf(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isSafeInteger(value) ? value : null
+  if (typeof value === 'string' && /^-?\d+$/.test(value.trim())) {
+    const parsed = Number(value.trim())
+    return Number.isSafeInteger(parsed) ? parsed : null
+  }
+  return null
+}
+
+/**
+ * The `GetClientVisibleCreditGrants` payload reduced to dollar figures, read
+ * by name across the spellings the endpoint has been seen with (`camelCase`
+ * on the wire, `snake_case` in some clients' captures). A grant whose numbers
+ * contradict themselves (non-positive total, negative remaining) is skipped;
+ * an unparsable body yields an empty list, never an invented balance.
+ */
+export function creditGrantsFromPayload(raw: unknown): CursorCreditGrant[] {
+  const root = objOf(raw)
+  const grants = root && Array.isArray(root.grants) ? root.grants : []
+  const out: CursorCreditGrant[] = []
+  for (const item of grants) {
+    const grant = objOf(item)
+    if (!grant) continue
+    const totalCents = intOf(grant.totalCents) ?? intOf(grant.total_cents)
+    const remainingCents = intOf(grant.remainingCents) ?? intOf(grant.remaining_cents)
+    if (totalCents == null || totalCents <= 0 || remainingCents == null || remainingCents < 0) continue
+    const expiresRaw = grant.expiresAtMs ?? grant.expires_at_ms
+    const expiresMs = intOf(expiresRaw)
+    out.push({
+      remainingUsd: remainingCents / 100,
+      totalUsd: totalCents / 100,
+      expiresAt: expiresMs != null && expiresMs > 0 ? expiresMs : null,
+    })
+    if (out.length >= GRANTS_CAP) break
+  }
+  // Earliest-expiring first: a single-line renderer shows the grant that
+  // lapses soonest, and a grant without an expiry sorts last.
+  out.sort((a, b) => (a.expiresAt ?? Number.POSITIVE_INFINITY) - (b.expiresAt ?? Number.POSITIVE_INFINITY))
+  return out
+}
+
+/**
+ * The credit balance the spending page shows, as a best-effort enhancement:
+ * any non-ok status, unparsable body or transport failure is null and the
+ * card's usage pools stand on their own (ai-usagebar's own rule for this
+ * call).
+ */
+async function fetchCursorCreditGrants(fetchImpl: FetchImpl, token: string): Promise<CursorCreditGrant[] | null> {
+  try {
+    const res = await fetchImpl(CURSOR_CREDITS_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Connect-Protocol-Version': '1',
+      },
+      body: '{}',
+      redirect: 'error',
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    })
+    if (!res.ok) return null
+    return creditGrantsFromPayload(JSON.parse(await res.text()))
+  } catch {
+    return null
+  }
+}
+
 export async function fetchCursorUsage(
   fetchImpl: FetchImpl,
   home: string = homedir(),
@@ -476,18 +564,24 @@ export async function fetchCursorUsage(
     // non-token value sitting in the store is never sent as a bearer header.
     // The plan name is a badge, not the allowance: it is fetched alongside and
     // memoised, so it can neither delay the numbers past the card's own race
-    // budget nor cost a request per refresh.
+    // budget nor cost a request per refresh. The credit grants ride along in
+    // the same fan-out as a best-effort enhancement (see
+    // fetchCursorCreditGrants): their failure costs that field only.
+    let grantsField: Record<string, unknown> = {}
     if (token.split('.').length === 3) {
-      const [period, planName] = await Promise.all([
+      const [period, planName, grants] = await Promise.all([
         fetchCursorPeriodUsage(fetchImpl, token),
         cachedCursorPlanName(fetchImpl, token),
+        fetchCursorCreditGrants(fetchImpl, token),
       ])
+      if (grants && grants.length > 0) grantsField = { creditGrants: grants }
       if (period) {
-        if (!planName) return { available: true, body: period }
         // Tag the payload with the name so the card can show its badge without a
         // second IPC round-trip. Only this probe writes it; the renderer treats
         // it as optional.
-        const merged: unknown = { ...(JSON.parse(period) as object), cursorPlanName: planName }
+        const merged = planName
+          ? { ...(JSON.parse(period) as object), cursorPlanName: planName, ...grantsField }
+          : { ...(JSON.parse(period) as object), ...grantsField }
         return { available: true, body: JSON.stringify(merged) }
       }
     }
@@ -520,7 +614,10 @@ export async function fetchCursorUsage(
     } catch {
       return { available: false, reason: 'bad-response' }
     }
-    return { available: true, body: JSON.stringify(narrowCursorUsage(parsed)) }
+    const base = narrowCursorUsage(parsed)
+    // The grants fetch already ran with the period fan-out above; the legacy
+    // path simply carries whatever it produced.
+    return { available: true, body: JSON.stringify({ ...base, ...grantsField }) }
   } catch {
     return { available: false, reason: 'probe-failed' }
   }

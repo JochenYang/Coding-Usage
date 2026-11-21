@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
-import { fetchCopilotUsage, fetchCursorUsage, resetCursorProbeCaches, userDataOfStateDb } from './local-plan-quota'
+import { creditGrantsFromPayload, fetchCopilotUsage, fetchCursorUsage, resetCursorProbeCaches, userDataOfStateDb } from './local-plan-quota'
 
 /**
  * The point of these probes is that the user never pastes a token: the login
@@ -237,5 +237,116 @@ describe('userDataOfStateDb', () => {
     expect(userDataOfStateDb(join('', 'home', 'x', '.config', 'Cursor', 'User', 'globalStorage', 'state.vscdb'))).toBe(
       join('', 'home', 'x', '.config', 'Cursor'),
     )
+  })
+})
+
+describe('cursor credit grants enhancement', () => {
+  const CREDITS = 'https://api2.cursor.sh/aiserver.v1.DashboardService/GetClientVisibleCreditGrants'
+  // Local copies of the sibling describe's endpoint constants (they are not
+  // module-level), so the routed mocks here stay self-contained.
+  const PERIOD = 'https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage'
+  const PLAN = 'https://api2.cursor.sh/aiserver.v1.DashboardService/GetPlanInfo'
+  const SUMMARY = 'https://cursor.com/api/usage-summary'
+  const env = (home: string, appData: string) => ({
+    APPDATA: appData,
+    XDG_CONFIG_HOME: join(home, 'no-config'),
+  })
+
+  /** Route mocks by URL, same as the current-period describe above */
+  function routed(routes: Record<string, () => Response>) {
+    const calls: Array<{ url: string; init: RequestInit }> = []
+    const impl = async (url: string, init: RequestInit): Promise<Response> => {
+      calls.push({ url, init })
+      const handler = routes[url]
+      return handler ? handler() : new Response('{}', { status: 404 })
+    }
+    return { impl, calls }
+  }
+
+  it('parses grant cents into USD figures by name and sorts earliest-expiring first', () => {
+    const grants = creditGrantsFromPayload({
+      grants: [
+        { remainingCents: 400, totalCents: 2500, expiresAtMs: '1793577600000', displayName: 'Promo' },
+        { remaining_cents: 2100, total_cents: '2500', expiresAtMs: 1790000000000 },
+        // A grant without an expiry sorts last but is kept
+        { remainingCents: 100, totalCents: '2000' },
+        // Contradictory or malformed rows are dropped, never zeroed
+        { remainingCents: -5, totalCents: 100 },
+        { remainingCents: 100, totalCents: 0 },
+        { remainingCents: 10.5, totalCents: 100 },
+        'garbage',
+      ],
+    })
+    expect(grants).toEqual([
+      { remainingUsd: 21, totalUsd: 25, expiresAt: 1790000000000 },
+      { remainingUsd: 4, totalUsd: 25, expiresAt: 1793577600000 },
+      { remainingUsd: 1, totalUsd: 20, expiresAt: null },
+    ])
+  })
+
+  it('yields an empty list for absent, null or unparsable shapes', () => {
+    expect(creditGrantsFromPayload({})).toEqual([])
+    expect(creditGrantsFromPayload({ grants: null })).toEqual([])
+    expect(creditGrantsFromPayload('not json')).toEqual([])
+    expect(creditGrantsFromPayload(null)).toEqual([])
+  })
+
+  it('rides along with the period fetch and lands in the body', async () => {
+    const home = await tempHome()
+    const token = jwt('user_01|acct-42')
+    const { impl, calls } = routed({
+      [PERIOD]: () => new Response(JSON.stringify({ planUsage: { totalPercentUsed: 10 } }), { status: 200 }),
+      [PLAN]: () => new Response('{}', { status: 200 }),
+      [CREDITS]: () =>
+        new Response(JSON.stringify({ grants: [{ remainingCents: 2100, totalCents: 2500, expiresAtMs: 1793577600000 }] }), {
+          status: 200,
+        }),
+    })
+    const outcome = await fetchCursorUsage(impl, home, env(home, await writeStateDb(home, token)))
+
+    expect(outcome.available).toBe(true)
+    expect(calls.some((c) => c.url === CREDITS)).toBe(true)
+    const credits = calls.find((c) => c.url === CREDITS)!
+    expect(credits.init.method).toBe('POST')
+    expect((credits.init.headers as Record<string, string>).Authorization).toBe(`Bearer ${token}`)
+    expect((credits.init.headers as Record<string, string>)['Connect-Protocol-Version']).toBe('1')
+    expect(JSON.parse(outcome.body!).creditGrants).toEqual([
+      { remainingUsd: 21, totalUsd: 25, expiresAt: 1793577600000 },
+    ])
+  })
+
+  it('leaves the field out when the grant call fails, keeping the pools', async () => {
+    const home = await tempHome()
+    const token = jwt('user_01|acct-42')
+    const { impl } = routed({
+      [PERIOD]: () => new Response(JSON.stringify({ planUsage: { totalPercentUsed: 10 } }), { status: 200 }),
+      [PLAN]: () => new Response('{}', { status: 200 }),
+      [CREDITS]: () => new Response('nope', { status: 500 }),
+    })
+    const outcome = await fetchCursorUsage(impl, home, env(home, await writeStateDb(home, token)))
+
+    expect(outcome.available).toBe(true)
+    const body = JSON.parse(outcome.body!) as Record<string, unknown>
+    expect(body.planUsage).toEqual({ totalPercentUsed: 10 })
+    expect(body.creditGrants).toBeUndefined()
+  })
+
+  it('does not poison the legacy fallback body when grants fail there', async () => {
+    const home = await tempHome()
+    const token = jwt('user_01|acct-42')
+    const { impl } = routed({
+      // No usable period figure → the legacy summary path answers
+      [PERIOD]: () => new Response(JSON.stringify({ planUsage: { totalPercentUsed: null } }), { status: 200 }),
+      [PLAN]: () => new Response('{}', { status: 200 }),
+      [CREDITS]: () => new Response('nope', { status: 500 }),
+      [SUMMARY]: () =>
+        new Response(JSON.stringify({ individualUsage: { plan: { totalPercentUsed: 12 } } }), { status: 200 }),
+    })
+    const outcome = await fetchCursorUsage(impl, home, env(home, await writeStateDb(home, token)))
+
+    expect(outcome.available).toBe(true)
+    const body = JSON.parse(outcome.body!) as Record<string, unknown>
+    expect(body.individualUsage).toEqual({ plan: { totalPercentUsed: 12 } })
+    expect(body.creditGrants).toBeUndefined()
   })
 })

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Codex } from '@lobehub/icons'
 import { useT } from '@/i18n/useT'
+import { useLocale } from '@/i18n/LocaleProvider'
 import { formatAgo, formatAmount, formatCountdown } from '@/lib/format'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
 import { useInView } from '@/lib/hooks/use-in-view'
@@ -19,6 +20,7 @@ import { cn } from '@/lib/cn'
  */
 export function CodexQuotaCard({ className }: { className?: string }) {
   const t = useT()
+  const { locale } = useLocale()
   const [vm, setVm] = useState<CodexQuotaVM | null>(null)
   const [loading, setLoading] = useState(false)
   // Official quota hits the vendor's own usage endpoint, so it follows the
@@ -149,7 +151,13 @@ export function CodexQuotaCard({ className }: { className?: string }) {
                 ) : vm.credits.balance != null ? (
                   <p>{t.manage.codexBalance(`$${formatAmount(vm.credits.balance)}`)}</p>
                 ) : null)}
-              {vm.resetCredits != null && <p>{t.manage.codexResetCredits(vm.resetCredits)}</p>}
+              {vm.resetCredits != null && (
+                <p>
+                  {t.manage.codexResetCredits(vm.resetCredits)}
+                  {vm.resetCreditsExpiry != null &&
+                    ` · ${t.manage.codexResetCreditsExpires(new Date(vm.resetCreditsExpiry).toLocaleDateString(locale))}`}
+                </p>
+              )}
               {vm.individualLimit && (
                 <p className={vm.individualLimit.reached ? 'text-warning' : undefined}>
                   {vm.individualLimit.reached

@@ -42,6 +42,11 @@ export interface CodexQuotaVM {
   credits: CodexCreditsVM | null
   /** Reset credits still available to spend; null when the endpoint omits it */
   resetCredits: number | null
+  /**
+   * Epoch ms when the earliest banked reset credit lapses (the companion
+   * rate-limit-reset-credits read); null when the endpoint omits it.
+   */
+  resetCreditsExpiry: number | null
   individualLimit: CodexSpendLimitVM | null
   /** Epoch ms of this fetch */
   fetchedAt: number | null
@@ -130,6 +135,7 @@ export function summarizeCodexQuota(raw: {
     plan: null,
     credits: null,
     resetCredits: null,
+    resetCreditsExpiry: null,
     individualLimit: null,
   }
   if (raw.available && raw.body) {
@@ -139,7 +145,7 @@ export function summarizeCodexQuota(raw: {
         credits?: unknown
         spend_control?: { individual_limit?: unknown; reached?: unknown }
         rate_limit?: { primary_window?: unknown; secondary_window?: unknown }
-        rate_limit_reset_credits?: { available_count?: unknown }
+        rate_limit_reset_credits?: { available_count?: unknown; expiresAtMs?: unknown }
       }
       const primary = parseWindow(parsed.rate_limit?.primary_window)
       const secondary = parseWindow(parsed.rate_limit?.secondary_window)
@@ -153,6 +159,7 @@ export function summarizeCodexQuota(raw: {
         plan: typeof parsed.plan_type === 'string' && parsed.plan_type ? parsed.plan_type : null,
         credits: parseCredits(parsed.credits),
         resetCredits: resetCredits != null && resetCredits > 0 ? resetCredits : null,
+        resetCreditsExpiry: toEpochMs(parsed.rate_limit_reset_credits?.expiresAtMs),
         individualLimit: parseSpendLimit(parsed.spend_control?.individual_limit, parsed.spend_control?.reached),
         fetchedAt: Date.now(),
       }

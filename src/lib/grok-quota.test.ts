@@ -3,7 +3,7 @@ import { summarizeGrokQuota } from './grok-quota'
 
 /**
  * Grok subscription quota view-model. The main process normalizes the billing
- * endpoint to {percent, resetsAt, plan, email}; the parser validates that shape
+ * endpoint to {percent, resetsAt, plan}; the parser validates that shape
  * and must never throw or fabricate a usable reading from a partial body.
  */
 
@@ -11,14 +11,21 @@ describe('summarizeGrokQuota', () => {
   it('parses a full payload with clamping and field narrowing', () => {
     const vm = summarizeGrokQuota({
       available: true,
-      body: JSON.stringify({ percent: 42, resetsAt: 1_800_000_000_000, plan: 'SuperGrok Heavy', email: 'a@b.c' }),
+      body: JSON.stringify({
+        percent: 42,
+        resetsAt: 1_800_000_000_000,
+        plan: 'SuperGrok Heavy',
+        remainingResets: 3,
+        resetsExpireAt: 1_900_000_000_000,
+      }),
     })
     expect(vm.available).toBe(true)
     expect(vm.reason).toBeNull()
     expect(vm.percent).toBe(42)
     expect(vm.resetsAt).toBe(1_800_000_000_000)
     expect(vm.plan).toBe('SuperGrok Heavy')
-    expect(vm.email).toBe('a@b.c')
+    expect(vm.remainingResets).toBe(3)
+    expect(vm.resetsExpireAt).toBe(1_900_000_000_000)
     expect(typeof vm.fetchedAt).toBe('number')
   })
 
@@ -28,11 +35,12 @@ describe('summarizeGrokQuota', () => {
   })
 
   it('degrades optional fields to null instead of inventing values', () => {
-    const vm = summarizeGrokQuota({ available: true, body: '{"percent":10,"resetsAt":"soon","plan":"","email":42}' })
+    const vm = summarizeGrokQuota({ available: true, body: '{"percent":10,"resetsAt":"soon","plan":""}' })
     expect(vm.available).toBe(true)
     expect(vm.resetsAt).toBeNull()
     expect(vm.plan).toBeNull()
-    expect(vm.email).toBeNull()
+    expect(vm.remainingResets).toBeNull()
+    expect(vm.resetsExpireAt).toBeNull()
   })
 
   it('rejects a body without a usable percentage as malformed', () => {
@@ -62,7 +70,8 @@ describe('summarizeGrokQuota', () => {
       percent: 0,
       resetsAt: null,
       plan: null,
-      email: null,
+      remainingResets: null,
+      resetsExpireAt: null,
       fetchedAt: null,
     })
     // No reason at all stays null rather than becoming a fake label

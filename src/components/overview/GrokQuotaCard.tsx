@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Grok } from '@lobehub/icons'
 import { useT } from '@/i18n/useT'
+import { useLocale } from '@/i18n/LocaleProvider'
 import { formatAgo, formatCountdown } from '@/lib/format'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
 import { useInView } from '@/lib/hooks/use-in-view'
@@ -19,6 +20,7 @@ import { cn } from '@/lib/cn'
  */
 export function GrokQuotaCard({ className }: { className?: string }) {
   const t = useT()
+  const { locale } = useLocale()
   const [vm, setVm] = useState<GrokQuotaVM | null>(null)
   const [loading, setLoading] = useState(false)
   // Official quota hits the vendor's own usage endpoint, so it follows the
@@ -127,6 +129,15 @@ export function GrokQuotaCard({ className }: { className?: string }) {
           <ProgressBar percent={vm.percent} size="sm" className="mt-1.5" />
           {vm.resetsAt && (
             <p className="mt-1 text-[11px] text-subtle">{formatCountdown(vm.resetsAt, now, t)}</p>
+          )}
+          {/* Banked reset tokens (the gRPC-Web enhancement): a failed read
+              costs this line and nothing else — the billing numbers stand alone. */}
+          {vm.remainingResets != null && (
+            <p className="mt-1 text-[11px] text-subtle">
+              {t.manage.grokResetsLeft(vm.remainingResets)}
+              {vm.resetsExpireAt != null &&
+                ` · ${t.manage.grokResetsExpire(new Date(vm.resetsExpireAt).toLocaleDateString(locale))}`}
+            </p>
           )}
           {/* How old the numbers are: a snapshot-painted reading shows the age
               of the stored entry until the fresh probe replaces it */}
