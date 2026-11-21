@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Antigravity } from '@lobehub/icons'
 import { useT } from '@/i18n/useT'
 import type { Dict } from '@/i18n/types'
-import { formatCountdown } from '@/lib/format'
+import { formatAgo, formatCountdown } from '@/lib/format'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
 import { useInView } from '@/lib/hooks/use-in-view'
 import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
@@ -88,16 +88,51 @@ export function AntigravityQuotaCard({
     if (!inView) return
     const bridge = window.desktopBridge
     if (!bridge) return
+    let cancelled = false
+    /** Set once the live probe has produced a verdict for this run. */
+    let refreshed = false
+    // Paint the last good reading first (persisted in the main process), then
+    // refresh without a visible loading state. Only a card with nothing stored
+    // shows a spinner.
+    void bridge
+      .quotaSnapshot()
+      .then((snapshot) => {
+        // A snapshot that arrives after the probe must not rewind the card to
+        // older numbers.
+        if (cancelled || refreshed) return
+        const stored = snapshot['antigravity']
+        if (!stored?.result?.available) return
+        const vm = summarizeAntigravityQuota(stored.result)
+        // A stored body this build can no longer decode is not a reading.
+        if (!vm.available) return
+        setVm({ ...vm, fetchedAt: stored.at })
+      })
+      .catch(() => {
+        // No snapshot is the same as an empty one.
+      })
     setLoading(true)
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const timeout = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => reject(new Error('timeout')), PROBE_RACE_TIMEOUT_MS)
+    let watchdogTimer: ReturnType<typeof setTimeout> | null = null
+    const watchdog = new Promise<never>((_resolve, reject) => {
+      watchdogTimer = setTimeout(() => reject(new Error('timeout')), PROBE_RACE_TIMEOUT_MS)
     })
-    Promise.race([bridge.antigravityUsage(), timeout])
-      .then((raw) => setVm(summarizeAntigravityQuota(raw)))
-      .catch(() => setVm(summarizeAntigravityQuota({ available: false, reason: 'timeout' })))
-      .finally(() => setLoading(false))
-    return () => clearTimeout(timer)
+    Promise.race([bridge.antigravityUsage(), watchdog])
+      .then((raw) => {
+        refreshed = true
+        if (cancelled) return
+        setVm(summarizeAntigravityQuota(raw))
+      })
+      .catch(() => {
+        refreshed = true
+        if (cancelled) return
+        setVm(summarizeAntigravityQuota({ available: false, reason: 'timeout' }))
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+      if (watchdogTimer) clearTimeout(watchdogTimer)
+    }
   }, [refreshTick, inView])
 
   // Minute-resolution clock so the reset countdowns stay live on this card alone
@@ -132,7 +167,7 @@ export function AntigravityQuotaCard({
         </div>
       </div>
 
-      {loading ? (
+      {!vm && (loading || !inView) ? (
         <p className="mt-3 text-xs text-subtle">{t.card.loading}</p>
       ) : !vm?.available ? (
         <p className="mt-3 text-xs leading-relaxed text-subtle">
@@ -182,6 +217,11 @@ export function AntigravityQuotaCard({
           ))}
           <p className={cn('text-[11px] leading-relaxed text-subtle', wide && 'md:col-span-2')}>
             {t.antigravityQuota.remainingNote}
+          </p>
+          {/* How old the numbers are: a snapshot-painted reading shows the age
+              of the stored entry until the fresh probe replaces it */}
+          <p className={cn('text-[11px] text-subtle', wide && 'md:col-span-2')}>
+            {formatAgo(vm.fetchedAt, now, t)}
           </p>
         </div>
       )}

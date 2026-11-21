@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Qoder } from '@lobehub/icons'
 import { useT } from '@/i18n/useT'
-import { formatAmount } from '@/lib/format'
+import { formatAgo, formatAmount } from '@/lib/format'
+import { useNowTick } from '@/lib/hooks/use-now-tick'
 import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
 import { useInView } from '@/lib/hooks/use-in-view'
 import { useData } from '@/lib/data-context'
@@ -23,6 +24,49 @@ import { cn } from '@/lib/cn'
  * reports no token counters at all, so the card never renders a token figure or
  * a converted price.
  */
+
+/**
+ * Decode one stored `qoder` snapshot entry into a paintable view-model.
+ *
+ * The main process persists the probe's numeric outcome through quota-store,
+ * whose entries carry the payload as a JSON `body` string; that write lands in
+ * a separate main-process change, so the entry may simply be absent. Every
+ * field is narrowed here and re-validated by summarizeQoderQuota (values cross
+ * IPC). Anything that is not a plain object carrying at least one usable
+ * number — a missing entry, unparsable JSON, a body without figures — returns
+ * null: the card keeps waiting for the live probe instead of painting a wrong
+ * 0%.
+ */
+function storedQoderOutcome(body: unknown, at: number): QoderQuotaVM | null {
+  if (typeof body !== 'string' || body === '') return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(body)
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+  const record = parsed as Record<string, unknown>
+  const num = (value: unknown): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) ? value : undefined
+  const hasNumber = ['percent', 'used', 'total', 'remaining'].some(
+    (key) => num(record[key]) != null,
+  )
+  if (!hasNumber) return null
+  // The store persists the numeric part only: availability comes from the
+  // entry itself and the paint time from its `at` stamp.
+  return summarizeQoderQuota({
+    available: true,
+    used: num(record.used),
+    total: num(record.total),
+    remaining: num(record.remaining),
+    percent: num(record.percent),
+    isQuotaExceeded: record.isQuotaExceeded === true,
+    userType: typeof record.userType === 'string' && record.userType !== '' ? record.userType : undefined,
+    unit: typeof record.unit === 'string' && record.unit !== '' ? record.unit : undefined,
+    fetchedAt: at,
+  })
+}
 export function QoderQuotaCard({ className }: { className?: string }) {
   const t = useT()
   const [vm, setVm] = useState<QoderQuotaVM | null>(null)
@@ -37,16 +81,55 @@ export function QoderQuotaCard({ className }: { className?: string }) {
     if (!inView) return
     const bridge = window.desktopBridge
     if (!bridge) return
+    let cancelled = false
+    /** Set once the live probe has produced a verdict for this run. */
+    let refreshed = false
+    // Paint the last good reading first (persisted in the main process), then
+    // refresh without a visible loading state. Only a card with nothing stored
+    // shows a spinner.
+    void bridge
+      .quotaSnapshot()
+      .then((snapshot) => {
+        // A snapshot that arrives after the probe must not rewind the card to
+        // older numbers.
+        if (cancelled || refreshed) return
+        const stored = snapshot['qoder']
+        if (!stored) return
+        const vm = storedQoderOutcome(stored.result?.body, stored.at)
+        if (vm) setVm(vm)
+      })
+      .catch(() => {
+        // No snapshot is the same as an empty one.
+      })
     setLoading(true)
     // The main-process fetch is best-effort on its own; a hung IPC must not
     // leave the card spinning forever.
-    const timeout = new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error('timeout')), 15_000))
-    Promise.race([bridge.qoderQuota(), timeout])
-      .then((raw) => setVm(summarizeQoderQuota(raw)))
-      .catch(() => setVm(summarizeQoderQuota({ available: false, reason: 'timeout' })))
-      .finally(() => setLoading(false))
+    let watchdogTimer: ReturnType<typeof setTimeout> | null = null
+    const watchdog = new Promise<never>((_resolve, reject) => {
+      watchdogTimer = setTimeout(() => reject(new Error('timeout')), 15_000)
+    })
+    Promise.race([bridge.qoderQuota(), watchdog])
+      .then((raw) => {
+        refreshed = true
+        if (cancelled) return
+        setVm(summarizeQoderQuota(raw))
+      })
+      .catch(() => {
+        refreshed = true
+        if (cancelled) return
+        setVm(summarizeQoderQuota({ available: false, reason: 'timeout' }))
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+      if (watchdogTimer) clearTimeout(watchdogTimer)
+    }
   }, [refreshTick, inView])
 
+  // Minute-resolution clock so the painted reading's age stays live
+  const now = useNowTick()
   const staleLogin = vm != null && ['http-401', 'http-403'].includes(vm.reason ?? '')
 
   return (
@@ -69,7 +152,7 @@ export function QoderQuotaCard({ className }: { className?: string }) {
         </div>
       </div>
 
-      {loading ? (
+      {!vm && (loading || !inView) ? (
         <p className="mt-3 text-xs text-subtle">{t.card.loading}</p>
       ) : !vm?.available ? (
         <p className="mt-3 text-xs leading-relaxed text-subtle">
@@ -106,6 +189,11 @@ export function QoderQuotaCard({ className }: { className?: string }) {
               {`${formatAmount(vm.used)} / ${formatAmount(vm.total)} ${vm.unit}`}
               {vm.remaining != null && ` · ${t.manage.qoderRemaining(formatAmount(vm.remaining))}`}
             </p>
+          )}
+          {/* How old the numbers are: a snapshot-painted reading shows the age
+              of the stored entry until the fresh probe replaces it */}
+          {vm.fetchedAt != null && (
+            <p className="mt-1 text-[11px] text-subtle">{formatAgo(vm.fetchedAt, now, t)}</p>
           )}
         </div>
       )}

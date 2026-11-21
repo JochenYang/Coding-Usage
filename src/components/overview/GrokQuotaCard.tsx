@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Grok } from '@lobehub/icons'
 import { useT } from '@/i18n/useT'
-import { formatCountdown } from '@/lib/format'
+import { formatAgo, formatCountdown } from '@/lib/format'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
 import { useInView } from '@/lib/hooks/use-in-view'
 import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
@@ -35,14 +35,52 @@ export function GrokQuotaCard({ className }: { className?: string }) {
     if (!inView) return
     const bridge = window.desktopBridge
     if (!bridge) return
+    let cancelled = false
+    /** Set once the live probe has produced a verdict for this run. */
+    let refreshed = false
+    // Paint the last good reading first (persisted in the main process), then
+    // refresh without a visible loading state. Only a card with nothing stored
+    // shows a spinner.
+    void bridge
+      .quotaSnapshot()
+      .then((snapshot) => {
+        // A snapshot that arrives after the probe must not rewind the card to
+        // older numbers.
+        if (cancelled || refreshed) return
+        const stored = snapshot['grok']
+        if (!stored?.result?.available) return
+        const vm = summarizeGrokQuota(stored.result)
+        // A stored body this build can no longer decode is not a reading.
+        if (!vm.available) return
+        setVm({ ...vm, fetchedAt: stored.at })
+      })
+      .catch(() => {
+        // No snapshot is the same as an empty one.
+      })
     setLoading(true)
-    const timeout = new Promise<never>((_resolve, reject) =>
-      setTimeout(() => reject(new Error('timeout')), 12_000),
-    )
-    Promise.race([bridge.grokUsage(), timeout])
-      .then((raw) => setVm(summarizeGrokQuota(raw)))
-      .catch(() => setVm(summarizeGrokQuota({ available: false, reason: 'timeout' })))
-      .finally(() => setLoading(false))
+    // Race against a hard timeout: a hung IPC must not leave the card loading.
+    let watchdogTimer: ReturnType<typeof setTimeout> | null = null
+    const watchdog = new Promise<never>((_resolve, reject) => {
+      watchdogTimer = setTimeout(() => reject(new Error('timeout')), 12_000)
+    })
+    Promise.race([bridge.grokUsage(), watchdog])
+      .then((raw) => {
+        refreshed = true
+        if (cancelled) return
+        setVm(summarizeGrokQuota(raw))
+      })
+      .catch(() => {
+        refreshed = true
+        if (cancelled) return
+        setVm(summarizeGrokQuota({ available: false, reason: 'timeout' }))
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+      if (watchdogTimer) clearTimeout(watchdogTimer)
+    }
   }, [refreshTick, inView])
 
   const now = useNowTick()
@@ -67,7 +105,7 @@ export function GrokQuotaCard({ className }: { className?: string }) {
         </div>
       </div>
 
-      {loading ? (
+      {!vm && (loading || !inView) ? (
         <p className="mt-3 text-xs text-subtle">{t.card.loading}</p>
       ) : !vm?.available ? (
         <p className="mt-3 text-xs leading-relaxed text-subtle">
@@ -89,6 +127,11 @@ export function GrokQuotaCard({ className }: { className?: string }) {
           <ProgressBar percent={vm.percent} size="sm" className="mt-1.5" />
           {vm.resetsAt && (
             <p className="mt-1 text-[11px] text-subtle">{formatCountdown(vm.resetsAt, now, t)}</p>
+          )}
+          {/* How old the numbers are: a snapshot-painted reading shows the age
+              of the stored entry until the fresh probe replaces it */}
+          {vm.fetchedAt != null && (
+            <p className="mt-1 text-[11px] text-subtle">{formatAgo(vm.fetchedAt, now, t)}</p>
           )}
         </div>
       )}

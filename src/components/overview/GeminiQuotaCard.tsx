@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Gemini } from '@lobehub/icons'
 import { useT } from '@/i18n/useT'
-import { formatCountdown } from '@/lib/format'
+import { formatAgo, formatCountdown } from '@/lib/format'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
 import { useInView } from '@/lib/hooks/use-in-view'
 import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
@@ -35,16 +35,53 @@ export function GeminiQuotaCard({ className }: { className?: string }) {
     if (!inView) return
     const bridge = window.desktopBridge
     if (!bridge) return
+    let cancelled = false
+    /** Set once the live probe has produced a verdict for this run. */
+    let refreshed = false
+    // Paint the last good reading first (persisted in the main process), then
+    // refresh without a visible loading state. Only a card with nothing stored
+    // shows a spinner.
+    void bridge
+      .quotaSnapshot()
+      .then((snapshot) => {
+        // A snapshot that arrives after the probe must not rewind the card to
+        // older numbers.
+        if (cancelled || refreshed) return
+        const stored = snapshot['gemini']
+        if (!stored?.result?.available) return
+        const vm = summarizeGeminiQuota(stored.result)
+        // A stored body this build can no longer decode is not a reading.
+        if (!vm.available) return
+        setVm({ ...vm, fetchedAt: stored.at })
+      })
+      .catch(() => {
+        // No snapshot is the same as an empty one.
+      })
     setLoading(true)
     // Race against a hard timeout: the main-process abort is best-effort on
     // Electron's net.fetch, and a hung IPC must not leave the card loading.
-    const timeout = new Promise<never>((_resolve, reject) =>
-      setTimeout(() => reject(new Error('timeout')), 12_000),
-    )
-    Promise.race([bridge.geminiUsage(), timeout])
-      .then((raw) => setVm(summarizeGeminiQuota(raw)))
-      .catch(() => setVm(summarizeGeminiQuota({ available: false, reason: 'timeout' })))
-      .finally(() => setLoading(false))
+    let watchdogTimer: ReturnType<typeof setTimeout> | null = null
+    const watchdog = new Promise<never>((_resolve, reject) => {
+      watchdogTimer = setTimeout(() => reject(new Error('timeout')), 12_000)
+    })
+    Promise.race([bridge.geminiUsage(), watchdog])
+      .then((raw) => {
+        refreshed = true
+        if (cancelled) return
+        setVm(summarizeGeminiQuota(raw))
+      })
+      .catch(() => {
+        refreshed = true
+        if (cancelled) return
+        setVm(summarizeGeminiQuota({ available: false, reason: 'timeout' }))
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+      if (watchdogTimer) clearTimeout(watchdogTimer)
+    }
   }, [refreshTick, inView])
 
   // Minute-resolution clock so reset countdowns stay live on this card alone
@@ -68,7 +105,7 @@ export function GeminiQuotaCard({ className }: { className?: string }) {
         </div>
       </div>
 
-      {loading ? (
+      {!vm && (loading || !inView) ? (
         <p className="mt-3 text-xs text-subtle">{t.card.loading}</p>
       ) : !vm?.available ? (
         <p className="mt-3 text-xs leading-relaxed text-subtle">
@@ -95,6 +132,12 @@ export function GeminiQuotaCard({ className }: { className?: string }) {
               )}
             </div>
           ))}
+
+          {/* How old the numbers are: a snapshot-painted reading shows the age
+              of the stored entry until the fresh probe replaces it */}
+          {vm.fetchedAt != null && (
+            <p className="text-[11px] text-subtle">{formatAgo(vm.fetchedAt, now, t)}</p>
+          )}
         </div>
       )}
     </section>

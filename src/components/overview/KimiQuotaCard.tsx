@@ -3,7 +3,7 @@ import { Kimi } from '@lobehub/icons'
 import { useT } from '@/i18n/useT'
 import { useLocale } from '@/i18n/LocaleProvider'
 import type { Dict } from '@/i18n/types'
-import { currencySymbol, formatAmount, formatCountdown } from '@/lib/format'
+import { currencySymbol, formatAgo, formatAmount, formatCountdown } from '@/lib/format'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
 import { useInView } from '@/lib/hooks/use-in-view'
 import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
@@ -82,19 +82,55 @@ export function KimiQuotaCard({ className }: { className?: string }) {
     if (!inView) return
     const bridge = window.desktopBridge
     if (!bridge) return
+    let cancelled = false
+    /** Set once the live probe has produced a verdict for this run. */
+    let refreshed = false
+    // Paint the last good reading first (persisted in the main process), then
+    // refresh without a visible loading state. Only a card with nothing stored
+    // shows a spinner. The stored key is `kimi`: one CLI login per install, so
+    // the store's per-provider slot holds exactly this account's windows.
+    void bridge
+      .quotaSnapshot()
+      .then((snapshot) => {
+        // A snapshot that arrives after the probe must not rewind the card to
+        // older numbers.
+        if (cancelled || refreshed) return
+        const stored = snapshot['kimi']
+        if (!stored?.result?.available) return
+        const vm = summarizeKimiQuota(stored.result)
+        // A stored body this build can no longer decode is not a reading.
+        if (!vm.available) return
+        setVm({ ...vm, fetchedAt: stored.at })
+      })
+      .catch(() => {
+        // No snapshot is the same as an empty one.
+      })
     setLoading(true)
     // Race against a hard timeout: the main-process abort is best-effort, and a
     // hung IPC must not leave the card loading forever.
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const timeout = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => reject(new Error('timeout')), PROBE_RACE_TIMEOUT_MS)
+    let watchdogTimer: ReturnType<typeof setTimeout> | null = null
+    const watchdog = new Promise<never>((_resolve, reject) => {
+      watchdogTimer = setTimeout(() => reject(new Error('timeout')), PROBE_RACE_TIMEOUT_MS)
     })
     // Called with no argument: the main process resolves the local login itself.
-    Promise.race([bridge.kimiUsage(), timeout])
-      .then((raw) => setVm(summarizeKimiQuota(raw)))
-      .catch(() => setVm(summarizeKimiQuota({ available: false, reason: 'timeout' })))
-      .finally(() => setLoading(false))
-    return () => clearTimeout(timer)
+    Promise.race([bridge.kimiUsage(), watchdog])
+      .then((raw) => {
+        refreshed = true
+        if (cancelled) return
+        setVm(summarizeKimiQuota(raw))
+      })
+      .catch(() => {
+        refreshed = true
+        if (cancelled) return
+        setVm(summarizeKimiQuota({ available: false, reason: 'timeout' }))
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+      if (watchdogTimer) clearTimeout(watchdogTimer)
+    }
   }, [refreshTick, inView])
 
   // Minute-resolution clock so reset countdowns stay live on this card alone
@@ -126,7 +162,7 @@ export function KimiQuotaCard({ className }: { className?: string }) {
         </div>
       </div>
 
-      {loading ? (
+      {!vm && (loading || !inView) ? (
         <p className="mt-3 text-xs text-subtle">{t.card.loading}</p>
       ) : !vm?.available ? (
         <p className="mt-3 text-xs leading-relaxed text-subtle">
@@ -185,6 +221,12 @@ export function KimiQuotaCard({ className }: { className?: string }) {
           )}
 
           <p className="text-[11px] leading-relaxed text-subtle">{t.kimiQuota.percentNote}</p>
+
+          {/* How old the numbers are: a snapshot-painted reading shows the age
+              of the stored entry until the fresh probe replaces it */}
+          {vm.fetchedAt != null && (
+            <p className="text-[11px] text-subtle">{formatAgo(vm.fetchedAt, now, t)}</p>
+          )}
         </div>
       )}
     </section>
