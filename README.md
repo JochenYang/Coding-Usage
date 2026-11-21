@@ -24,7 +24,7 @@
 
 - **本地 Agent 真实用量**：经 [tokscale](https://github.com/junhoyeo/tokscale) 扫描本机会话日志，加上主进程直接读取的几类本地存储（如 Cindy 的 Pi 会话、CodeBuddy IDE、Qoder CLI、Trae 国内版本地库），覆盖 Codex、Claude Code、Kimi Code、OpenCode、Gemini CLI、Cursor、GitHub Copilot、Qwen Code、Trae、Cline、Roo Code、Cindy 等 20 余种主流工具——只显示检测到数据的工具，今日 / 本月 / 累计三栏 + 「数据截至」时间标注；仅聚合数字上屏，永远不读取消息内容
 - **服务商套餐与余额**：多账号管理 15 家服务商（见下表），每家独立适配官方端点；余额按显示币种聚合，多家并存时悬停可看逐家明细
-- **官方订阅额度**：Codex、Claude Code、Gemini CLI、Grok、Trae CN、Trae 国际版、Antigravity、Kimi Code、Cursor、GitHub Copilot、Qoder 国际版、Cline Pass、JetBrains AI、Windsurf、Kiro、Kilo、Factory Droid、Devin、Amp、阿里云 Coding Plan、千问 Cloud、阿里云 Token Plan 的订阅卡只读本机登录态或 IDE 本地额度文件（或按需粘贴 token），展示 5 小时 / 每周 / 逐模型配额窗口与重置倒计时——凭据始终留在主进程内存，不进渲染层、不落磁盘。Windsurf 读的是 IDE 本地缓存，打开客户端后才会更新
+- **官方订阅额度**：Codex、Claude Code、Gemini CLI、Grok、Trae CN、Trae 国际版、Antigravity、Kimi Code、Cursor、GitHub Copilot、Qoder 国际版、Cline Pass、JetBrains AI、Windsurf、Kiro、Kilo、Factory Droid、Devin、Amp、OpenDesign、阿里云 Coding Plan、千问 Cloud、阿里云 Token Plan 的订阅卡只读本机登录态或 IDE 本地额度文件（OpenDesign 支持在卡片上发起官方设备码授权一键登录，也可手动粘贴 Cookie），展示 5 小时 / 每周 / 逐模型配额窗口与重置倒计时——凭据只在主进程解密使用，落盘一律经系统密钥加密、保存后不回传渲染层。Windsurf 读的是 IDE 本地缓存，打开客户端后才会更新
 - **告警体系**：窗口即将重置、用量过高、低余额三类规则，阈值在告警中心可调；顶栏铃铛悬停预览（打开即视为已读），告警中心集中管理；可推送到企业微信群机器人、微信（iLink）、飞书 / Lark、Telegram
 - **桌面体验**：托盘常驻、关窗可选「最小化到托盘 / 退出」、开机自启、深浅色主题（跟随系统）、中英双语、自动更新（GitHub Releases）
 

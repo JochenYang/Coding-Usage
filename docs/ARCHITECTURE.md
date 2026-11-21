@@ -63,6 +63,13 @@ electron/
                           # Windows 经 cmd.exe 解析 npm 全局的 .cmd shim）
   codex-reset-credits.ts  # Codex 攒的重置券增强读（codex:quota 并发附带，失败静默
                           # 缺席，不影响主数字）
+  opendesign-quota.ts     # OpenDesign Go 套餐额度（5h/7d 窗口）：主路线是官方 device-code
+                          # 授权（卡片发起 → 浏览器批准 → 轮询存下 vela_ctrl_ 控制面密钥），
+                          # 手动回退为卡片上粘贴 Cloud 控制台 Cookie；凭据经 safeStorage
+                          # 加密落盘、只在主进程解密使用，解密结果不回传渲染层。推理
+                          # API Key 读不了额度；端点为 amr-api.open-design.ai 的
+                          # workspaces/current → billing/preflight（或 coding-plan-usage）
+                          # → wallet/balance，字段按名称解析且自校验算术，漂移即 fail-closed
   local-plan-quota.ts     # Cursor / GitHub Copilot 本地登录探针（Cursor 的 sealed token
                           # 走 safe-storage.ts 解开；额度读 Cursor 当前的 GetCurrentPeriodUsage，
                           # 不提供 token 级用量，因此不计入本地用量）
@@ -128,8 +135,9 @@ electron/
    → 桌面经 `net:fetch` IPC、浏览器直连（失败回退 corsproxy）。结果写入 `results` 与启动缓存。
    GraphQL 型适配器（Warp）经桥的可选 POST 通道（`ParseContext.fetch` 第三参，主进程只接受
    显式 POST + 字符串 body，其余仍为 GET）。
-2. **订阅额度（Codex / Claude / Gemini / Grok / Kimi / Antigravity / Trae / Trae 国际版 / Cursor / Copilot / Qoder 国际版 / Cline Pass / JetBrains AI / Windsurf / Kiro / Kilo / Factory Droid / Devin / Amp / 阿里云 Coding Plan / 千问 Cloud / 阿里云 Token Plan）**：
-   主进程读本地登录或本地额度文件（Amp 走官方 `amp usage` CLI）→ 需要时调官方接口 →
+2. **订阅额度（Codex / Claude / Gemini / Grok / Kimi / Antigravity / Trae / Trae 国际版 / Cursor / Copilot / Qoder 国际版 / Cline Pass / JetBrains AI / Windsurf / Kiro / Kilo / Factory Droid / Devin / Amp / OpenDesign / 阿里云 Coding Plan / 千问 Cloud / 阿里云 Token Plan）**：
+   主进程读本地登录或本地额度文件（Amp 走官方 `amp usage` CLI；OpenDesign 走卡片发起的
+   官方 device-code 授权拿控制面密钥，Cookie 粘贴为手动回退）→ 需要时调官方接口 →
    **只把归一化的额度字段与计划名**回传渲染层；凭据不出主进程。
    JetBrains 与 Windsurf 不联网：前者读 IDE 配置，后者读 IDE 本地缓存（打开 Windsurf 后才会更新）。
    CodeBuddy / Cindy / DSH / WorkBuddy 目前只有本地用量行、没有额度卡：截至 2026-11 尚未盘点过
@@ -145,6 +153,8 @@ electron/
    `results`（启动缓存，读取时做字段归一化）、`quota-cache.json`（上次成功的套餐额度，按 provider
    存、不含凭据或凭据指纹、30 天过期；卡片先显它再静默刷新）、`pasted-requests.json`
    （手动粘贴的控制台请求，safeStorage 加密；无 keystore 时拒绝保存而不是写明文）、
+   `opendesign-cookie.json`（OpenDesign 卡的凭据槽：device 授权拿到的 vela_ctrl 控制面密钥
+   或粘贴的 Cloud Cookie，safeStorage 加密、读取时重新校验；无 keystore 时拒绝保存）、
    `usage-history.db`（本地用量的日归档 SQLite：每轮扫描按日合并入库，删除/轮转的会话文件
    不再抹掉历史；`electron/usage-store.ts`，主进程启动时初始化）。
 6. **订阅卡可见性**：`settings.enabledSubscriptions` 决定渲染哪些卡；未列出的不渲染。
