@@ -140,6 +140,7 @@ export function densifySeries(
         cacheWrite: 0,
         activeTimeMs: 0,
         messages: 0,
+        credits: 0,
       })
       for (const row of modelGrid) {
         row.input.push(0)
@@ -192,6 +193,9 @@ function fallbackPoint(p: FallbackPoint): DayPointVM {
     cacheWrite: 0,
     activeTimeMs: 0,
     messages: 0,
+    // Fallback sources record token totals only; credits exist on the scan
+    // series alone, so a fallback-driven trends page shows no credits unit.
+    credits: 0,
   }
 }
 
@@ -415,6 +419,14 @@ export interface TrendBucket {
   measuredOutput: number
   /** Message (call) count in the bucket */
   messages: number
+  /**
+   * Credits billed in the bucket — an independent unit, never converted to USD
+   * or folded into `total` (the plan decision in docs/plans/qoder-global-usage.md).
+   * It travels at day level like `activeTimeMs`: the scan's model aliases cannot
+   * price credits, so no per-model attribution is attempted and the KPI for it
+   * reads unavailable while a model filter is active.
+   */
+  credits: number
   /** Weighted output speed of the bucket; null when no active time is known */
   tokPerSec: number | null
   /**
@@ -478,6 +490,9 @@ export function bucketize(points: DayPointVM[]): TrendBucket[] {
     const output = chunk.reduce((s, p) => s + p.output, 0)
     const cacheWrite = chunk.reduce((s, p) => s + p.cacheWrite, 0)
     const messages = chunk.reduce((s, p) => s + p.messages, 0)
+    // `?? 0` because points can come from a persisted cache written before the
+    // credits field existed; the structurally valid VM does not re-add it.
+    const credits = chunk.reduce((s, p) => s + (p.credits ?? 0), 0)
 
     // A calendar day cannot contain more than a day of elapsed time. Some
     // upstream readers report a session span that outlives the day it is filed
@@ -501,6 +516,7 @@ export function bucketize(points: DayPointVM[]): TrendBucket[] {
       activeTimeMs,
       measuredOutput,
       messages,
+      credits,
       tokPerSec: activeTimeMs > 0 ? measuredOutput / (activeTimeMs / 1000) : null,
       partial: chunk.length < width,
     })
@@ -516,6 +532,12 @@ export interface TrendTotals {
   output: number
   cacheRead: number
   messages: number
+  /**
+   * Credits over the same window — an independent unit, not part of `tokens`
+   * and never converted (docs/plans/qoder-global-usage.md 口径决议). Points from
+   * a pre-credits cache contribute 0, hence the `?? 0` guards upstream.
+   */
+  credits: number
   /**
    * Cache hit rate as a percentage: cacheRead / (cacheRead + input).
    * 0 when nothing was read — never NaN.
@@ -541,6 +563,7 @@ export function computeTotals(buckets: TrendBucket[], mode: 'all' | 'no-cache'):
   let output = 0
   let cacheRead = 0
   let messages = 0
+  let credits = 0
   let activeTimeMs = 0
   let measuredOutput = 0
   for (const b of buckets) {
@@ -548,6 +571,7 @@ export function computeTotals(buckets: TrendBucket[], mode: 'all' | 'no-cache'):
     output += b.output
     cacheRead += b.cacheRead
     messages += b.messages
+    credits += b.credits
     activeTimeMs += b.activeTimeMs
     measuredOutput += b.measuredOutput
   }
@@ -558,6 +582,7 @@ export function computeTotals(buckets: TrendBucket[], mode: 'all' | 'no-cache'):
     output,
     cacheRead,
     messages,
+    credits,
     hitRatePct: promptSide > 0 ? (cacheRead / promptSide) * 100 : 0,
     weightedTokPerSec: activeTimeMs > 0 ? measuredOutput / (activeTimeMs / 1000) : null,
   }

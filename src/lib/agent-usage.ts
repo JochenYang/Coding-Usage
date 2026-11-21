@@ -160,6 +160,14 @@ export interface DayPointVM {
   activeTimeMs: number
   /** Message (call) count recorded for this day */
   messages: number
+  /**
+   * Credits billed this day by a gateway that reports no tokens (Qoder global).
+   * A series of its own on the trends page — a separate unit by the plan
+   * decision (docs/plans/qoder-global-usage.md): no public exchange rate, so it
+   * is never converted to USD, and zero token counters mean it must not be
+   * folded into `value`. Fallback series (daily archive, snapshots) have none.
+   */
+  credits: number
 }
 
 /** One model's own daily output series, for the per-model split view */
@@ -667,6 +675,7 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
       cacheWrite: numberOr(c.tokenBreakdown?.cacheWrite),
       activeTimeMs: numberOr(c.activeTimeMs),
       messages: numberOr(c.totals.messages),
+      credits: numberOr(c.totals.credits),
     }
   })
 

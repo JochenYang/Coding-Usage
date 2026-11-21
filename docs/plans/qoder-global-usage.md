@@ -69,7 +69,20 @@
 - 国际版会话不再呈现「0 tokens 却有点击数」的矛盾：要么按 credits 展示并标注单位，要么展示账户级用量/额度。
 - 不重复计数：同一会话被复制到两个构建根时只计一次（去重作用域是会话文件名 + 消息 id，详见「已实现」）。
 - 失败即降级：没有 credits 字段时退回现有「只计调用次数」的行为，不猜数字、不写 0 冒充真实用量。
-- 已知未覆盖：趋势图与日归档仍只统计 token，只有 Qoder 国际版一个 agent 的用户会看到空趋势图；模型名（`lmodel` / `qfmodel`）无法对应公开模型 id，成本列为 0。
+- 已知未覆盖（趋势部分已由 2026-11-21 的口径决议收窄，见下）：趋势图的 token 口径与成本列仍不覆盖 credits；模型名（`lmodel` / `qfmodel`）无法对应公开模型 id，成本列为 0。
+
+## 口径决议：credits 进趋势页（2026-11-21，独立展示）
+
+主人已定口径：**credits 作为趋势页独立的序列 / 单位呈现**——不折算 USD、不并入 token 口径。
+
+- **不折算 USD 的理由**：credits 是 Qoder 内部计价单位，没有公开汇率（本计划「风险」一节已记录），硬折会给出错误金额。
+- **不并入 token 的理由**：国际版的会话转录 token 计数全为 0（见「为什么确定没有 token」），把 credits 折进 token 是 invent 数据；credits 本身就是该 build 唯一真实的用量数字。
+- **读出链路**：趋势聚合在渲染层（`src/lib/summarizeScan` 的 dailySeries 与 `src/lib/trend-analysis`）。electron 侧 credits 已全程保留（`qoder-usage.ts` 的天级 `totals.credits` → `tokscale-merge.ts` 的通用数值合并 → `usage-store.ts` 的 merge 保留 `totals.credits`），渲染层 `dayPeriod` 也已读入；缺口只有 `dailySeries` 没把每天 credits 带出。改动限于 `DayPointVM.credits`、dailySeries 映射、趋势桶累加与趋势页展示。
+- **展示**：趋势页新增「Credits 消耗」KPI 卡与「Credits 时序」独立序列区，仅在扫描结果里有 credits 数据时出现；单位始终标注 Credits，双语键一致。
+- **明确不做**：
+  - 不按模型归属拆分 credits——扫描的模型别名（`lmodel` / `qfmodel`）对不上价格表，且天级 `totals.credits` 是存储层的权威口径；模型筛选激活时 credits 指标显示「不可用」（与缓存命中率同款处理），不显示会误导的数字。
+  - 回退序列（localStorage 日归档、供应商快照）不含 credits，credits 序列仅扫描来源可用。
+- **已知边界**：`archiveDailyUsage` 的 localStorage 日归档仍只记 token（它是无图回退路径，不在趋势主读出链路上）。
 
 ## 已实现（2026-11-07）
 
@@ -93,7 +106,8 @@
 ## 下一步
 
 1. 历史库回填 / 去重范围 / 额度卡口径 / BYOK 厂商归属 / 文档同步：已根据 critical review 修正，并有测试或实测覆盖。
-2. 已知未覆盖（未做）：趋势图与日归档仍只统计 token，只有 Qoder 国际版一个 agent 的用户会看到空趋势图；模型别名（`lmodel` / `qfmodel`）无法对应公开模型 id，成本列为 0；额度目前只在计划页卡片，若要并进 Agent 用量行需再接一次 IPC。
+2. credits 趋势口径：已按 2026-11-21 的「口径决议」实现——趋势页以独立 KPI 卡 + 独立时序展示 credits，不折算 USD、不并入 token。
+3. 已知未覆盖（未做）：趋势图的 token 口径与成本列仍不覆盖 credits（credits 不折算，成本列无从计价）；模型别名（`lmodel` / `qfmodel`）无法对应公开模型 id，成本列为 0；额度目前只在计划页卡片，若要并进 Agent 用量行需再接一次 IPC。
 
 ## 风险
 

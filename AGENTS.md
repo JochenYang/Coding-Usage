@@ -20,8 +20,9 @@
 4. UI / component spec: [docs/DESIGN_SYSTEM.md](./docs/DESIGN_SYSTEM.md) — read before touching UI
 5. Documentation index: [docs/README.md](./docs/README.md)
 6. Current plans: [docs/plans/](./docs/plans/) — in progress:
-   [qoder-global-usage.md](./docs/plans/qoder-global-usage.md) (Qoder global: credits display is
-   shipped; the trend chart / cost column remain known gaps — semantics live in that plan doc)
+   [qoder-global-usage.md](./docs/plans/qoder-global-usage.md) (Qoder global: credits display and
+   the trends-page credits series are shipped; the cost column stays 0 — credits are not converted
+   to USD — semantics live in that plan doc)
 
 ## Hard rules
 

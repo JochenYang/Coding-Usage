@@ -1,4 +1,4 @@
-import { Activity, Database, Gauge, Hash, TrendingUp } from 'lucide-react'
+import { Activity, Coins, Database, Gauge, Hash, TrendingUp } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useData } from '@/lib/data-context'
 import { useT } from '@/i18n/useT'
@@ -33,6 +33,13 @@ import {
 
 /** How many models the split view draws before it stops being readable */
 const SPLIT_SERIES_LIMIT = 8
+
+/**
+ * The credits series wears one hue of its own. Teal keeps it away from the
+ * token stack's indigo ramp; it may repeat a model slot's colour, but the two
+ * never share a plot — this chart draws exactly one series.
+ */
+const CREDITS_COLOR = 'var(--color-chart-2)'
 
 /** Rows the all-time table lists before folding its tail; the ranking is size-ordered */
 const CUMULATIVE_ROWS = 30
@@ -163,6 +170,16 @@ export function TrendsPage() {
    * measured", so this — not `isFiltered` alone — drives the unavailable state.
    */
   const hitRateUnavailable = isFiltered || source.kind !== 'scan'
+
+  /**
+   * Credits-billed usage exists at all (Qoder global's own billing unit — the
+   * plan decision in docs/plans/qoder-global-usage.md keeps it a separate
+   * series). The card and its series are hidden otherwise, so a page without
+   * such an agent keeps its original four-column KPI row. While a model filter
+   * is active the figures read "—": credits travel at day level and cannot be
+   * split by model (see TrendBucket.credits).
+   */
+  const showCredits = agentUsage.allTimeTotal.credits > 0
 
   const filtered = useMemo(
     () => (modelUiEnabled ? filterByModels(source.points, modelSeries, picked) : source.points),
@@ -303,7 +320,7 @@ export function TrendsPage() {
       </div>
 
       {/* KPI row */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className={cn('grid grid-cols-2 gap-4', showCredits ? 'lg:grid-cols-5' : 'lg:grid-cols-4')}>
         <StatCard
           title={t.trends.kpiTokens}
           icon={Database}
@@ -315,6 +332,18 @@ export function TrendsPage() {
             </span>
           }
         />
+        {showCredits && (
+          <StatCard
+            title={t.trends.kpiCredits}
+            icon={Coins}
+            value={isFiltered ? '—' : formatCompactValue(totals.credits)}
+            footer={
+              <span className="text-muted-foreground">
+                {isFiltered ? t.trends.creditsUnavailableShort : t.trends.creditsFooter}
+              </span>
+            }
+          />
+        )}
         <StatCard title={t.trends.kpiCalls} icon={Hash} value={formatCompactValue(totals.messages)} />
         <StatCard
           title={t.trends.kpiHitRate}
@@ -476,6 +505,35 @@ export function TrendsPage() {
           <p className="mt-2 text-[11px] text-subtle">{t.trends.partialBucketNote}</p>
         )}
       </section>
+
+      {/* Credits series: a unit of its own, so it never joins the token stack
+          and gets its own chart. Same buckets as the chart above, so the two
+          share x granularity. Hidden while a model filter is active — credits
+          are day-level and cannot be split by model. */}
+      {!isFiltered && totals.credits > 0 && (
+        <section className="rounded-2xl border border-border bg-card p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold text-foreground">{t.trends.chartCredits}</h2>
+            <span className="max-w-2xl text-[11px] text-subtle">{t.trends.creditsChartNote}</span>
+          </div>
+          <div className="mt-3">
+            <MultiSeriesChart
+              labels={buckets.map((b) => b.rangeLabel)}
+              series={[
+                {
+                  id: 'credits',
+                  name: t.trends.seriesCredits,
+                  color: CREDITS_COLOR,
+                  values: buckets.map((b) => b.credits),
+                },
+              ]}
+              valueLabel={t.trends.seriesCredits}
+              ariaLabel={t.trends.chartCredits}
+              keyboardHint={t.common.chartKeyboardHint}
+            />
+          </div>
+        </section>
+      )}
 
       {/* Model comparison */}
       {modelRows.length > 0 && (

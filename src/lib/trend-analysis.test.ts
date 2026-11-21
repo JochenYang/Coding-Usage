@@ -30,6 +30,7 @@ function day(dayKey: string, output = 1): DayPointVM {
     cacheWrite: 0,
     activeTimeMs: 1000,
     messages: 1,
+    credits: 0,
   }
 }
 
@@ -83,8 +84,8 @@ describe('densifySeries', () => {
 
   it('leaves a series without day keys untouched instead of inventing dates', () => {
     const legacy: DayPointVM[] = [
-      { label: '01-01', value: 1, input: 1, output: 0, cacheRead: 0, cacheWrite: 0, activeTimeMs: 0, messages: 0 },
-      { label: '01-09', value: 2, input: 2, output: 0, cacheRead: 0, cacheWrite: 0, activeTimeMs: 0, messages: 0 },
+      { label: '01-01', value: 1, input: 1, output: 0, cacheRead: 0, cacheWrite: 0, activeTimeMs: 0, messages: 0, credits: 0 },
+      { label: '01-09', value: 2, input: 2, output: 0, cacheRead: 0, cacheWrite: 0, activeTimeMs: 0, messages: 0, credits: 0 },
     ]
 
     const { points } = densifySeries(legacy)
