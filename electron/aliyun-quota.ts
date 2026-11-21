@@ -411,15 +411,31 @@ function envelopeSummary(payload: unknown): string {
   if (data == null) parts.push('data=null')
   else if (Array.isArray(data)) parts.push(`data=array(${data.length})`)
   else if (typeof data === 'object') {
-    // Shapes, not values: `instances[0]` says "signed in, no subscription",
-    // while a populated `instances[1]` means the window keys moved.
+    // Shapes, not values — EXCEPT the gateway's own error/status fields
+    // (ret / errorNo / errorCode / errorMsg), whose values are status text
+    // and the one thing that decides the fix. Account-data keys still print
+    // types only. A nested object prints its scalar members under the same
+    // rule, so `DataV2{ret:-1}` says exactly why the call failed.
+    const valueOf = (key: string, value: unknown): string => {
+      if (/^(error(No|Code|Msg|Message)?|ret)$/i.test(key) && typeof value === 'string' && value.trim() !== '') {
+        return value.trim().slice(0, 60)
+      }
+      if (/^ret$/i.test(key) && typeof value === 'number') return String(value)
+      return typeof value
+    }
     const entries = Object.entries(data as Record<string, unknown>)
       .slice(0, 6)
       .map(([key, value]) => {
         if (Array.isArray(value)) return `${key}[${value.length}]`
         if (value === null) return `${key}=null`
-        if (typeof value === 'object') return `${key}{${Object.keys(value as object).length}}`
-        return `${key}=${typeof value}`
+        if (typeof value === 'object') {
+          const inner = Object.entries(value as Record<string, unknown>)
+            .slice(0, 8)
+            .map(([ik, iv]) => `${ik}:${valueOf(ik, iv)}`)
+            .join(', ')
+          return `${key}{${inner || '-'}}`
+        }
+        return `${key}=${valueOf(key, value)}`
       })
     parts.push(`dataKeys=${entries.join('|') || '-'}`)
   } else parts.push(`data=${typeof data}`)
@@ -455,19 +471,84 @@ const STATUS_KEYS = new Set([
  * non-empty `errorCode` still means something went wrong, so it is reported
  * separately rather than as "no plan".
  */
-function dataStatus(payload: unknown): { onlyStatus: boolean; errorCode: string | null } {
+function dataStatus(payload: unknown): {
+  onlyStatus: boolean
+  /** DataV2.data answered success:true with no counters — the token-plan empty form */
+  dataSuccess: boolean
+  errorCode: string | null
+  errorMsg: string | null
+  errorNo: string | null
+} {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    return { onlyStatus: false, errorCode: null }
+    return { onlyStatus: false, dataSuccess: false, errorCode: null, errorMsg: null, errorNo: null }
   }
   const data = (payload as Record<string, unknown>).data
-  if (data == null) return { onlyStatus: true, errorCode: null }
-  if (Array.isArray(data)) return { onlyStatus: data.length === 0, errorCode: null }
-  if (typeof data !== 'object') return { onlyStatus: false, errorCode: null }
+  if (data == null) return { onlyStatus: true, dataSuccess: false, errorCode: null, errorMsg: null, errorNo: null }
+  if (Array.isArray(data)) {
+    return { onlyStatus: data.length === 0, dataSuccess: false, errorCode: null, errorMsg: null, errorNo: null }
+  }
+  if (typeof data !== 'object') {
+    return { onlyStatus: false, dataSuccess: false, errorCode: null, errorMsg: null, errorNo: null }
+  }
   const keys = Object.keys(data)
   const onlyStatus = keys.length === 0 || keys.every((key) => STATUS_KEYS.has(key))
-  const raw = (data as Record<string, unknown>).errorCode
-  const errorCode = typeof raw === 'string' && raw.trim() !== '' ? raw.trim().slice(0, 32) : null
-  return { onlyStatus, errorCode }
+  const record = data as Record<string, unknown>
+  // The token-plan empty form: DataV2.data answers success:true and carries
+  // msg/requestId but no counters (verified live 2026-11-21, see schemaDump).
+  const dataV2 = record.DataV2
+  const dataV2Inner = dataV2 && typeof dataV2 === 'object' && !Array.isArray(dataV2) ? (dataV2 as Record<string, unknown>).data : undefined
+  const dataSuccess =
+    !!dataV2Inner &&
+    typeof dataV2Inner === 'object' &&
+    (dataV2Inner as Record<string, unknown>).success === true
+  const code = record.errorCode
+  const message = record.errorMsg ?? record.errorMessage
+  const no = record.errorNo
+  const errorCode = typeof code === 'string' && code.trim() !== '' ? code.trim().slice(0, 64) : null
+  // Gateway error messages are status text ("User not login" and the like) —
+  // the one value in this envelope that is safe and decisive to surface.
+  const errorMsg = typeof message === 'string' && message.trim() !== '' ? message.trim().slice(0, 120) : null
+  const errorNo =
+    typeof no === 'string' && no.trim() !== '' ? no.trim().slice(0, 32) : typeof no === 'number' ? String(no) : null
+  return { onlyStatus, dataSuccess, errorCode, errorMsg, errorNo }
+}
+
+/**
+ * Full key-path dump of a response tree, for a parse failure that the top-level
+ * shape lines cannot explain. Key paths + scalar types only — EXCEPT
+ * ret / errorNo / errorCode / errorMsg, whose values are gateway status text
+ * and the one thing that decides the fix. Depth- and length-capped.
+ */
+function schemaDump(payload: unknown): string {
+  const out: string[] = []
+  const visit = (node: unknown, path: string, depth: number): void => {
+    if (out.length >= 48 || depth > 5) return
+    if (Array.isArray(node)) {
+      // Arrays: sample the first element — a one-element sample names the shape
+      if (node.length > 0) visit(node[0], `${path}[0]`, depth + 1)
+      else out.push(`${path}[]`)
+      return
+    }
+    if (node && typeof node === 'object') {
+      for (const [key, child] of Object.entries(node as Record<string, unknown>)) {
+        if (out.length >= 48) return
+        const next = path ? `${path}.${key}` : key
+        if (child !== null && typeof child === 'object') visit(child, next, depth + 1)
+        else {
+          const decisive = /^(ret|errorNo|errorCode|errorMsg|msg|httpStatus)$/i.test(key)
+          const shown =
+            decisive && (typeof child === 'string' || typeof child === 'number')
+              ? `=${String(child).slice(0, 48)}`
+              : ''
+          out.push(`${next}:${typeof child}${shown}`)
+        }
+      }
+      return
+    }
+    out.push(`${path}:${typeof node}`)
+  }
+  visit(payload, '', 0)
+  return out.join(' ')
 }
 
 /** `secToken` / `sec_token` anywhere in a small JSON tree. */
@@ -658,16 +739,25 @@ async function fetchConsoleQuota(
       const envelope = envelopeSummary(payload)
       const shape = dataStatus(payload)
       // A successful envelope whose data holds only status fields is the honest
-      // "this account has no plan" answer. A real error code or an unexpected
-      // shape stays a failure, so nothing is reported as a business fact unless
-      // the response says so.
-      if (isSuccessEnvelope(payload) && shape.onlyStatus && !shape.errorCode) {
+      // "this account has no plan" answer. So is the token-plan empty form: an
+      // envelope whose DataV2.data answers success:true with msg/requestId and
+      // no counters (verified live 2026-11-21). A real error code or an
+      // unexpected shape stays a failure, so nothing is reported as a business
+      // fact unless the response says so.
+      if (isSuccessEnvelope(payload) && !shape.errorCode && (shape.onlyStatus || shape.dataSuccess)) {
         return { available: false, reason: 'no-plan', detail: `${envelope} ${trace}`.trim() }
       }
+      const errorFields = [
+        shape.errorCode ? `errorCode=${shape.errorCode}` : '',
+        shape.errorNo ? `errorNo=${shape.errorNo}` : '',
+        shape.errorMsg ? `errorMsg=${shape.errorMsg}` : '',
+      ]
+        .filter(Boolean)
+        .join(' ')
       return {
         available: false,
         reason: 'parse-failed',
-        detail: `no-window keys=${keys} ${envelope}${shape.errorCode ? ` errorCode=${shape.errorCode}` : ''} ${trace}`.trim(),
+        detail: `no-window keys=${keys} ${envelope}${errorFields ? ` ${errorFields}` : ''} schema=${schemaDump(payload)} ${trace}`.trim(),
       }
     }
     return {
@@ -718,7 +808,7 @@ export async function fetchPastedQuota(
     const windows = windowsFromConsolePayload(payload)
     if (!windows) {
       const shape = dataStatus(payload)
-      if (isSuccessEnvelope(payload) && shape.onlyStatus && !shape.errorCode) {
+      if (isSuccessEnvelope(payload) && !shape.errorCode && (shape.onlyStatus || shape.dataSuccess)) {
         return { available: false, reason: 'no-plan', detail: `${envelopeSummary(payload)} ${trace}` }
       }
       return {
