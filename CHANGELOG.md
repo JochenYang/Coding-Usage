@@ -10,6 +10,26 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.9.9] - 2026-11-21
+
+### 中文
+- 新增 OpenDesign 套餐额度卡（实验性，默认隐藏）：在卡片上点「登录 OpenDesign」即发起官方设备码授权——浏览器里批准后凭据自动落盘（系统密钥加密，密钥全程不出主进程），无需手动复制任何东西；也支持手动粘贴 Cloud 控制台 Cookie 作为回退（推理 API Key 读不了额度，这条路由刻意不存在）。显示 5 小时 / 7 天窗口；登录成功但账号无套餐时如实显示「未检测到套餐额度」并提供退出登录，不再误报错误
+- 管理订阅卡抽屉重做：按「官方订阅额度 / 控制台会话 / 本地读取」三组呈现，顶部显示「已启用 N / M」并新增筛选框（输入即过滤，列表不再跳动）
+- 修复订阅卡开关的「降落」动画：开关滑块从布局动画改为显式位移动画——此前筛选或增删卡片时，其余开关会整排从旧位置滑到新位置；现在重排零动画，开关滑动本身手感不变
+- JetBrains AI 与 OpenDesign 卡换上官方品牌图标（本地打包，离线渲染）
+- 阿里云三张卡：额度查询失败时技术详情现在会给出网关错误码/错误消息的**实际值**与完整的响应字段树（此前只显示字段类型，无法定位）；「查询成功但该账号没有套餐窗口」的响应如实归类为「未检测到套餐额度」，不再显示为解析失败墙
+- 阿里云卡操作区间距修复，且连接/粘贴按钮不再触发卡片拖拽
+- 品牌图标本地打包：JetBrains、OpenDesign
+
+### English
+- New OpenDesign plan quota card (experimental, hidden by default): "Sign in to OpenDesign" on the card starts the official device-code flow — approve in the browser and the credential lands on disk automatically (OS-keystore encrypted; the key never leaves the main process). A manually pasted Cloud console Cookie remains the fallback (the inference API key cannot read quota, so that route deliberately does not exist). Shows the 5-hour / 7-day windows; a successful login on an account without a plan honestly reports "no plan allowance found" with a Sign-out entry instead of an error
+- The manage-cards drawer is rebuilt: cards are grouped under "Official subscriptions / Console sessions / Local reads", the header shows "Enabled N / M", and a filter box narrows the list as you type without it jumping around
+- Fixed the "parachuting" animation on subscription-card switches: the thumb now slides via an explicit x animation instead of a layout animation — filtering, adding or removing cards no longer slides whole rows of switches into place
+- The JetBrains AI and OpenDesign cards now carry their official brand icons (bundled locally, rendered offline)
+- The three Alibaba cards: a failed quota query now surfaces the gateway's actual errorNo/errorCode/errorMsg values plus the full response field tree in the technical details (it previously printed field types only, making the cause undiagnosable); a "query succeeded but this account has no plan windows" response is now honestly classified as "no plan allowance found" instead of a parse-failure wall
+- Fixed the spacing between the Alibaba connect / paste-cURL actions, and neither button starts a card drag anymore
+- Brand icons bundled locally: JetBrains, OpenDesign
+
 ## [v0.9.8] - 2026-11-21
 
 ### 中文
