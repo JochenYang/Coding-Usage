@@ -28,9 +28,12 @@ import { createDecipheriv, createHash } from 'node:crypto'
  * to the honest "reopen Trae" state — this module never attempts a refresh
  * (the refresh call needs an ECDSA device proof outside our scope).
  *
- * The international build (`TRAE SOLO` / `Trae`) stores the same key as
- * plaintext JSON and is served by tokscale's `trae sync`; it is deliberately
- * not probed here to avoid a second account surface with different endpoints.
+ * The international build (`TRAE SOLO` / `Trae`) stores the same key — as
+ * plaintext JSON or the same "tc" blob (the international client's byteCrypto
+ * uses the same 64-byte salts and kdf chain as the CN frontend, verified
+ * constant-for-constant against third-party reimplementations) — and is probed
+ * by {@link fetchTraeIntlUsage}: a different deployment (api-sg-central /
+ * api-us-east.trae.ai) with a v1 entitlement endpoint, USD-denominated packs.
  */
 
 export interface TraeUsageOutcome {
@@ -47,6 +50,17 @@ const APP_ID = '6eefa01c-1036-4c7e-9ca5-d891f63bfcd8'
 
 /** Candidate app-data dirs, newest layout first */
 const APP_DIRS = ['TRAE SOLO CN', 'Trae CN'] as const
+/** International builds keep their own app-data dirs, newest layout first */
+const INTL_APP_DIRS = ['TRAE SOLO', 'Trae'] as const
+
+/**
+ * International entitlement endpoints. Three independent third-party
+ * implementations agree on the host pair and the v1 path (juejin-usage
+ * trae.ts, magpie-community trae plugin README, tokscale trae.rs), so the SG
+ * host is the default and only an explicit US region hint routes to us-east.
+ */
+const INTL_SG_URL = 'https://api-sg-central.trae.ai/trae/api/v1/pay/user_current_entitlement_list'
+const INTL_US_URL = 'https://api-us-east.trae.ai/trae/api/v1/pay/user_current_entitlement_list'
 
 // Salt pairs from Trae CN's frontend JS: "tc"-AES uses A⊕B, AES_PRIVATE C⊕D.
 const SALT_A = Uint8Array.from([
@@ -139,8 +153,8 @@ function decryptTcValue(value: unknown): TraeAuth | null {
 }
 
 /** First app-data dir (of the candidates) that exists, via its storage file */
-async function findStorageFile(appData: string): Promise<string | null> {
-  for (const dir of APP_DIRS) {
+async function findStorageFile(appData: string, dirs: readonly string[] = APP_DIRS): Promise<string | null> {
+  for (const dir of dirs) {
     const file = join(appData, dir, 'User', 'globalStorage', 'storage.json')
     try {
       const raw = await readFile(file, 'utf8')
@@ -251,6 +265,180 @@ export async function fetchTraeUsage(fetchImpl: FetchImpl, homeDir: string): Pro
       resetsAt,
       plan: json.is_credits_billing === true ? 'Trae CN' : null,
       packs,
+    })
+    return { available: true, body }
+  } catch {
+    return { available: false, reason: 'probe-failed' }
+  }
+}
+
+// ===== Trae international (SG/US deployment) =====
+
+/**
+ * A count or USD figure from the entitlement payload: proto-style numbers may
+ * arrive as strings, and a negative or fractional value is not an allowance.
+ */
+function packNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return value
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value.trim())
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
+  }
+  return null
+}
+
+/** Epoch seconds or ms (number or numeric string) → epoch ms; null otherwise */
+function expiryToMs(value: unknown): number | null {
+  const numeric = packNumber(value)
+  if (numeric != null) return numeric < 1e12 ? numeric * 1000 : numeric
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Date.parse(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+function objOf(value: unknown): Record<string, unknown> | null {
+  return value != null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+/**
+ * The account's deployment region, read from the storage's own region hints.
+ *
+ * The international IDE stores its AI region under `userRegion._aiRegion`
+ * (with `uidRegion` / `aiRegion` / `region` as the flatter fallbacks). Only an
+ * explicit US value routes to the us-east host — anything absent or
+ * unrecognized stays on the SG host rather than guessing (same rule the
+ * third-party implementations apply at login: /^US(?:[-_ ]|$)/i).
+ */
+export function intlRegionOf(storage: Record<string, unknown>): 'sg' | 'us' {
+  const hints: unknown[] = []
+  const userRegion = objOf(storage['userRegion'])
+  if (userRegion) hints.push(userRegion['_aiRegion'])
+  hints.push(storage['uidRegion'], storage['aiRegion'], storage['region'])
+  for (const hint of hints) {
+    if (typeof hint === 'string' && /^US(?:[-_ ]|$)/i.test(hint.trim())) return 'us'
+  }
+  return 'sg'
+}
+
+/**
+ * Probe the international build's entitlement usage, normalized into the same
+ * body contract as the CN probe (`{percent, consumed, total, resetsAt, plan,
+ * packs}` with USD-denominated numbers) so one view-model serves both cards.
+ *
+ * The endpoint answers `{code, data:{user_entitlement_pack_list}}` where each
+ * pack carries `entitlement_base_info.quota.{basic_usage_limit,
+ * bonus_usage_limit}` and `usage.{basic_usage_amount, bonus_usage_amount}`
+ * (field names per the juejin-usage channel — its author verified the shape
+ * against a live SG Free account in 2026-11; this repo has not yet exercised
+ * a local Trae Intl install, so the first real login needs one manual check).
+ * Every field is resolved by name and a payload without
+ * a usable allowance fails closed; the login value stays on this side of IPC.
+ */
+export async function fetchTraeIntlUsage(fetchImpl: FetchImpl, homeDir: string): Promise<TraeUsageOutcome> {
+  try {
+    const appData = process.env.APPDATA?.trim() || join(homeDir, 'AppData', 'Roaming')
+    // The international layout only: a CN install sharing the machine must
+    // not satisfy this probe (its endpoint and billing currency differ).
+    const storageFile = await findStorageFile(appData, INTL_APP_DIRS)
+    if (!storageFile) return { available: false, reason: 'no-auth-file' }
+    const storage = JSON.parse(await readFile(storageFile, 'utf8')) as Record<string, unknown>
+    const auth = decryptTcValue(storage['iCubeAuthInfo://icube.cloudide'])
+    if (!auth) return { available: false, reason: 'no-auth-token' }
+    if (auth.expiredAt && Date.parse(auth.expiredAt) <= Date.now()) {
+      return { available: false, reason: 'token-expired' }
+    }
+
+    const machineIdFile = join(storageFile, '..', '..', '..', 'machineid')
+    let machineId: string | null = null
+    try {
+      machineId = (await readFile(machineIdFile, 'utf8')).trim() || null
+    } catch {
+      // header stays optional
+    }
+
+    const headers: Record<string, string> = {
+      Authorization: `Cloud-IDE-JWT ${auth.token}`,
+      'X-Cloudide-Token': auth.token,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'x-app-id': APP_ID,
+      'x-device-type': 'windows',
+    }
+    if (auth.userId) headers['x-uid'] = auth.userId
+    if (machineId) headers['x-machine-id'] = machineId
+
+    const url = intlRegionOf(storage) === 'us' ? INTL_US_URL : INTL_SG_URL
+    const res = await fetchImpl(url, {
+      method: 'POST',
+      headers,
+      body: '{}',
+      redirect: 'error',
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    })
+    if (!res.ok) return { available: false, reason: `http-${res.status}` }
+
+    const json = objOf(await res.json())
+    if (!json) return { available: false, reason: 'malformed-body' }
+    // The wrapper echoes a code even on HTTP 200; the auth-expired trio maps
+    // to the card's re-login hint, anything else nonzero is a shape we do not
+    // know and must not parse positionally.
+    const code = json.code ?? json.Code
+    if (code != null) {
+      const numeric = Number(code)
+      if (numeric === 1001 || numeric === 20101 || numeric === 401) {
+        return { available: false, reason: 'token-expired' }
+      }
+      if (String(code) !== '0') return { available: false, reason: 'malformed-body' }
+    }
+    const payload = objOf(json.data ?? json.Result ?? json.result ?? json)
+    const packList = payload ? payload['user_entitlement_pack_list'] : null
+    if (!Array.isArray(packList)) return { available: false, reason: 'malformed-body' }
+
+    let consumed = 0
+    let total = 0
+    let found = false
+    const packs: Array<{ name: string; credits: number | null; resetsAt: number | null }> = []
+    for (const item of packList) {
+      const pack = objOf(item)
+      if (!pack) continue
+      const base = objOf(pack['entitlement_base_info'])
+      const quota = base ? objOf(base['quota']) : null
+      if (!quota || !base) continue
+      const allowance = packNumber(quota['basic_usage_limit'])
+      if (allowance == null) continue
+      found = true
+      const bonus = packNumber(quota['bonus_usage_limit']) ?? 0
+      total += allowance + bonus
+      const usage = objOf(pack['usage'])
+      consumed += (usage ? packNumber(usage['basic_usage_amount']) : null) ?? 0
+      consumed += (usage ? packNumber(usage['bonus_usage_amount']) : null) ?? 0
+      const expiry = expiryToMs(base['end_time'] ?? base['expire_time'] ?? pack['end_time'])
+      const name = typeof pack['display_desc'] === 'string' ? (pack['display_desc'] as string) : ''
+      packs.push({
+        name,
+        credits: allowance + bonus > 0 ? allowance + bonus : null,
+        resetsAt: expiry,
+      })
+    }
+    if (!found || total <= 0) return { available: false, reason: 'malformed-body' }
+    const resetsAt =
+      packs
+        .map((p) => p.resetsAt)
+        .filter((v): v is number => v != null && v > Date.now())
+        .sort((a, b) => a - b)[0] ?? null
+
+    const body = JSON.stringify({
+      percent: Math.min(100, Math.max(0, (consumed / total) * 100)),
+      consumed,
+      total,
+      unit: 'USD',
+      resetsAt,
+      plan: null,
+      packs: packs.filter((p) => p.name !== ''),
     })
     return { available: true, body }
   } catch {

@@ -92,6 +92,27 @@ describe('summarizeKimiQuota', () => {
     expect(empty.wallet).toBeNull()
   })
 
+  it('renders the remote quota-model payload normalized by the main process, month pool only', () => {
+    // The new /coding/v1/usages shape (usages.{limit_5h,limit_7d,limit_month_total,
+    // limit_month_code}) never reaches this module raw: electron/kimi-usage.ts
+    // parseRemote maps it to monthTotal/monthCode windows and emits
+    // `{source:'remote', windows, wallet}`. Newer accounts may answer with only
+    // the merged month pool (limit_month_total) — a partial payload must still
+    // render as available instead of collapsing to the empty state.
+    const vm = summarizeKimiQuota({
+      available: true,
+      body: JSON.stringify({
+        source: 'remote',
+        windows: [{ id: 'monthTotal', percent: 42.5, resetsAt: 1_800_000_000_000 }],
+        wallet: { remaining: 12.5, total: null, used: 87.5, currency: 'CNY' },
+      }),
+    })
+    expect(vm.available).toBe(true)
+    expect(vm.source).toBe('remote')
+    expect(vm.windows).toEqual([{ id: 'monthTotal', percent: 42.5, resetsAt: 1_800_000_000_000 }])
+    expect(vm.wallet).toEqual({ remaining: 12.5, total: null, used: 87.5, currency: 'CNY' })
+  })
+
   it('maps every malformed shape to the honest unavailable view', () => {
     for (const body of ['not json', 'null', '42', '"text"', '{"windows":"no"}', '{"windows":[]}']) {
       expect(summarizeKimiQuota({ available: true, body })).toEqual({
