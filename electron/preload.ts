@@ -79,6 +79,15 @@ const desktopBridge: DesktopBridge = {
   // arguments, and any extra invoke args are simply ignored.
   kimiUsage: () => ipcRenderer.invoke('kimi:usage'),
   antigravityUsage: () => ipcRenderer.invoke('antigravity:usage'),
+  // OpenDesign quota: the device-code login keeps its secret and the stored
+  // control key inside the main process — the renderer only sees status and
+  // normalized windows. The manual fallback pastes a Cloud console Cookie.
+  opendesignQuota: () => ipcRenderer.invoke('opendesign:quota'),
+  opendesignLoginStart: () => ipcRenderer.invoke('opendesign:login-start'),
+  opendesignLoginPoll: (loginId) => ipcRenderer.invoke('opendesign:login-poll', loginId),
+  opendesignLoginCancel: (loginId) => ipcRenderer.invoke('opendesign:login-cancel', loginId),
+  opendesignSetCookie: (cookie) => ipcRenderer.invoke('opendesign:set-cookie', cookie),
+  opendesignClearCredential: () => ipcRenderer.invoke('opendesign:clear-credential'),
   settingsBackupWrite: (payload) => ipcRenderer.invoke('settings:backup-write', payload),
   settingsBackupRead: () => ipcRenderer.invoke('settings:backup-read'),
   minimizeWindow: () => ipcRenderer.invoke('window:minimize'),

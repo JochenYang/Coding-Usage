@@ -148,6 +148,39 @@ declare global {
     geminiUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Grok Build (SuperGrok) quota via the local `grok login` state; body is a normalized {percent,resetsAt,plan,remainingResets?,resetsExpireAt?} */
     grokUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /**
+     * OpenDesign Go subscription quota via the Cloud account API. Primary
+     * credential: the device-code control key from the device-code login
+     * (started and polled through the three `opendesign:login-*` calls below;
+     * the key is stored encrypted in the main process and never crosses IPC).
+     * Manual fallback: a Cloud console Cookie pasted on the card. The body is
+     * a normalized {plan, windows:[{id,percent,resetsAt}], walletUsd?} JSON
+     * string. The inference API key cannot read quota.
+     */
+    opendesignQuota(): Promise<{ available: boolean; body?: string; reason?: string }>
+    /**
+     * Start the official device-code login: the main process opens the
+     * approval page in the browser and returns the 6-character approval code
+     * plus the polling cadence. The device secret stays in the main process.
+     */
+    opendesignLoginStart(): Promise<
+      | { ok: true; loginId: number; userCode: string; intervalMs: number; expiresAtMs: number }
+      | { ok: false; reason: 'start-failed' | 'invalid' | 'network' }
+    >
+    /** One poll round: approved stores the control key in the main process. */
+    opendesignLoginPoll(
+      loginId: number,
+    ): Promise<
+      | { status: 'approved' }
+      | { status: 'pending' }
+      | { status: 'failed'; reason: 'expired' | 'denied' | 'cancelled' | 'invalid' }
+    >
+    /** Drop a pending device-code session (user cancelled or the card unmounted). */
+    opendesignLoginCancel(loginId: number): Promise<void>
+    /** Validate and store the pasted Cloud Cookie (encrypted at rest, main process only). */
+    opendesignSetCookie(cookie: string): Promise<{ ok: boolean; reason?: string }>
+    /** Drop the stored credential; the card returns to its no-login state. */
+    opendesignClearCredential(): Promise<void>
     /** Qoder global build: credits pool from the IDE's own usage endpoint */
     qoderQuota(): Promise<{
       available: boolean

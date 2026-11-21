@@ -45,6 +45,18 @@ import {
   type PastedTarget,
 } from './pasted-requests'
 import { flushQuotaStoreSync, initQuotaStore, readQuotaSnapshot, saveQuotaOutcome } from './quota-store'
+import {
+  clearOpendesignCredential,
+  dropOpendesignLogin,
+  fetchOpendesignQuota,
+  initOpendesignStore,
+  pollOpendesignLogin,
+  readOpendesignCredential,
+  saveOpendesignCredential,
+  startOpendesignLogin,
+  type OpendesignLoginStartIpcResult,
+  type OpendesignPollResult,
+} from './opendesign-quota'
 import { objOf, pickMembers } from './json-shape'
 import { isTimeoutError } from './fetch-errors'
 import { getPricingMeta, getPricingTable, priceTokens, type PricingMeta } from './model-pricing'
@@ -1503,6 +1515,61 @@ function registerIpc(): void {
     },
   )
 
+  // OpenDesign Go subscription quota. Primary credential: the control key from
+  // the official device-code flow (the card drives start/poll, the key itself
+  // is stored encrypted here and never crosses IPC); manual fallback: a pasted
+  // Cloud console Cookie. The inference API key cannot read quota — see
+  // opendesign-quota.ts for the endpoint contract.
+  ipcMain.handle(
+    'opendesign:quota',
+    async (): Promise<QuotaOutcome> =>
+      cachedQuotaOutcome('opendesign', async () => fetchOpendesignQuota(net.fetch, await readOpendesignCredential())),
+  )
+  ipcMain.handle('opendesign:login-start', async (): Promise<OpendesignLoginStartIpcResult> => {
+    const started = await startOpendesignLogin(net.fetch, 'coding-usage')
+    if (!started.ok) return started
+    // Open the locally assembled approval page; the URL prefix is validated by
+    // the probe module before it gets here. The URL itself stays behind this
+    // boundary — the renderer only needs the approval code and cadence.
+    void shell.openExternal(started.session.url).catch(() => {})
+    const { loginId, userCode, intervalMs, expiresAtMs } = started.session
+    return { ok: true, loginId, userCode, intervalMs, expiresAtMs }
+  })
+  ipcMain.handle('opendesign:login-poll', async (_event, loginId: unknown): Promise<OpendesignPollResult> => {
+    if (typeof loginId !== 'number' || !Number.isSafeInteger(loginId)) return { status: 'failed', reason: 'expired' }
+    const result = await pollOpendesignLogin(net.fetch, loginId)
+    if (result.status === 'approved') {
+      // The saved control key must be used immediately: drop any cached or
+      // in-flight answer that still reflects the pre-login state.
+      quotaCache.delete('opendesign')
+      quotaInflight.delete('opendesign')
+      quotaGeneration += 1
+    }
+    return result
+  })
+  ipcMain.handle('opendesign:login-cancel', async (_event, loginId: unknown): Promise<void> => {
+    if (typeof loginId !== 'number' || !Number.isSafeInteger(loginId)) return
+    dropOpendesignLogin(loginId)
+  })
+  ipcMain.handle(
+    'opendesign:set-cookie',
+    async (_event, text: unknown): Promise<{ ok: boolean; reason?: string }> => {
+      if (typeof text !== 'string' || text.length > 40_000) return { ok: false, reason: 'too-large' }
+      const saved = await saveOpendesignCredential(text)
+      if (!saved.ok) return { ok: false, reason: saved.reason }
+      quotaCache.delete('opendesign')
+      quotaInflight.delete('opendesign')
+      quotaGeneration += 1
+      return { ok: true }
+    },
+  )
+  ipcMain.handle('opendesign:clear-credential', async (): Promise<void> => {
+    await clearOpendesignCredential()
+    quotaCache.delete('opendesign')
+    quotaInflight.delete('opendesign')
+    quotaGeneration += 1
+  })
+
   // Trae CN credits usage. The login state is an encrypted "tc" blob in the
   // IDE's storage.json (decrypted in-memory, see trae-usage.ts); the JWT never
   // leaves the main process and is never logged. An expired token maps to the
@@ -1846,6 +1913,7 @@ if (!gotSingleInstanceLock) {
     // cards would paint the empty state and then jump to the stored numbers.
     await initQuotaStore(app.getPath('userData'))
     initPastedRequests(app.getPath('userData'))
+    initOpendesignStore(app.getPath('userData'))
     await loadWindowState()
     registerIpc()
     createWindow()
