@@ -66,6 +66,18 @@ npm test           # vitest 单元测试
    硬编码中英文。
 6. `npx tsc --noEmit` 通过后，用真实 Key 写入 `localStorage` 端到端验证再提交。
 
+### 已评估不接入的供应商
+
+外部调研（多份第三方用量目录与官方文档交叉核对）已排除以下候选，记录于此避免下轮重复侦察；
+每行一个供应商、一条理由。接入条件消失（如官方补齐端点）时可重新评估。
+
+- **Qwen CLI OAuth 免费层**：无云端额度端点，免费层额度只在 IDE 内展示；本地会话扫描已覆盖其用量。
+- **Zed**：无任何额度 API，额度数据由 Orb 嵌在 dashboard 页面内，无法可靠解析。
+- **iFlow 心流**：三份第三方用量目录均未收录，公开搜索未找到可核实的额度端点。
+- **小米 MiMo（Token Plan）**：额度路由只认小米账号 Web SSO 的 HttpOnly cookie，API key 没有额度面。
+- **ForgeCode / Roo Code Cloud / Sourcegraph Cody**：官网与公开渠道均无可核实的套餐额度端点。
+- **Augment**：无套餐余量官方端点；官方 Analytics API 是组织级用量分析，不提供个人套餐余量。
+
 ## 代码约定
 
 - TypeScript strict，避免 `any`；外部数据（JSON / localStorage / fetch）必须运行时校验或收窄。

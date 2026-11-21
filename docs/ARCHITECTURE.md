@@ -57,6 +57,12 @@ electron/
   preload.ts              # contextBridge → window.desktopBridge
   kimi-usage.ts / grok-usage.ts / antigravity-quota.ts / subscription-quotas.ts
                           # 订阅额度探针（本地登录 → 官方接口）
+  factory-quota.ts / devin-quota.ts / amp-quota.ts
+                          # Factory Droid / Devin / Amp 套餐额度探针（本地凭据或官方 CLI →
+                          # 官方接口；Amp 走官方 `amp usage` 子命令、不读凭据文件，
+                          # Windows 经 cmd.exe 解析 npm 全局的 .cmd shim）
+  codex-reset-credits.ts  # Codex 攒的重置券增强读（codex:quota 并发附带，失败静默
+                          # 缺席，不影响主数字）
   local-plan-quota.ts     # Cursor / GitHub Copilot 本地登录探针（Cursor 的 sealed token
                           # 走 safe-storage.ts 解开；额度读 Cursor 当前的 GetCurrentPeriodUsage，
                           # 不提供 token 级用量，因此不计入本地用量）
@@ -94,7 +100,8 @@ electron/
                           # provider-reconcile 按模型别名的路由前缀修正 tokscale 硬编码的 provider 归属
   qoder-quota.ts          # Qoder 国际版额度：解 IDE 本地登录（DPAPI 密钥 + safe-storage.ts）→ 官方 credits 接口
   quota-store.ts          # 套餐额度上次成功结果（`quota-cache.json`）：卡片首屏直接显示并标注时间，
-                          # 只存数值、不存凭据；失败不覆盖上次成功
+                          # 只存归一化额度字段与计划名，不存凭据与账号标识（登录邮箱等）；
+                          # 失败不覆盖上次成功
   usage-store.ts          # 本地用量日归档（SQLite，userData/usage-history.db）：每轮扫描按日合并入库，
                           # 会话文件被删除/轮转后历史仍在（tokscale 只反映当前磁盘上的文件）
   model-pricing.ts / model-pricing-core.ts / builtin-pricing.ts
@@ -119,8 +126,11 @@ electron/
 
 1. **Provider 用量/余额**：`src/lib/query.ts#fetchUsage` → `ProviderDef.buildRequest/parseResponse`
    → 桌面经 `net:fetch` IPC、浏览器直连（失败回退 corsproxy）。结果写入 `results` 与启动缓存。
-2. **订阅额度（Codex / Claude / Gemini / Grok / Kimi / Antigravity / Trae / Cursor / Copilot / Qoder 国际版 / Cline Pass / JetBrains AI / Windsurf / Kiro / Kilo / 阿里云 Coding Plan / 千问 Cloud / 阿里云 Token Plan）**：
-   主进程读本地登录或本地额度文件 → 需要时调官方接口 → **只把数值**回传渲染层；凭据不出主进程。
+   GraphQL 型适配器（Warp）经桥的可选 POST 通道（`ParseContext.fetch` 第三参，主进程只接受
+   显式 POST + 字符串 body，其余仍为 GET）。
+2. **订阅额度（Codex / Claude / Gemini / Grok / Kimi / Antigravity / Trae / Trae 国际版 / Cursor / Copilot / Qoder 国际版 / Cline Pass / JetBrains AI / Windsurf / Kiro / Kilo / Factory Droid / Devin / Amp / 阿里云 Coding Plan / 千问 Cloud / 阿里云 Token Plan）**：
+   主进程读本地登录或本地额度文件（Amp 走官方 `amp usage` CLI）→ 需要时调官方接口 →
+   **只把归一化的额度字段与计划名**回传渲染层；凭据不出主进程。
    JetBrains 与 Windsurf 不联网：前者读 IDE 配置，后者读 IDE 本地缓存（打开 Windsurf 后才会更新）。
    CodeBuddy / Cindy / DSH / WorkBuddy 目前只有本地用量行、没有额度卡：截至 2026-11 尚未盘点过
    这四家的厂商额度面（区别于 JetBrains / Windsurf 的「有意纯本地」取舍），下轮接入调研从这四家起步。
@@ -162,6 +172,10 @@ electron/
   GitHub 资源镜像例外：模型价格目录（raw.githubusercontent.com 直连失败时经 gh-proxy.com 预置
   缓存）与自动更新 feed（GitHub 直连失败后改走 gh-proxy.com）——均只限 GitHub 资源，
   provider 数据请求不经过任何代理。
+- Warp 是唯一的「可计费 key」适配器：key 与其他粘贴 key 一样以 `enc:v3` 落盘、在渲染层内存中
+  解密使用（渲染层可信前提不变），但同一凭据可发起计费 agent run——设置页粘贴处与供应商卡片
+  均明示「用专用短效 key，勿用主 key」。若未来要根除该暴露面，需把 key 移入主进程
+  （专用 IPC 一次性传入）。
 
 ## 5. 已知架构约束（易踩点）
 
