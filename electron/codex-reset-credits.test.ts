@@ -76,6 +76,14 @@ describe('mergeCodexResetCredits', () => {
     expect(merged.rate_limit_reset_credits).toEqual({ available_count: 2, expiresAtMs: 1_800_000_000_000 })
   })
 
+  it('treats a stringified count as present so the companion cannot win', () => {
+    // proto-JSON commonly stringifies counters: usage "0" + companion 5 must
+    // still show 0, not the stale companion value
+    const narrowed = { rate_limit_reset_credits: { available_count: '0' } }
+    const merged = mergeCodexResetCredits(narrowed, reset)
+    expect(merged.rate_limit_reset_credits).toEqual({ available_count: '0', expiresAtMs: 1_800_000_000_000 })
+  })
+
   it('fills in the count only when the usage response said nothing', () => {
     const merged = mergeCodexResetCredits({ plan_type: 'pro' }, reset)
     expect(merged.rate_limit_reset_credits).toEqual({ available_count: 5, expiresAtMs: 1_800_000_000_000 })

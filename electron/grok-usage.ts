@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { isTimeoutError } from './fetch-errors'
 
 /**
  * Grok Build (SuperGrok) subscription quota probe, mirroring the
@@ -397,7 +398,7 @@ export async function fetchGrokUsage(fetchImpl: FetchImpl, homeDir: string): Pro
       if (banked.expiresAt != null) body.resetsExpireAt = banked.expiresAt
     }
     return { available: true, body: JSON.stringify(body) }
-  } catch {
-    return { available: false, reason: 'probe-failed' }
+  } catch (error) {
+    return { available: false, reason: isTimeoutError(error) ? 'timeout' : 'network' }
   }
 }

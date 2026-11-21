@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
 import type { QuotaOutcome } from './subscription-quotas'
+import { isTimeoutError } from './fetch-errors'
 
 /**
  * Kiro plan credits from the CLI's own state database.
@@ -169,6 +170,6 @@ export async function fetchKiroQuota(
       }),
     }
   } catch (error) {
-    return { available: false, reason: error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'network' }
+    return { available: false, reason: isTimeoutError(error) ? 'timeout' : 'network' }
   }
 }

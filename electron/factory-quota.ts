@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { QuotaOutcome } from './subscription-quotas'
+import { isTimeoutError } from './fetch-errors'
 
 /**
  * Factory (Droid) subscription quota.
@@ -255,20 +256,27 @@ export async function fetchFactoryQuota(
     let windows: FactoryWindow[] = []
     let topUpCredits: number | null = null
     const limits = await getJson(fetchImpl, BILLING_LIMITS_URL, apiKey)
-    if (!limits.ok) {
-      if ('status' in limits && (limits.status === 401 || limits.status === 403)) {
-        return { available: false, reason: 'reauth' }
+    let tryLegacy = false
+    if (limits.ok) {
+      const fromLimits = windowsFromBillingLimits(limits.json, now)
+      if (fromLimits) {
+        windows = fromLimits.windows
+        topUpCredits = fromLimits.topUpCredits
+      } else {
+        tryLegacy = true
       }
-      if ('status' in limits) return { available: false, reason: `http-${limits.status}` }
-      return { available: false, reason: 'bad-response' }
-    }
-    const fromLimits = windowsFromBillingLimits(limits.json, now)
-    if (fromLimits) {
-      windows = fromLimits.windows
-      topUpCredits = fromLimits.topUpCredits
+    } else if ('status' in limits && (limits.status === 401 || limits.status === 403)) {
+      return { available: false, reason: 'reauth' }
     } else {
-      // Accounts not on token-rate-limits billing report the legacy Standard +
-      // Premium token pools; the legacy read failing is its own honest state.
+      // Legacy Standard/Premium accounts may not serve /billing/limits at all
+      // (any 4xx/5xx with no token-rate-limits shape), and a 200 that answers
+      // with an HTML challenge page parses as no-status — both get the legacy
+      // token pools before giving up. 401/403 already returned above — a bad
+      // key must not masquerade as a legacy account.
+      tryLegacy = true
+    }
+    if (tryLegacy) {
+      // The legacy read failing is its own honest state.
       const legacy = await getJson(fetchImpl, LEGACY_USAGE_URL, apiKey)
       if (!legacy.ok) {
         if ('status' in legacy) return { available: false, reason: `http-${legacy.status}` }
@@ -289,6 +297,6 @@ export async function fetchFactoryQuota(
     }
     return { available: true, body: JSON.stringify({ plan, windows, topUpCredits, stale: false }) }
   } catch (error) {
-    return { available: false, reason: error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'network' }
+    return { available: false, reason: isTimeoutError(error) ? 'timeout' : 'network' }
   }
 }

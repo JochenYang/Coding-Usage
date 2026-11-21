@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parse as parseToml } from 'smol-toml'
 import type { QuotaOutcome } from './subscription-quotas'
+import { isTimeoutError } from './fetch-errors'
 
 /**
  * Devin (Devin CLI) subscription quota.
@@ -188,6 +189,6 @@ export async function fetchDevinQuota(
       body: JSON.stringify({ plan: planFromUserStatus(parsed), windows, topUpCredits: null, stale: false }),
     }
   } catch (error) {
-    return { available: false, reason: error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'network' }
+    return { available: false, reason: isTimeoutError(error) ? 'timeout' : 'network' }
   }
 }

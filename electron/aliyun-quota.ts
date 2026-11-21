@@ -1,5 +1,6 @@
 import type { QuotaOutcome } from './subscription-quotas'
 import { readAllowlistedCookies, type CookieReadOptions } from './browser-cookies'
+import { isTimeoutError } from './fetch-errors'
 
 /**
  * Alibaba Cloud console quota probes (Coding Plan, Qwen Cloud, Token Plan).
@@ -676,7 +677,7 @@ async function fetchConsoleQuota(
   } catch (error) {
     // Nothing from the failure object is returned: a rejected file write or a
     // fetch error can carry a path or a URL into the renderer.
-    return { available: false, reason: error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'network' }
+    return { available: false, reason: isTimeoutError(error) ? 'timeout' : 'network' }
   }
 }
 
@@ -732,7 +733,7 @@ export async function fetchPastedQuota(
       detail: trace,
     }
   } catch (error) {
-    return { available: false, reason: error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'network', detail: trace }
+    return { available: false, reason: isTimeoutError(error) ? 'timeout' : 'network', detail: trace }
   }
 }
 

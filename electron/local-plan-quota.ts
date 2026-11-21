@@ -367,8 +367,10 @@ async function cachedCursorPlanName(fetchImpl: FetchImpl, token: string): Promis
   }
   const value = await fetchCursorPlanName(fetchImpl, token)
   // Only successes are remembered: a transient failure must not pin "no plan".
-  if (value) cachedPlanName = { key, value, at: Date.now() }
-  return value
+  // The badge width is capped at 80 chars like the sibling probes — the server
+  // string is display garnish, not a field worth unbounded trust.
+  if (value) cachedPlanName = { key, value: value.slice(0, 80), at: Date.now() }
+  return value ? value.slice(0, 80) : null
 }
 
 /** Test seam: drop the in-process caches */
@@ -579,9 +581,10 @@ export async function fetchCursorUsage(
         // Tag the payload with the name so the card can show its badge without a
         // second IPC round-trip. Only this probe writes it; the renderer treats
         // it as optional.
+        const periodBody = JSON.parse(period) as object
         const merged = planName
-          ? { ...(JSON.parse(period) as object), cursorPlanName: planName, ...grantsField }
-          : { ...(JSON.parse(period) as object), ...grantsField }
+          ? { ...periodBody, cursorPlanName: planName, ...grantsField }
+          : { ...periodBody, ...grantsField }
         return { available: true, body: JSON.stringify(merged) }
       }
     }
@@ -615,8 +618,10 @@ export async function fetchCursorUsage(
       return { available: false, reason: 'bad-response' }
     }
     const base = narrowCursorUsage(parsed)
-    // The grants fetch already ran with the period fan-out above; the legacy
-    // path simply carries whatever it produced.
+    // grantsField fills only inside the JWT branch's fan-out. A pure cookie
+    // session spreads an empty object, while a JWT whose period read failed
+    // falls through here with whatever grants that fan-out already brought
+    // back — the enhancement rides along on either path.
     return { available: true, body: JSON.stringify({ ...base, ...grantsField }) }
   } catch {
     return { available: false, reason: 'probe-failed' }

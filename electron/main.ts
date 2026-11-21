@@ -46,6 +46,7 @@ import {
 } from './pasted-requests'
 import { flushQuotaStoreSync, initQuotaStore, readQuotaSnapshot, saveQuotaOutcome } from './quota-store'
 import { objOf, pickMembers } from './json-shape'
+import { isTimeoutError } from './fetch-errors'
 import { getPricingMeta, getPricingTable, priceTokens, type PricingMeta } from './model-pricing'
 import { hasClientEntries, mergeGraphPayloads } from './tokscale-merge'
 import {
@@ -1294,7 +1295,7 @@ function registerIpc(): void {
         } catch (e) {
           // Distinguish "never logged in" from "the request failed" — the
           // card copy differs (no-auth-file reads as an honest empty state)
-          return { available: false, reason: e instanceof Error && e.name === 'AbortError' ? 'timeout' : 'network' }
+          return { available: false, reason: isTimeoutError(e) ? 'timeout' : 'network' }
         }
       }),
   )

@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { QuotaOutcome } from './subscription-quotas'
+import { isTimeoutError } from './fetch-errors'
 
 /**
  * Cline Pass subscription quota.
@@ -158,6 +159,6 @@ export async function fetchClineQuota(
     if (!windows || windows.length === 0) return { available: false, reason: 'parse-failed' }
     return { available: true, body: JSON.stringify({ plan: null, windows, topUpCredits: null, stale: false }) }
   } catch (error) {
-    return { available: false, reason: error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'network' }
+    return { available: false, reason: isTimeoutError(error) ? 'timeout' : 'network' }
   }
 }

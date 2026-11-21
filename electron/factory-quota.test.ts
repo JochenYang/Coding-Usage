@@ -234,4 +234,24 @@ describe('fetchFactoryQuota', () => {
     })
     expect(outcome503).toEqual({ available: false, reason: 'http-503' })
   })
+
+  it('falls back to the legacy usage endpoint when /billing/limits answers 404', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'factory-quota-'))
+    const outcome = await fetchFactoryQuota(
+      async (url) => {
+        if (String(url).includes('/api/organization/subscription/usage')) {
+          return new Response(
+            JSON.stringify({
+              usage: { endDate: NOW / 1000, standard: { userTokens: 1, totalAllowance: 4, usedRatio: 0.25 } },
+            }),
+          )
+        }
+        return new Response('not found', { status: 404 })
+      },
+      home,
+      { FACTORY_API_KEY: 'fk-env' },
+    )
+    expect(outcome.available).toBe(true)
+    expect(JSON.parse(outcome.body ?? '{}').windows).toEqual([{ id: 'factoryStandard', percent: 25, resetsAt: null }])
+  })
 })

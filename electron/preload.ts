@@ -75,8 +75,8 @@ const desktopBridge: DesktopBridge = {
   agentConfigTestModel: (agent, providerId, modelId) =>
     ipcRenderer.invoke('agentConfig:testModel', agent, providerId, modelId),
   // The login is the CLI's own — no argument is passed and none is accepted:
-  // the probe resolves the local identity itself (main.ts re-validates the
-  // boundary for anything that does arrive).
+  // the probe resolves the local identity itself; the handler reads no
+  // arguments, and any extra invoke args are simply ignored.
   kimiUsage: () => ipcRenderer.invoke('kimi:usage'),
   antigravityUsage: () => ipcRenderer.invoke('antigravity:usage'),
   settingsBackupWrite: (payload) => ipcRenderer.invoke('settings:backup-write', payload),

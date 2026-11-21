@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { QuotaOutcome } from './subscription-quotas'
+import { isTimeoutError } from './fetch-errors'
 
 /**
  * Kilo Pass usage from the CLI login, or `KILO_API_KEY` when that file is absent.
@@ -175,6 +176,6 @@ export async function fetchKiloQuota(
       body: JSON.stringify({ plan: parsed.plan, windows: parsed.windows, topUpCredits: null, stale: false }),
     }
   } catch (error) {
-    return { available: false, reason: error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'network' }
+    return { available: false, reason: isTimeoutError(error) ? 'timeout' : 'network' }
   }
 }

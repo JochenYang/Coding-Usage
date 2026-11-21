@@ -193,16 +193,17 @@ describe('fetchGrokUsage', () => {
     expect(body.plan).toBeNull()
   })
 
-  it('maps a 401 to the http reason without calling the settings endpoint', async () => {
+  it('maps a 401 to the http reason; the concurrent garnish reads fire and cost nothing', async () => {
     const home = await tempDir('grok-quota-')
     await writeAuth(home, { 'https://auth.x.ai::supergrok': { key: 'grok-secret' } })
-    const calls: RecordedCall[] = []
     const outcome = await fetchGrokUsage(
-      scriptedFetch({ [BILLING_URL]: () => new Response('{"error":"expired"}', { status: 401 }) }, calls),
+      scriptedFetch({ [BILLING_URL]: () => new Response('{"error":"expired"}', { status: 401 }) }),
       home,
     )
+    // 401 is decided by the billing read. The plan/banked reads were launched
+    // concurrently with it — their failures are swallowed, so no extra reason
+    // or field leaks out.
     expect(outcome).toEqual({ available: false, reason: 'http-401' })
-    expect(calls.map((c) => c.url)).toEqual([BILLING_URL])
   })
 
   it('maps a non-200 billing status to the http reason', async () => {
@@ -227,10 +228,10 @@ describe('fetchGrokUsage', () => {
     expect(outcome).toEqual({ available: false, reason: 'malformed-body' })
   })
 
-  it('maps a transport failure to probe-failed', async () => {
+  it('maps a transport failure to network and a signal timeout to timeout', async () => {
     const home = await tempDir('grok-quota-')
     await writeAuth(home, { 'https://auth.x.ai::supergrok': { key: 'grok-secret' } })
-    const outcome = await fetchGrokUsage(
+    const networkDown = await fetchGrokUsage(
       scriptedFetch({
         [BILLING_URL]: () => {
           throw new Error('network down')
@@ -238,7 +239,16 @@ describe('fetchGrokUsage', () => {
       }),
       home,
     )
-    expect(outcome).toEqual({ available: false, reason: 'probe-failed' })
+    expect(networkDown).toEqual({ available: false, reason: 'network' })
+    const timedOut = await fetchGrokUsage(
+      scriptedFetch({
+        [BILLING_URL]: () => {
+          throw Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' })
+        },
+      }),
+      home,
+    )
+    expect(timedOut).toEqual({ available: false, reason: 'timeout' })
   })
 })
 

@@ -236,8 +236,14 @@ export const warp: ProviderDef = {
       : []
     const pool = bonusPool([...userGrants, ...workspaceGrants])
     if (pool.granted > 0 || pool.remaining > 0) {
-      const percent =
-        pool.granted > 0 ? Math.min(100, Math.max(0, ((pool.granted - pool.remaining) / pool.granted) * 100)) : pool.remaining > 0 ? 0 : 100
+      // granted === 0 with remaining > 0 cannot happen: bonusPool filters
+      // grants whose remaining exceeds their size, so the only reachable
+      // non-positive-granted case is granted === remaining === 0 — filtered by
+      // the guard above. No `: 100` fallback branch for it.
+      const percent = Math.min(
+        100,
+        Math.max(0, ((pool.granted - pool.remaining) / Math.max(1, pool.granted)) * 100),
+      )
       metrics.push({
         id: 'warp-bonus',
         label: t.windows.warpBonusCredits,

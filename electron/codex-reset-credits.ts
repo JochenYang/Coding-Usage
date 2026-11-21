@@ -84,7 +84,11 @@ export function mergeCodexResetCredits(
 ): Record<string, unknown> {
   if (!reset) return narrowed
   const existing = objOf(narrowed.rate_limit_reset_credits)
-  const usageCount = existing && typeof existing.available_count === 'number' ? existing.available_count : null
+  // Parse through the same integer lens as this module's own reads: proto-JSON
+  // commonly stringifies counters ("0"), and a raw typeof check would treat a
+  // string "0" as "the usage response said nothing", letting a stale companion
+  // count overwrite it.
+  const usageCount = existing ? intOf(existing.available_count) : null
   const merged: Record<string, unknown> = { ...(existing ?? {}) }
   if (usageCount == null && reset.availableCount > 0) merged.available_count = reset.availableCount
   if (reset.earliestExpiryMs != null) merged.expiresAtMs = reset.earliestExpiryMs
