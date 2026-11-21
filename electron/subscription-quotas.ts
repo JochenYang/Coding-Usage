@@ -48,6 +48,31 @@ function pickObject(root: unknown, key: string): Record<string, unknown> | null 
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
 }
 
+/**
+ * Store-boundary helpers for the quota probes. `quota-cache.json` persists
+ * `QuotaOutcome.body` verbatim under a "normalized payload only" declaration
+ * (quota-store.ts), so a probe narrows the vendor response to the fields the
+ * cards actually parse before returning it — the raw response of an account
+ * endpoint can carry account identifiers that are neither usage numbers nor
+ * something this app should write to disk.
+ */
+
+/** A plain (non-array, non-null) object member, or null */
+function objOf(value: unknown): Record<string, unknown> | null {
+  return value != null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+/** Copy the listed members (when present) into a fresh object, verbatim */
+function pickMembers(source: Record<string, unknown>, keys: string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const key of keys) {
+    if (source[key] !== undefined) out[key] = source[key]
+  }
+  return out
+}
+
 // ===== Claude Code =====
 
 const CLAUDE_USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
@@ -62,6 +87,35 @@ const CLAUDE_OAUTH_BETA = 'oauth-2025-04-20'
  * its Keychain entry — reading the file remains the portable, safe subset, so
  * a Keychain-only install degrades to the honest unavailable state.
  */
+/**
+ * The official usage response reduced to what src/lib/claude-quota.ts parses:
+ * the four known windows and the scoped `limits[]` entries (percentages, reset
+ * stamps and the model display names they are labelled with). Everything else
+ * the endpoint returns never reaches IPC or disk.
+ */
+function narrowClaudeUsage(raw: unknown): Record<string, unknown> {
+  const root = objOf(raw)
+  if (!root) return {}
+  const out: Record<string, unknown> = {}
+  for (const key of ['five_hour', 'seven_day', 'seven_day_opus', 'seven_day_sonnet']) {
+    const window = objOf(root[key])
+    if (window) out[key] = pickMembers(window, ['utilization', 'resets_at'])
+  }
+  if (Array.isArray(root.limits)) {
+    const limits: unknown[] = []
+    for (const limit of root.limits) {
+      const record = objOf(limit)
+      if (!record) continue
+      const item = pickMembers(record, ['percent', 'utilization', 'resets_at', 'kind'])
+      const model = objOf(objOf(record.scope)?.model)
+      if (model) item.scope = { model: pickMembers(model, ['display_name', 'displayName']) }
+      limits.push(item)
+    }
+    out.limits = limits
+  }
+  return out
+}
+
 export async function fetchClaudeUsage(
   fetchImpl: FetchImpl,
   homeDir: string,
@@ -89,7 +143,16 @@ export async function fetchClaudeUsage(
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     })
     if (!res.ok) return { available: false, reason: `http-${res.status}` }
-    return { available: true, body: await res.text() }
+    // Narrowed before returning: quota-cache.json persists this body verbatim
+    // (see narrowClaudeUsage). An unparsable response maps to the same state
+    // the card's parser would reach on the raw text.
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(await res.text())
+    } catch {
+      return { available: false, reason: 'bad-response' }
+    }
+    return { available: true, body: JSON.stringify(narrowClaudeUsage(parsed)) }
   } catch {
     return { available: false, reason: 'probe-failed' }
   }
@@ -167,7 +230,16 @@ export async function fetchGeminiUsage(fetchImpl: FetchImpl, homeDir: string): P
       if (refreshed) token = refreshed
     }
     if (token == null) {
-      return { available: false, reason: hasToken ? 'refresh-failed' : 'no-refresh-token' }
+      // A refresh token that fails to refresh is a stale login — the cards
+      // surface `refresh-failed` as "sign in again" (same reading as
+      // antigravity-quota.ts); no refresh token at all never carried one.
+      return {
+        available: false,
+        reason:
+          typeof refreshToken === 'string' && refreshToken !== ''
+            ? 'refresh-failed'
+            : 'no-refresh-token',
+      }
     }
 
     const authHeaders = { Authorization: `Bearer ${token}`, Accept: 'application/json' }

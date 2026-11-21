@@ -70,9 +70,10 @@ const desktopBridge: DesktopBridge = {
     ipcRenderer.invoke('agentConfig:listModels', agent, providerId, override),
   agentConfigTestModel: (agent, providerId, modelId) =>
     ipcRenderer.invoke('agentConfig:testModel', agent, providerId, modelId),
-  // Optional pasted Kimi Code API key; undefined keeps the probe on the local
-  // OAuth state. main.ts re-validates the argument at the boundary.
-  kimiUsage: (apiKey) => ipcRenderer.invoke('kimi:usage', apiKey),
+  // The login is the CLI's own — no argument is passed and none is accepted:
+  // the probe resolves the local identity itself (main.ts re-validates the
+  // boundary for anything that does arrive).
+  kimiUsage: () => ipcRenderer.invoke('kimi:usage'),
   antigravityUsage: () => ipcRenderer.invoke('antigravity:usage'),
   settingsBackupWrite: (payload) => ipcRenderer.invoke('settings:backup-write', payload),
   settingsBackupRead: () => ipcRenderer.invoke('settings:backup-read'),

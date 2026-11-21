@@ -93,6 +93,10 @@ export async function sendWebhook(
         headers: { 'Content-Type': 'application/json', ...(request.headers ?? {}) },
         body: request.body,
         signal: AbortSignal.timeout(15_000),
+        // Refuse redirects: a 307/308 would replay the alert body to whatever
+        // host the Location names. These endpoints are direct POST APIs, so a
+        // redirect is a misconfiguration, not something to follow silently.
+        redirect: 'error',
       })
       let json: unknown = null
       try {

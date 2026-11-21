@@ -4,6 +4,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { readSealedSecret } from './safe-storage'
+import { objOf, pickMembers } from './json-shape'
 
 /**
  * Local-login quota probes for Cursor and GitHub Copilot.
@@ -84,6 +85,16 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
   }
 }
 
+/**
+ * Store-boundary helpers for the quota probes. `quota-cache.json` persists
+ * `LocalQuotaOutcome.body` verbatim under a "normalized payload only" declaration
+ * (quota-store.ts), so a probe narrows the vendor response to the fields the
+ * cards actually parse before returning it — the raw response of an account
+ * endpoint can carry account identifiers (Copilot's user id, organization
+ * list) that are neither usage numbers nor something this app should write to
+ * disk.
+ */
+
 // ===== GitHub Copilot =====
 
 /**
@@ -116,6 +127,32 @@ async function readCopilotToken(home: string, env: NodeJS.ProcessEnv): Promise<s
   return null
 }
 
+/**
+ * The copilot_internal/user response reduced to what src/lib/local-plan-quota.ts
+ * parses: plan name, reset date and the two quota snapshots. The endpoint's
+ * other members (user id, organization list) are the reason this narrowing
+ * exists — they are account identifiers, not usage numbers.
+ */
+function narrowCopilotUsage(raw: unknown): Record<string, unknown> {
+  const root = objOf(raw)
+  if (!root) return {}
+  const out: Record<string, unknown> = {}
+  if (typeof root.copilot_plan === 'string') out.copilot_plan = root.copilot_plan
+  if (root.quota_reset_date !== undefined) out.quota_reset_date = root.quota_reset_date
+  const snapshots = objOf(root.quota_snapshots)
+  if (snapshots) {
+    const picked: Record<string, unknown> = {}
+    for (const key of ['premium_interactions', 'chat']) {
+      const snapshot = objOf(snapshots[key])
+      if (snapshot && snapshot.percent_remaining !== undefined) {
+        picked[key] = { percent_remaining: snapshot.percent_remaining }
+      }
+    }
+    out.quota_snapshots = picked
+  }
+  return out
+}
+
 export async function fetchCopilotUsage(
   fetchImpl: FetchImpl,
   home: string = homedir(),
@@ -138,7 +175,16 @@ export async function fetchCopilotUsage(
     })
     if (res.status === 401 || res.status === 403) return { available: false, reason: `http-${res.status}` }
     if (!res.ok) return { available: false, reason: `http-${res.status}` }
-    return { available: true, body: await res.text() }
+    // Narrowed before returning: quota-cache.json persists this body verbatim
+    // (see narrowCopilotUsage). An unparsable response maps to the same state
+    // the card's parser would reach on the raw text.
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(await res.text())
+    } catch {
+      return { available: false, reason: 'bad-response' }
+    }
+    return { available: true, body: JSON.stringify(narrowCopilotUsage(parsed)) }
   } catch {
     return { available: false, reason: 'probe-failed' }
   }
@@ -355,6 +401,35 @@ function finiteNumber(value: unknown): number | null {
  * read would report "no data" instead of falling back to the legacy summary,
  * which is worse than the stale number this change replaces.
  */
+/**
+ * Both Cursor responses reduced to what src/lib/local-plan-quota.ts parses,
+ * whichever shape arrives: the Connect period payload (`planUsage`) or the
+ * legacy usage summary (`individual_usage` / `individualUsage`), plus the
+ * shared unlimited flag and cycle-end stamp. Both spellings the parser reads
+ * are kept — an account can hit either during the endpoint's rename rollout.
+ */
+function narrowCursorUsage(raw: unknown): Record<string, unknown> {
+  const root = objOf(raw)
+  if (!root) return {}
+  const out = pickMembers(root, ['is_unlimited', 'isUnlimited', 'billing_cycle_end', 'billingCycleEnd'])
+  const period = objOf(root.planUsage)
+  if (period) out.planUsage = pickMembers(period, ['totalPercentUsed', 'autoPercentUsed'])
+  for (const key of ['individual_usage', 'individualUsage']) {
+    const branch = objOf(root[key])
+    const plan = branch ? objOf(branch.plan) : null
+    if (!plan) continue
+    out[key] = {
+      plan: pickMembers(
+        plan,
+        key === 'individual_usage'
+          ? ['total_percent_used', 'auto_percent_used', 'api_percent_used']
+          : ['totalPercentUsed', 'autoPercentUsed', 'apiPercentUsed'],
+      ),
+    }
+  }
+  return out
+}
+
 async function fetchCursorPeriodUsage(fetchImpl: FetchImpl, token: string): Promise<string | null> {
   try {
     const res = await fetchImpl(CURSOR_PERIOD_URL, {
@@ -378,7 +453,9 @@ async function fetchCursorPeriodUsage(fetchImpl: FetchImpl, token: string): Prom
     if (planUsage == null || typeof planUsage !== 'object') return null
     const usage = planUsage as { totalPercentUsed?: unknown; autoPercentUsed?: unknown }
     const usable = finiteNumber(usage.totalPercentUsed) ?? finiteNumber(usage.autoPercentUsed)
-    return usable == null ? null : body
+    // Narrowed before returning: this body lands in quota-cache.json verbatim
+    // (see narrowCursorUsage).
+    return usable == null ? null : JSON.stringify(narrowCursorUsage(parsed))
   } catch {
     return null
   }
@@ -434,7 +511,16 @@ export async function fetchCursorUsage(
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     })
     if (!res.ok) return { available: false, reason: `http-${res.status}` }
-    return { available: true, body: await res.text() }
+    // Narrowed before returning: quota-cache.json persists this body verbatim
+    // (see narrowCursorUsage). An unparsable response maps to the same state
+    // the card's parser would reach on the raw text.
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(await res.text())
+    } catch {
+      return { available: false, reason: 'bad-response' }
+    }
+    return { available: true, body: JSON.stringify(narrowCursorUsage(parsed)) }
   } catch {
     return { available: false, reason: 'probe-failed' }
   }

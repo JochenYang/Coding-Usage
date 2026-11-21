@@ -11,10 +11,13 @@ import type { QuotaOutcome } from './subscription-quotas'
  * blank and then stalled. This store keeps the last *successful* outcome on
  * disk so a card can paint immediately and refresh behind the user's back.
  *
- * Only numbers are stored — `QuotaOutcome.body` is the normalized payload each
- * probe already builds, never a credential. A failure is never written: it must
- * not replace the last good reading with an empty state. Readers get `at` with
- * every entry so the card can say how old the figure is.
+ * Only numbers are stored — every probe narrows the vendor response to the
+ * fields the cards parse before returning it, so `QuotaOutcome.body` is the
+ * normalized payload, never a credential or an account identifier. The store
+ * trusts that boundary and does not re-inspect bodies itself. A failure is
+ * never written: it must not replace the last good reading with an empty
+ * state. Readers get `at` with every entry so the card can say how old the
+ * figure is.
  *
  * Writes are coalesced: a refresh finishes a dozen probes at once, and one
  * small rewrite per probe would be pointless disk churn.
@@ -83,8 +86,13 @@ export function readQuotaSnapshot(): QuotaSnapshot {
 /** Record a successful outcome; a failure is ignored on purpose. */
 export function saveQuotaOutcome(key: string, result: QuotaOutcome): void {
   if (!result.available || typeof result.body !== 'string') return
-  // The caller may pass a credential-scoped key (`kimi:<digest>`). Only the
-  // provider part is persisted so the cache file never holds a key fingerprint.
+  // Entries are keyed and overwritten by provider: callers that differ only in
+  // a credential suffix (`kimi:<digest>`) share one slot, so accounts
+  // replacing each other on one provider overwrite the previous reading on
+  // disk. That is the intended semantics — one CLI login per provider today;
+  // per-account separation would need a widened key contract here and in
+  // sanitize, not a digest baked into this file. Only the provider part is
+  // kept either way, so the cache file never holds a key fingerprint.
   const provider = key.split(':')[0] ?? key
   if (!/^[a-z0-9-]{1,40}$/.test(provider)) return
   entries[provider] = { at: Date.now(), result: { available: true, body: result.body } }

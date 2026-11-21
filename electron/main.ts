@@ -1,5 +1,4 @@
 import { spawn } from 'node:child_process'
-import { createHash } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
@@ -21,7 +20,7 @@ import { autoUpdater } from 'electron-updater'
 import { Background } from './background'
 import { fetchClaudeUsage, fetchGeminiUsage, type QuotaOutcome } from './subscription-quotas'
 import { fetchGrokUsage } from './grok-usage'
-import { readQoderQuota, type QoderQuotaOutcome } from './qoder-quota'
+import { qoderStoreBody, readQoderQuota, type QoderQuotaOutcome } from './qoder-quota'
 import { fetchTraeUsage } from './trae-usage'
 import { fetchKimiUsage } from './kimi-usage'
 import { fetchAntigravityUsage } from './antigravity-quota'
@@ -42,6 +41,7 @@ import {
   type PastedTarget,
 } from './pasted-requests'
 import { flushQuotaStoreSync, initQuotaStore, readQuotaSnapshot, saveQuotaOutcome } from './quota-store'
+import { objOf, pickMembers } from './json-shape'
 import { getPricingMeta, getPricingTable, priceTokens, type PricingMeta } from './model-pricing'
 import { hasClientEntries, mergeGraphPayloads } from './tokscale-merge'
 import {
@@ -469,18 +469,6 @@ function releaseQuotaSlot(): void {
   quotaQueue.shift()?.()
 }
 
-/**
- * Cache identity for a probe, with the credential folded in as a digest. Two
- * accounts on the same provider must never share an entry, and the raw key must
- * not sit in a long-lived map where a heap snapshot could expose it — the
- * digest is enough to tell one credential from another and is not reversible.
- */
-function quotaCacheKey(provider: string, credential?: string): string {
-  if (!credential) return provider
-  const digest = createHash('sha256').update(credential).digest('hex').slice(0, 16)
-  return `${provider}:${digest}`
-}
-
 async function cachedQuotaOutcome(
   key: string,
   probe: () => Promise<QuotaOutcome>,
@@ -514,6 +502,49 @@ async function cachedQuotaOutcome(
   })()
   quotaInflight.set(key, run)
   return run
+}
+
+/**
+ * The codex wham response reduced to what src/lib/codex-quota.ts parses: plan
+ * id, credits, spend cap, the two rate-limit windows and the reset-credit
+ * count. Everything else (account metadata) never reaches IPC or disk.
+ */
+function narrowCodexUsage(raw: unknown): Record<string, unknown> {
+  const root = objOf(raw)
+  if (!root) return {}
+  const out: Record<string, unknown> = {}
+  if (typeof root.plan_type === 'string') out.plan_type = root.plan_type
+  const credits = objOf(root.credits)
+  if (credits) out.credits = pickMembers(credits, ['unlimited', 'balance'])
+  const spend = objOf(root.spend_control)
+  if (spend) {
+    const picked = pickMembers(spend, ['reached'])
+    const limit = objOf(spend.individual_limit)
+    if (limit) picked.individual_limit = pickMembers(limit, ['used_percent', 'percent', 'reached'])
+    out.spend_control = picked
+  }
+  const rateLimit = objOf(root.rate_limit)
+  if (rateLimit) {
+    const picked: Record<string, unknown> = {}
+    for (const key of ['primary_window', 'secondary_window']) {
+      const window = objOf(rateLimit[key])
+      if (window) {
+        picked[key] = pickMembers(window, [
+          'used_percent',
+          'usedPercent',
+          'limit_window_seconds',
+          'limitWindowSeconds',
+          'reset_at',
+          'resetAt',
+          'resets_at',
+        ])
+      }
+    }
+    out.rate_limit = picked
+  }
+  const resetCredits = objOf(root.rate_limit_reset_credits)
+  if (resetCredits) out.rate_limit_reset_credits = pickMembers(resetCredits, ['available_count'])
+  return out
 }
 
 /**
@@ -961,10 +992,25 @@ async function overrideCosts(daily: unknown): Promise<unknown> {
 function registerIpc(): void {
   // Route renderer HTTP through the main process: net.fetch is not subject to
   // CORS, so provider APIs are called directly with no third-party proxy.
+  // Trust premise: the renderer is our own bundle (contextIsolation on, no
+  // remote content), so url/headers are checked for shape and scheme only, not
+  // against a per-provider allowlist. The checks below harden against accident
+  // and a non-HTTP target, not against a fully compromised renderer — a
+  // renderer that can run arbitrary code is outside this handler's threat model.
   ipcMain.handle(
     'net:fetch',
     async (_event, url: unknown, headers: unknown): Promise<DesktopFetchResult> => {
       if (typeof url !== 'string' || url === '') return { status: 0, body: 'invalid url' }
+      // Only http/https: this handler is the renderer's one outbound path, so
+      // file://, ftp:// or custom schemes must not be reachable through it.
+      try {
+        const parsed = new URL(url)
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          return { status: 0, body: 'invalid url' }
+        }
+      } catch {
+        return { status: 0, body: 'invalid url' }
+      }
       // Keep the trust boundary explicit even though the renderer is our own bundle
       const cleanHeaders: Record<string, string> = {}
       if (headers && typeof headers === 'object') {
@@ -978,6 +1024,11 @@ function registerIpc(): void {
         const res = await net.fetch(url, {
           headers: cleanHeaders,
           signal: AbortSignal.timeout(30_000),
+          // Redirects are refused: every bridge consumer is a direct JSON API
+          // endpoint (src/providers/* adapters, the FX rate feed in
+          // data-context.tsx), and following a 3xx would replay the renderer's
+          // Authorization/Cookie headers to a host the URL never named.
+          redirect: 'error',
         })
         return { status: res.status, body: await res.text() }
       } catch (error) {
@@ -1203,7 +1254,16 @@ function registerIpc(): void {
             signal: AbortSignal.timeout(10_000),
           })
           if (!res.ok) return { available: false, reason: `http-${res.status}` }
-          return { available: true, body: await res.text() }
+          // Narrowed before returning: quota-cache.json persists this body
+          // verbatim (see narrowCodexUsage). An unparsable response maps to the
+          // same state the card's parser would reach on the raw text.
+          let parsed: unknown
+          try {
+            parsed = JSON.parse(await res.text())
+          } catch {
+            return { available: false, reason: 'bad-response' }
+          }
+          return { available: true, body: JSON.stringify(narrowCodexUsage(parsed)) }
         } catch (e) {
           // Distinguish "never logged in" from "the request failed" — the
           // card copy differs (no-auth-file reads as an honest empty state)
@@ -1242,10 +1302,18 @@ function registerIpc(): void {
   // Qoder global build: the credits pool the IDE shows in its own account
   // panel. The probe decrypts the IDE's stored login on Windows (see
   // qoder-quota.ts) and returns numbers only — the token never crosses this
-  // boundary. It caches internally, so it does not use the shared quota cache.
+  // boundary. It caches internally, so it does not use the shared in-memory
+  // quota cache; the numeric outcome is still persisted through the shared
+  // store so a cold start can paint the last reading before the probe (a
+  // PowerShell DPAPI unwrap) answers.
   ipcMain.handle(
     'qoder:quota',
-    (): Promise<QoderQuotaOutcome> => readQoderQuota(net.fetch, app.getPath('appData')),
+    async (): Promise<QoderQuotaOutcome> => {
+      const outcome = await readQoderQuota(net.fetch, app.getPath('appData'))
+      const body = qoderStoreBody(outcome)
+      if (body != null) saveQuotaOutcome('qoder', { available: true, body })
+      return outcome
+    },
   )
 
   // Cursor and GitHub Copilot plan quota, both read from the client's own
@@ -1395,15 +1463,12 @@ function registerIpc(): void {
   // probe keeps them apart: a Moonshot platform API key only ever yields a
   // money balance, while the 5-hour / weekly quota windows live behind the
   // Kimi Code subscription (local loopback server, or the remote usages
-  // endpoint). The renderer may pass the account's pasted API key so an OAuth
-  // token that the CLI has not refreshed yet cannot mask a valid key; anything
-  // that is not a non-empty string is dropped here rather than forwarded.
-  ipcMain.handle('kimi:usage', async (_event, apiKey?: unknown): Promise<QuotaOutcome> => {
-    const key = typeof apiKey === 'string' && apiKey.trim() !== '' ? apiKey : undefined
-    // The credential is part of the cache identity: a second account's key must
-    // not read the first account's cached windows.
-    return cachedQuotaOutcome(quotaCacheKey('kimi', key), () => fetchKimiUsage(net.fetch, homedir(), key))
-  })
+  // endpoint). The login is the CLI's own — the probe resolves it locally, so
+  // this channel has exactly one identity per install and no credential ever
+  // crosses IPC.
+  ipcMain.handle('kimi:usage', async (): Promise<QuotaOutcome> =>
+    cachedQuotaOutcome('kimi', () => fetchKimiUsage(net.fetch, homedir())),
+  )
 
   // Antigravity subscription quota. Unlike every other subscription this one is
   // read from the IDE's own language server over loopback (see
@@ -1617,6 +1682,14 @@ function registerIpc(): void {
 // Feed failover: GitHub direct first; when unreachable (common in mainland
 // China) the same feed through the gh-proxy.com mirror. The choice lives for
 // the session only — every launch retries GitHub first.
+//
+// The mirror is a mitigation, not a verified channel: the app is unsigned
+// (electron-builder.yml), and latest.yml plus the installer arrive through the
+// same third-party host, so the sha512 comparison cannot distinguish a
+// mirrored feed from a tampered one. While the mirror is in play an update is
+// never applied without an explicit user action (install-on-quit is disabled
+// for the session) and the settings row labels the source as unverified; a
+// signing certificate is the real fix.
 const GH_PROXY_FEED =
   'https://gh-proxy.com/https://github.com/JochenYang/Coding-Usage/releases/latest/download'
 
@@ -1658,6 +1731,11 @@ async function checkForUpdates(): Promise<void> {
     // GitHub unreachable → mirror through gh-proxy.com and try once more
     usingProxy = true
     autoUpdater.setFeedURL(PROXY_FEED)
+    // Unsigned app behind a third-party mirror: the only integrity check left
+    // is the sha512 in the mirrored latest.yml, which the mirror can rewrite
+    // too. Nothing may install without the user's explicit confirmation, so
+    // the silent install-on-quit path stays off for the rest of the session.
+    autoUpdater.autoInstallOnAppQuit = false
     setUpdateState({ status: 'checking', mirror: 'gh-proxy.com' })
     try {
       await autoUpdater.checkForUpdates()

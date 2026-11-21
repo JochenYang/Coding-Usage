@@ -1,5 +1,5 @@
-import { readFile, readdir, rename, stat, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { copyFile, mkdir, readFile, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 import type { Stats } from 'node:fs'
 
 /**
@@ -54,6 +54,18 @@ const LIVE_FILE_GUARD_MS = 90_000
 
 /** Recursion guard for the session-tree walk */
 const MAX_WALK_DEPTH = 8
+
+/**
+ * Originals are copied here — next to the state file, i.e. this app's userData
+ * — before a rewrite. The module rewrites another application's chat history,
+ * so a defect in the encoder must never be able to destroy the only copy of a
+ * transcript.
+ */
+const BACKUP_DIR_NAME = 'model-id-backups'
+/** At most this many backups are kept; the oldest are deleted first */
+const MAX_BACKUP_FILES = 20
+/** Backups older than this are deleted regardless of how few there are */
+const MAX_BACKUP_AGE_MS = 30 * 24 * 60 * 60_000
 
 /**
  * Cheap pre-filter for the per-line scan: a line with no non-ASCII code unit
@@ -129,12 +141,27 @@ function jsonEscape(value: string): string {
  *
  * Works line by line on the raw bytes instead of parse + re-serialize, so
  * unrelated content (float formatting, escape style, key order) survives
- * byte-for-byte. Returns the input untouched when nothing needed rewriting.
+ * byte-for-byte. Every line must parse as JSON before anything is rewritten —
+ * one corrupt line (a crashed writer, a partially flushed tail) skips the
+ * whole file, because "repairing" structurally broken records would only
+ * trade known corruption for hidden corruption. Returns the input untouched
+ * when nothing needed rewriting or a line failed to parse.
  */
 export function encodeNonAsciiIds(text: string): { text: string; changed: boolean } {
   if (!NON_ASCII_HINT.test(text)) return { text, changed: false }
+  const lines = text.split('\n')
+  for (const line of lines) {
+    // Empty lines are the file's trailing newline; anything else must parse
+    // before this module is allowed to touch the file at all.
+    if (line.trim() === '') continue
+    try {
+      JSON.parse(line)
+    } catch {
+      return { text, changed: false }
+    }
+  }
   let changed = false
-  const lines = text.split('\n').map((line) => {
+  const rewritten = lines.map((line) => {
     if (!NON_ASCII_HINT.test(line)) return line
     return line.replace(ID_KEY_PATTERN, (match, lead: string, key: string, sep: string, raw: string) => {
       // `\uXXXX` escapes hide non-ASCII from the byte-level check, so go through
@@ -145,7 +172,7 @@ export function encodeNonAsciiIds(text: string): { text: string; changed: boolea
       return `${lead}"${key}"${sep}"${jsonEscape(percentEncode(value))}"`
     })
   })
-  return { text: lines.join('\n'), changed }
+  return { text: rewritten.join('\n'), changed }
 }
 
 /**
@@ -202,12 +229,72 @@ async function collectJsonlFiles(root: string, depth = 0, out: string[] = []): P
 }
 
 /**
+ * Copy `file` into the backup directory before its rewrite. Returns the backup
+ * path, or null when the copy failed — the caller then leaves the file alone.
+ *
+ * The name carries the creation stamp (13-digit epoch ms) plus a per-sweep
+ * sequence so two files in the same millisecond cannot collide; the basename
+ * keeps the copy identifiable for a human doing recovery.
+ */
+async function copyToBackup(backupDir: string, file: string, seq: number): Promise<string | null> {
+  try {
+    await mkdir(backupDir, { recursive: true })
+    const target = join(backupDir, `${Date.now()}-${seq}-${basename(file)}`)
+    await copyFile(file, target)
+    return target
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Enforce the backup retention policy: drop everything older than
+ * MAX_BACKUP_AGE_MS, then the oldest beyond MAX_BACKUP_FILES. Best-effort — a
+ * failed cleanup only leaves a few stale copies behind. Ordering uses the
+ * creation stamp in the name when present and falls back to mtime for
+ * anything else that ended up in the directory.
+ */
+async function pruneBackups(backupDir: string): Promise<void> {
+  let entries
+  try {
+    entries = await readdir(backupDir, { withFileTypes: true })
+  } catch {
+    return
+  }
+  const now = Date.now()
+  const files: Array<{ path: string; ageKey: number }> = []
+  for (const entry of entries) {
+    if (!entry.isFile()) continue
+    const full = join(backupDir, entry.name)
+    const stamp = /^(\d{13})-/.exec(entry.name)
+    if (stamp) {
+      files.push({ path: full, ageKey: Number(stamp[1]) })
+      continue
+    }
+    const stats = await statOrNull(full)
+    if (stats) files.push({ path: full, ageKey: stats.mtimeMs })
+  }
+  files.sort((a, b) => b.ageKey - a.ageKey)
+  for (let i = 0; i < files.length; i += 1) {
+    if (i < MAX_BACKUP_FILES && now - files[i].ageKey <= MAX_BACKUP_AGE_MS) continue
+    try {
+      await unlink(files[i].path)
+    } catch {
+      // best-effort: a copy that will not delete is not a user-visible problem
+    }
+  }
+}
+
+/**
  * Make every recorded model/provider id safe for tokscale to read, in place.
  *
  * Best-effort by contract: a missing root, an unreadable file or a failed write
  * must never affect the scan. Files the running agent may still be appending to
  * are skipped, and a state file remembers the size/mtime of every file already
- * verified so unchanged transcripts are not re-read on every refresh.
+ * verified so unchanged transcripts are not re-read on every refresh. A file
+ * with a line that does not parse is left untouched entirely, and every
+ * rewrite is preceded by a copy of the original in `model-id-backups/` (next
+ * to the state file) under a count/age retention policy.
  *
  * @param roots     session roots to sweep (e.g. `~/.kimi-code/sessions`)
  * @param stateFile JSON file remembering the files already verified clean
@@ -223,7 +310,9 @@ export async function ensureScannableModelIds(roots: string[], stateFile: string
     }
 
     const now = Date.now()
+    const backupDir = join(dirname(stateFile), BACKUP_DIR_NAME)
     let checked = false
+    let backedUp = 0
     for (const root of roots) {
       for (const file of await collectJsonlFiles(root)) {
         try {
@@ -235,6 +324,14 @@ export async function ensureScannableModelIds(roots: string[], stateFile: string
 
           const { text, changed } = encodeNonAsciiIds(await readFile(file, 'utf8'))
           if (changed) {
+            // Copy the original before touching it: a defective rewrite must
+            // be recoverable, and this file belongs to another application.
+            // When the backup cannot be made the rewrite is skipped — a raw
+            // file only panics tokscale (the known, self-healing failure),
+            // while a lost transcript does not come back.
+            const backup = await copyToBackup(backupDir, file, backedUp)
+            if (!backup) continue
+            backedUp += 1
             // Atomic-ish write: a half-written transcript would be worse than
             // the panic this module exists to prevent.
             const tmp = `${file}.${process.pid}.tmp`
@@ -250,6 +347,9 @@ export async function ensureScannableModelIds(roots: string[], stateFile: string
       }
     }
     if (checked) await writeFile(stateFile, JSON.stringify(state), 'utf8')
+    // Retention runs only when something was backed up this sweep; the per-sweep
+    // cost is otherwise spent on files that were already verified clean.
+    if (backedUp > 0) await pruneBackups(backupDir)
   } catch {
     // best-effort — the scan itself reports what it can read
   }

@@ -234,12 +234,12 @@ declare global {
     ): Promise<AgentModelTestResult>
     /**
      * Kimi Code subscription quota (5-hour / weekly / month windows, as
-     * percentages of the plan allowance). `apiKey` is the account's pasted Kimi
-     * Code key and takes precedence over the local OAuth token; the body is a
-     * normalized `{source, windows:[{id,percent,resetsAt}], wallet}` JSON string
-     * where `id` is the canonical window identity.
+     * percentages of the plan allowance), read from the local CLI login; no
+     * credential crosses this boundary. The body is a normalized
+     * `{source, windows:[{id,percent,resetsAt}], wallet}` JSON string where
+     * `id` is the canonical window identity.
      */
-    kimiUsage(apiKey?: string): Promise<{ available: boolean; body?: string; reason?: string }>
+    kimiUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
     /**
      * Antigravity subscription quota, read from the Cloud Code API with the
      * credentials Antigravity stores (the IDE can stay closed; older builds fall

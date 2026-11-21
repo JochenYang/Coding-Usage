@@ -131,6 +131,33 @@ export function narrowQoderUsage(raw: unknown): Omit<QoderQuotaOutcome, 'fetched
   }
 }
 
+/**
+ * Serialize the numeric part of an outcome for quota-store, whose entries
+ * carry the payload as a JSON `body` string. Numbers and labels only — the
+ * outcome never contains the token, so neither does the file.
+ *
+ * Returns null when there is nothing worth storing: an unavailable outcome
+ * (no login, unsupported platform, network failure) must not replace the last
+ * good reading — that is quota-store's own rule — and a success without a
+ * single figure would paint nothing, so it is not written either. The card
+ * decodes exactly these members (see QoderQuotaCard.storedQoderOutcome).
+ */
+export function qoderStoreBody(outcome: QoderQuotaOutcome): string | null {
+  if (!outcome.available) return null
+  const hasFigure =
+    outcome.used != null || outcome.total != null || outcome.remaining != null || outcome.percent != null
+  if (!hasFigure) return null
+  return JSON.stringify({
+    used: outcome.used,
+    total: outcome.total,
+    remaining: outcome.remaining,
+    percent: outcome.percent,
+    isQuotaExceeded: outcome.isQuotaExceeded,
+    userType: outcome.userType,
+    unit: outcome.unit,
+  })
+}
+
 type StoredAuth = { ok: true; token: string; expiresAtMs: number } | { ok: false; reason: string }
 
 /**
