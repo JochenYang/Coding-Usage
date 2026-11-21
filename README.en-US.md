@@ -23,8 +23,8 @@
 ## What it does
 
 - **Real local agent usage**: [tokscale](https://github.com/junhoyeo/tokscale) scans local session logs, and the main process reads several stores tokscale cannot reach (Cindy's Pi sessions, the CodeBuddy IDE, the Qoder CLI, Trae CN's local database), covering 20-some mainstream tools — Codex, Claude Code, Kimi Code, OpenCode, Gemini CLI, Cursor, GitHub Copilot, Qwen Code, Trae, Cline, Roo Code, Cindy and more. Only tools with data are listed; today / month / all-time columns with an "as of" timestamp. Aggregate numbers only — message content never leaves your machine
-- **Provider plans & balances**: multi-account management for 14 providers (table below), each with its own official-endpoint adapter; balances aggregate into the display currency, with a hover breakdown when several pay-as-you-go providers coexist
-- **Official subscription quotas**: cards for Codex, Claude Code, Gemini CLI, Grok, Trae CN, Antigravity, Kimi Code, Cursor, GitHub Copilot, Qoder (global), Cline Pass, JetBrains AI, Windsurf, Kiro, Kilo, Alibaba Cloud Coding Plan, Qwen Cloud and Alibaba Token Plan read the local login or the IDE's own quota file (or a pasted token on demand), showing 5-hour / weekly / per-model windows with reset countdowns — credentials stay inside the main process, never reaching the renderer or disk. Windsurf reads the IDE's local cache, which updates the next time the app is opened
+- **Provider plans & balances**: multi-account management for 15 providers (table below), each with its own official-endpoint adapter; balances aggregate into the display currency, with a hover breakdown when several pay-as-you-go providers coexist
+- **Official subscription quotas**: cards for Codex, Claude Code, Gemini CLI, Grok, Trae CN, Trae (international), Antigravity, Kimi Code, Cursor, GitHub Copilot, Qoder (global), Cline Pass, JetBrains AI, Windsurf, Kiro, Kilo, Factory Droid, Devin, Amp, Alibaba Cloud Coding Plan, Qwen Cloud and Alibaba Token Plan read the local login or the IDE's own quota file (or a pasted token on demand), showing 5-hour / weekly / per-model windows with reset countdowns — credentials stay inside the main process, never reaching the renderer or disk. Windsurf reads the IDE's local cache, which updates the next time the app is opened
 - **Alerts**: window-reset, high-usage and low-balance rules with adjustable thresholds in the alerts center; hover the top-bar bell for a preview (opening marks them read), with a full alerts center; pushable to WeCom group robots, WeChat (iLink), Feishu / Lark and Telegram
 - **Desktop experience**: tray-resident, close dialog (minimize to tray or quit), launch on login, light/dark/system themes, zh-CN/en-US locales, auto-update via GitHub Releases
 
@@ -46,6 +46,7 @@
 | **Ollama Cloud** | Plan quota | 5h / weekly windows |
 | **Cursor** | Plan quota | Total, Auto and API measured separately; local login or pasted token |
 | **GitHub Copilot** | Plan quota | Premium request allowance; extension login or pasted token |
+| **Warp** | Plan quota | Monthly request allowance + add-on credits; paste a dedicated short-lived API key (the key can start billed runs — never your main key) |
 
 ## Privacy & Security Boundaries
 
