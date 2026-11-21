@@ -50,7 +50,7 @@
 ## 隐私与安全边界
 
 - 所有数据（密钥、快照、扫描结果）只存本机：localStorage + safeStorage 加密（`enc:v3:`）+ userData 文件备份镜像；带 v1→v2→v3 自动迁移
-- 渲染进程运行在 Chromium 沙箱中并加载严格 CSP；所有对外请求经主进程 `net.fetch` 直连官方端点，**不经过任何第三方代理**
+- 渲染进程运行在 Chromium 沙箱中并加载严格 CSP；provider 数据请求经主进程 `net.fetch` 直连官方端点，**不经过任何第三方代理**（仅有的两处例外是 GitHub 资源镜像：模型价格目录与自动更新 feed 在 GitHub 直连失败时回退 gh-proxy.com，均不涉及 provider 数据）
 - 本地 Agent 扫描只输出聚合数字（token 数、成本估算、消息数），会话原文永不离开本机
 - 未签名的构建会被 Windows SmartScreen 提示——Authenticode 签名接入点已预留（`electron-builder.yml` 与 release workflow），购证后配置 `WIN_CSC_LINK` 等 secrets 即可
 

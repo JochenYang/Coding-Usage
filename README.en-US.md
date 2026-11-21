@@ -50,7 +50,7 @@
 ## Privacy & Security Boundaries
 
 - Everything (keys, snapshots, scan results) stays local: localStorage + safeStorage encryption (`enc:v3:`) + a userData file mirror; v1→v2→v3 migration is automatic
-- The renderer runs inside the Chromium sandbox with a strict CSP; all outbound requests go through the main process `net.fetch` straight to official endpoints — **no third-party proxy involved**
+- The renderer runs inside the Chromium sandbox with a strict CSP; provider data requests go through the main process `net.fetch` straight to official endpoints — **no third-party proxy involved** (the only two exceptions are GitHub-resource mirrors: the model-pricing catalog and the update feed fall back to gh-proxy.com when GitHub is unreachable; neither carries provider data)
 - The local agent scan only produces aggregates (tokens, cost estimates, message counts); raw session content never leaves the machine
 - Unsigned builds trigger a Windows SmartScreen warning — the Authenticode hookup is prepared (`electron-builder.yml` and the release workflow); configure `WIN_CSC_LINK` secrets once a certificate is purchased
 

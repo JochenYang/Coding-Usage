@@ -7,7 +7,7 @@
 
 ## 环境
 
-- Node.js 22+（`package.json` engines 与 CI 一致）。
+- Node.js 22+（release workflow 的 `setup-node` 固定 22；`package.json` 未声明 `engines`）。
 - 无第三方状态库；React 19 + Vite 7 + TypeScript 5 strict。
 
 ## 命令
