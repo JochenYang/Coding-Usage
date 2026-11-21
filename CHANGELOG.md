@@ -10,6 +10,26 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.9.8] - 2026-11-21
+
+### 中文
+- 新增五张套餐额度卡：**Factory Droid**（读 `FACTORY_API_KEY` 或 `~/.factory/.env`，官方 billing 端点，旧套餐账号自动回退 legacy 端点）、**Devin**（读 Devin CLI 的 credentials.toml）、**Amp**（走官方 `amp usage` 子命令，不碰凭据文件）、**Trae 国际版**（复用国内版登录解密，SG/US 端点自动选择）、**Warp**（粘贴 API Key 查询月请求额度与加赠 credits——该 Key 可发起计费，粘贴处会提示使用专用短效 Key）。无凭据时各自诚实显示未登录，字段按名称解析、失败不猜测
+- 现有卡增强：Codex 卡显示攒下的重置券及其有效期，Cursor 卡显示 credit 余额（美元），SuperGrok 卡显示剩余重置次数；增强读取失败静默缺席，不影响主数字。Codex、Claude、Gemini、Grok、Trae、Kimi、Antigravity、Qoder 八张卡冷启动先显示上次读数（带更新时间标注）再静默刷新
+- 凭据与导出安全：设置导出剥离 apiKey/token 等凭据字段（导入旧备份仍能恢复密钥，导出文件明示不含密钥）；`net:fetch` 桥收紧为仅 http/https 并拒绝重定向；webhook 发送同样拒绝重定向；镜像更新下载完成后不再静默安装，仅点击「立即重启安装」才生效，且设置页明示镜像更新未经独立校验
+- 修复与加固：八张额度卡统一迟响应守卫（快速连续刷新不再出现旧超时覆盖新读数）；quota-cache 只落归一化字段，不再写入账号标识（如 Grok 登录邮箱）；改写第三方会话转录前先备份到 userData 并跳过解析失败的文件；Antigravity 回退探针异步化，无凭据时不再阻塞主进程最长约 30 秒；Trae 本地扫描的明文副本启动即清理；后台刷新间隔钳制在合理范围；阿里云连接窗关闭判定收窄为真正拿到控制台会话；Grok 三路读取并发化，慢网不再拖过卡片预算；超时与网络失败在探针层分开归类
+- 交互与文案：趋势页筛选按钮文案与行为对齐（『全部』恢复全部模型）；微信向导轮询对主进程重启等瞬时错误容错并显示状态；已解决告警的 48 小时保留窗改按最后一次出现时间计算；Codex 窗口标签与各家余额行、错误文案全部走字典，英文界面不再出现中文
+- Qoder global 的 credits 计入趋势页：独立序列与单位呈现（credits 无公开汇率，不折算美元、不并入 token 口径），有数据才显示
+- 测试与文档：新增 22 个测试文件（单测 320 → 740 条），覆盖探针降级路径、纯函数合并层、agent-config 读写链、微信会话契约与 credits 聚合；README 同步 15 家服务商与全部订阅卡；架构文档补齐新增模块、安全边界与 Warp 可计费 Key 例外；「已评估不接入」的供应商清单（Qwen 免费层、Zed、iFlow、小米 MiMo 等）入档避免重复调研
+
+### English
+- Five new plan quota cards: **Factory Droid** (reads `FACTORY_API_KEY` or `~/.factory/.env`, official billing endpoint, legacy accounts fall back automatically), **Devin** (reads the Devin CLI's credentials.toml), **Amp** (runs the official `amp usage` subcommand, never touching credential files), **Trae international** (reuses the CN login decryption with SG/US endpoint selection) and **Warp** (paste an API key for the monthly request allowance and add-on credits — that key can start billed runs, so the paste site tells you to use a dedicated short-lived key). Without credentials each card reports an honest no-login state; fields resolve by name and failures never invent numbers
+- Existing cards gain enhancements: the Codex card shows banked reset credits and their expiry, the Cursor card shows the credit balance in USD and the SuperGrok card shows remaining resets; a failed enhancement read stays silent and never touches the headline numbers. The Codex, Claude, Gemini, Grok, Trae, Kimi, Antigravity and Qoder cards paint the last reading (with its fetch time) on a cold start before refreshing silently
+- Credential and export safety: settings export strips apiKey/token fields (old backups still import their keys, and the export file says it carries none); the `net:fetch` bridge is tightened to http/https and refuses redirects; webhook sends refuse redirects too; mirror updates no longer install silently after download — only "Restart & install" applies them, and the settings row says mirror updates are not independently verified
+- Fixes and hardening: all eight subscription cards share a stale-result guard (rapid refreshes can no longer overwrite fresh numbers with an old timeout); quota-cache stores normalized fields only and no longer persists account identifiers such as the Grok login email; rewriting third-party transcripts now backs the original up into userData and skips files with unparsable lines; the Antigravity fallback probe is async and no longer blocks the main process for up to ~30 s without credentials; Trae's decrypted plaintext copies are cleaned up on entry; the background refresh interval is clamped to a sane range; the Alibaba connect window only reports success with a real console ticket; Grok's three reads run concurrently so a slow network no longer exceeds the card budget; timeouts and network failures classify separately at the probe layer
+- Interaction and copy: the trends filter button now says "All" and restores every model; the WeChat wizard polling survives transient errors such as a main-process restart and shows a status note; resolved alerts keep their 48-hour window from the last-seen time instead of the first-seen time; Codex window labels, provider balance rows and error copy all come from the dictionary — the English UI no longer shows Chinese
+- Qoder global credits join the trends page as their own series and unit (credits have no public exchange rate, so they are never converted to USD or folded into tokens), shown only when data exists
+- Tests and docs: 22 new test files (320 → 740 unit tests) covering probe fallback paths, the pure-function merge layer, the agent-config read/write chain, the WeChat session contract and credits aggregation; the README syncs 15 providers and every subscription card; the architecture doc picks up the new modules, security boundaries and the Warp billing-key exception; the "evaluated and not integrated" provider list (Qwen free tier, Zed, iFlow, Xiaomi MiMo and more) is recorded to avoid duplicate research
+
 ## [v0.9.7] - 2026-11-20
 
 ### 中文
