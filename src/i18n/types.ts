@@ -94,6 +94,8 @@ export interface Dict {
     ollamaCloud: { name: string; tagline: string; plan: string }
     cursor: { name: string; tagline: string; plan: string }
     copilot: { name: string; tagline: string; plan: string }
+    /** Tagline doubles as the dedicated-short-lived-key warning (key can bill) */
+    warp: { name: string; tagline: string; plan: string }
   }
   provider: {
     balanceLabel: (currency: string) => string
@@ -156,6 +158,10 @@ export interface Dict {
     ali5h: string
     aliWeekly: string
     aliMonthly: string
+    /** Warp: the monthly request allowance (request-named fields for credits) */
+    warpMonthlyRequests: string
+    /** Warp: the combined user+workspace add-on credit pool */
+    warpBonusCredits: string
   }
   regions: {
     zhipuCN: string
@@ -386,6 +392,16 @@ export interface Dict {
     /** Speed is apportioned from session-active time, not measured */
     speedHint: string
     estimated: string
+    /** Credits-billed gateway unit (Qoder global), shown as its own series */
+    kpiCredits: string
+    seriesCredits: string
+    /** Unit note: a separate unit, never converted to USD or folded into tokens */
+    creditsFooter: string
+    /** Credits are day-level, so a model filter cannot split them */
+    creditsUnavailableShort: string
+    /** Independent credits series section */
+    chartCredits: string
+    creditsChartNote: string
     /** Chart titles */
     chartTrend: string
     chartSplit: string
@@ -443,6 +459,8 @@ export interface Dict {
     codexCreditsUnlimited: string
     codexBalance: (amount: string) => string
     codexResetCredits: (n: number) => string
+    /** Expiry of the earliest banked reset credit; `date` is a locale date */
+    codexResetCreditsExpires: (date: string) => string
     codexSpendLimit: (pct: number) => string
     codexSpendLimitReached: string
     claudeNoAuth: string
@@ -455,6 +473,10 @@ export interface Dict {
     }
     cursorNoAuth: string
     cursorSealed: string
+    /** Cursor's visible credit grant balance; `amount` arrives pre-formatted with $ */
+    cursorCreditsLeft: (amount: string) => string
+    /** Grant expiry; `date` is a locale date */
+    cursorCreditsExpire: (date: string) => string
     copilotNoAuth: string
     clineNoAuth: string
     clineReauth: string
@@ -504,6 +526,10 @@ export interface Dict {
     grokNoAuth: string
     grokReauth: string
     grokBilling: string
+    /** Banked reset tokens left (gRPC-Web enhancement) */
+    grokResetsLeft: (n: number) => string
+    /** Expiry of the earliest banked token; `date` is a locale date */
+    grokResetsExpire: (date: string) => string
     qoderNoAuth: string
     qoderReauth: string
     qoderUnavailable: string
@@ -513,6 +539,11 @@ export interface Dict {
     traeNoAuth: string
     traeReauth: string
     traeBilling: string
+    /** Trae international (SG/US deployment) card */
+    traeIntlCreditsPlan: string
+    traeIntlNoAuth: string
+    traeIntlReauth: string
+    traeIntlBilling: string
     addAgent: string
     showAll: string
     enabled: string
@@ -642,6 +673,43 @@ export interface Dict {
     staleHandshake: string
     refreshUnavailable: string
     unavailable: string
+  }
+  factoryQuota: {
+    windowFiveHour: string
+    windowWeekly: string
+    windowMonthly: string
+    windowCoreFiveHour: string
+    windowCoreWeekly: string
+    windowCoreMonthly: string
+    windowStandard: string
+    windowPremium: string
+    windowOther: string
+    noAuth: string
+    staleLogin: string
+    unavailable: string
+    /** Extra-usage balance; the value is pre-formatted with the $ prefix */
+    topUpCredits: (value: string) => string
+  }
+  devinQuota: {
+    windowDaily: string
+    windowWeekly: string
+    windowOther: string
+    noAuth: string
+    staleLogin: string
+    unavailable: string
+    percentNote: string
+  }
+  ampQuota: {
+    subtitle: string
+    individualCredits: string
+    workspaceCredits: string
+    meterFree: string
+    meterSubscriptionOther: string
+    meterSubscriptionOrb: string
+    meterOther: string
+    noAuth: string
+    unavailable: string
+    note: string
   }
   providerErrors: {
     keyInvalid: string

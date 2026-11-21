@@ -94,6 +94,11 @@ export const enUS: Dict = {
     ollamaCloud: { name: 'Ollama Cloud', tagline: 'Subscription · 5h/weekly windows', plan: 'Ollama Cloud' },
     cursor: { name: 'Cursor', tagline: 'Subscription · total, Auto and API allowances measured separately', plan: 'Cursor' },
     copilot: { name: 'GitHub Copilot', tagline: 'Subscription · premium request allowance', plan: 'Copilot' },
+    warp: {
+      name: 'Warp',
+      tagline: 'Monthly requests · use a dedicated short-lived key (it can bill — never your main key)',
+      plan: 'Warp',
+    },
   },
   provider: {
     balanceLabel: (currency: string) => `Balance (${currency})`,
@@ -156,6 +161,8 @@ export const enUS: Dict = {
     ali5h: '5-hour window',
     aliWeekly: 'Weekly window',
     aliMonthly: 'Monthly window',
+    warpMonthlyRequests: 'Monthly requests',
+    warpBonusCredits: 'Add-on credits',
   },
   regions: {
     zhipuCN: 'China · bigmodel.cn',
@@ -391,6 +398,12 @@ export const enUS: Dict = {
     speedHint:
       'Output tokens ÷ session-active time. Active time includes thinking, tool calls and idle gaps inside a session, so it sits below the model’s own generation speed — use it for comparison only. Days reporting more than 24 hours are not real durations and are excluded.',
     estimated: 'Estimated from each day’s call share',
+    kpiCredits: 'Credits spent',
+    seriesCredits: 'Credits',
+    creditsFooter: 'Qoder global’s own billing unit — kept separate from tokens, never converted to USD.',
+    creditsUnavailableShort: 'Not split by the model filter',
+    chartCredits: 'Credits over time',
+    creditsChartNote: 'Summed from the scan’s per-day credits — a separate unit, never converted to USD or folded into tokens.',
     chartTrend: 'Token consumption over time',
     chartSplit: 'Output over time, by model',
     chartSplitHint: 'One curve per model, showing output tokens',
@@ -436,6 +449,7 @@ export const enUS: Dict = {
     codexCreditsUnlimited: 'Pay-as-you-go credits: unlimited',
     codexBalance: (amount: string) => `Pay-as-you-go balance: ${amount}`,
     codexResetCredits: (n: number) => `Reset credits available: ${n}`,
+    codexResetCreditsExpires: (date: string) => `earliest expiry ${date}`,
     codexSpendLimit: (pct: number) => `Personal cap: ${pct}% used`,
     codexSpendLimitReached: 'Personal cap reached',
     claudeNoAuth:
@@ -451,6 +465,8 @@ export const enUS: Dict = {
       'No Cursor login found (cursor-agent auth.json, or Cursor state.vscdb) — quota unavailable.',
     cursorSealed:
       'Cursor keeps its login sealed in the OS keychain, which this app cannot read. Paste a token on the providers page to query the quota.',
+    cursorCreditsLeft: (amount: string) => `Credit balance: ${amount}`,
+    cursorCreditsExpire: (date: string) => `valid until ${date}`,
     copilotNoAuth:
       'No GitHub Copilot login found (%LOCALAPPDATA%\\github-copilot\\hosts.json) — quota unavailable.',
     clineNoAuth:
@@ -508,6 +524,8 @@ export const enUS: Dict = {
     grokNoAuth: 'No Grok login found (~/.grok/auth.json) — official subscription quota unavailable.',
     grokReauth: 'Your Grok login has expired. Run `grok login` again in a terminal.',
     grokBilling: 'Subscription usage',
+    grokResetsLeft: (n: number) => `Remaining resets: ${n}`,
+    grokResetsExpire: (date: string) => `valid until ${date}`,
     qoderNoAuth: 'No Qoder (global) login found (%APPDATA%\com.qoder.app.stable) — quota unavailable.',
     qoderReauth: 'The Qoder (global) login has expired — open the Qoder app once to refresh it.',
     qoderUnavailable: 'Qoder (global) quota is unavailable (the client login can only be read on Windows).',
@@ -517,6 +535,10 @@ export const enUS: Dict = {
     traeNoAuth: 'No Trae CN login found (TRAE SOLO CN / Trae CN) — official usage unavailable.',
     traeReauth: 'Your Trae CN login has expired. Open the Trae CN app once to refresh it.',
     traeBilling: 'Credits used',
+    traeIntlCreditsPlan: 'Metered entitlement (USD)',
+    traeIntlNoAuth: 'No Trae international login found (TRAE SOLO / Trae) — official usage unavailable.',
+    traeIntlReauth: 'Your Trae international login has expired. Open the international Trae app once to refresh it.',
+    traeIntlBilling: 'Entitlement used (USD)',
     addAgent: 'Add agent',
     showAll: 'Show disabled',
     enabled: 'Enabled',
@@ -653,6 +675,44 @@ export const enUS: Dict = {
     refreshUnavailable:
       'The stored login could not be refreshed (Antigravity client not found, the refresh service unreachable, or no refresh credential stored); the sign-in itself may still be valid. Check that Antigravity is installed and retry later; if this persists, update this app.',
     unavailable: 'Antigravity quota is unavailable right now — check that the IDE is running and signed in.',
+  },
+  factoryQuota: {
+    windowFiveHour: '5-hour window',
+    windowWeekly: 'Weekly window',
+    windowMonthly: 'Monthly window',
+    windowCoreFiveHour: 'Droid Core 5-hour window',
+    windowCoreWeekly: 'Droid Core weekly window',
+    windowCoreMonthly: 'Droid Core monthly window',
+    windowStandard: 'Standard pool',
+    windowPremium: 'Premium pool',
+    windowOther: 'Other window',
+    noAuth:
+      'No Factory API key detected (FACTORY_API_KEY env var or ~/.factory/.env), so the official quota is unavailable. Create one in the Factory console, then refresh.',
+    staleLogin: 'Your Factory API key was rejected by the server (401/403). Check or regenerate it in the Factory console.',
+    unavailable: 'Factory quota is temporarily unavailable (network or server side). Try again later.',
+    topUpCredits: (value: string) => `Pay-as-you-go balance: ${value}`,
+  },
+  devinQuota: {
+    windowDaily: 'Daily quota',
+    windowWeekly: 'Weekly quota',
+    windowOther: 'Other window',
+    noAuth:
+      'No Devin CLI login detected (%APPDATA%\\devin\\credentials.toml or ~/.local/share/devin/credentials.toml). Run the Devin CLI to sign in first.',
+    staleLogin: 'Your Devin API key was rejected by the server (401/403). Run the Devin CLI to sign in again.',
+    unavailable: 'Devin quota is temporarily unavailable (network or server side). Try again later.',
+    percentNote: 'Quota is shown as a share of each window (percentage); Devin exposes no absolute usage numbers.',
+  },
+  ampQuota: {
+    subtitle: 'Balance & usage',
+    individualCredits: 'Individual credits',
+    workspaceCredits: 'Workspace credits',
+    meterFree: 'Amp Free daily allowance',
+    meterSubscriptionOther: 'Subscription pool (other)',
+    meterSubscriptionOrb: 'Subscription pool (orb)',
+    meterOther: 'Other meter',
+    noAuth: 'Amp CLI not detected (the amp command is unavailable). Install the Amp CLI and sign in first, then refresh.',
+    unavailable: 'Amp balance is temporarily unavailable (the CLI read failed or its output was not recognized). Try again later.',
+    note: 'The bars show how much of each pool is used; USD balances are listed separately.',
   },
   providerErrors: {
     keyInvalid: 'Invalid key or the request was rejected',

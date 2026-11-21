@@ -22,6 +22,10 @@ import { ClaudeQuotaCard } from '@/components/overview/ClaudeQuotaCard'
 import { GeminiQuotaCard } from '@/components/overview/GeminiQuotaCard'
 import { GrokQuotaCard } from '@/components/overview/GrokQuotaCard'
 import { TraeQuotaCard } from '@/components/overview/TraeQuotaCard'
+import { TraeIntlQuotaCard } from '@/components/overview/TraeIntlQuotaCard'
+import { FactoryQuotaCard } from '@/components/overview/FactoryQuotaCard'
+import { DevinQuotaCard } from '@/components/overview/DevinQuotaCard'
+import { AmpQuotaCard } from '@/components/overview/AmpQuotaCard'
 import { KimiQuotaCard } from '@/components/overview/KimiQuotaCard'
 import { AntigravityQuotaCard } from '@/components/overview/AntigravityQuotaCard'
 import { LocalQuotaCard } from '@/components/overview/LocalQuotaCard'
@@ -311,6 +315,7 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
       { key: 'gemini', node: <GeminiQuotaCard /> },
       { key: 'grok', node: <GrokQuotaCard /> },
       { key: 'trae', node: <TraeQuotaCard /> },
+      { key: 'trae-intl', node: <TraeIntlQuotaCard /> },
       { key: 'kimi', node: <KimiQuotaCard /> },
       {
         key: 'antigravity',
@@ -324,6 +329,9 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
       { key: 'windsurf', node: <LocalQuotaCard kind="windsurf" /> },
       { key: 'kiro', node: <LocalQuotaCard kind="kiro" /> },
       { key: 'kilo', node: <LocalQuotaCard kind="kilo" /> },
+      { key: 'factory', node: <FactoryQuotaCard /> },
+      { key: 'devin', node: <DevinQuotaCard /> },
+      { key: 'amp', node: <AmpQuotaCard /> },
       { key: 'alibaba', node: <LocalQuotaCard kind="alibaba" /> },
       { key: 'qwen', node: <LocalQuotaCard kind="qwen" /> },
       { key: 'alitoken', node: <LocalQuotaCard kind="alitoken" /> },
