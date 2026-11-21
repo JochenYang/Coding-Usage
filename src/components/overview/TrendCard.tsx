@@ -15,7 +15,7 @@ export interface TrendCardProps {
 }
 
 /** Metrics the trend chart can plot (single entry today; tokens series is the only source) */
-const METRICS = [{ id: 'tokens', label: 'Tokens' }] as const
+const METRICS = [{ id: 'tokens' }] as const
 
 /** Overview trend card: consumed-tokens line chart over the last 7 days */
 export function TrendCard({ points, className }: TrendCardProps) {
@@ -38,9 +38,12 @@ export function TrendCard({ points, className }: TrendCardProps) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              {/* Single fixed entry: the label renders through i18n (t.common
+                  unit keys) — extend METRICS with per-id labels when a second
+                  metric series exists. */}
               {METRICS.map((m) => (
                 <SelectItem key={m.id} value={m.id}>
-                  {m.label}
+                  {t.common.unitTokens}
                 </SelectItem>
               ))}
             </SelectContent>

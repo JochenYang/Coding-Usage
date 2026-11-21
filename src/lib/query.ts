@@ -1,5 +1,9 @@
 import type { ParseContext, ProviderConfig, ProviderDef, ProviderResult } from '../types'
+import { zhCN } from '../i18n/dict.zh-CN'
+import { enUS } from '../i18n/dict.en-US'
 import type { Locale } from '../i18n/types'
+
+const DICTS = { 'zh-CN': zhCN, 'en-US': enUS } as const
 
 const bridge = window.desktopBridge
 
@@ -64,6 +68,9 @@ export async function fetchUsage(
   locale?: Locale,
 ): Promise<ProviderResult> {
   if (!cfg.apiKey) return { status: 'unconfigured' }
+  // Error copy renders through providerErrors so en-US users never see Chinese
+  // (same pattern as the copilot adapter).
+  const errs = DICTS[locale ?? 'zh-CN'].providerErrors
   const { url, headers } = def.buildRequest(cfg.apiKey, cfg.regionId)
   // Adapters with skipPreflight sign asynchronously inside parseResponse —
   // their buildRequest URL is a placeholder, so no transport preflight runs
@@ -84,17 +91,17 @@ export async function fetchUsage(
         result = await tryFetch(`https://corsproxy.io/?url=${encodeURIComponent(url)}`, headers)
       }
       if (!result) {
-        return { status: 'error', error: '网络请求失败（跨域或网络不可达）' }
+        return { status: 'error', error: errs.networkFailed }
       }
       const { httpStatus, json } = result
       if (httpStatus === 401 || httpStatus === 403) {
-        return { status: 'error', error: def.id === 'opencode' ? 'Key 无效，或该账号没有 Go 订阅' : 'Key 无效或无权限' }
+        return { status: 'error', error: def.id === 'opencode' ? errs.keyNoGoSubscription : errs.keyInvalidNoPermission }
       }
       if (httpStatus !== 200) {
         return { status: 'error', error: `HTTP ${httpStatus}` }
       }
       if (json == null || typeof json !== 'object') {
-        return { status: 'error', error: '响应格式异常：空响应或非 JSON' }
+        return { status: 'error', error: errs.badJson }
       }
       preflightJson = json
     }
@@ -111,7 +118,7 @@ export async function fetchUsage(
     return {
       status: 'error',
       error: /failed to fetch|networkerror|network request failed|load failed/i.test(msg)
-        ? '网络请求失败或被拦截'
+        ? errs.networkBlocked
         : msg,
     }
   }

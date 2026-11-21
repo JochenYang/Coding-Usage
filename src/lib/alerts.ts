@@ -39,6 +39,14 @@ export interface AlertItem {
    */
   resolved?: boolean
   firstSeenAt: number
+  /**
+   * Last derive round in which this alert was live. Retention for resolved
+   * alerts counts from here (not firstSeenAt): a condition that cleared is
+   * kept for {@link RESOLVED_RETENTION_MS} after it was LAST seen, so a
+   * long-lived alert stays readable after resolving instead of vanishing at
+   * once. Written on every derive that sees the alert live.
+   */
+  lastSeenAt: number
   read: boolean
 }
 
@@ -130,17 +138,20 @@ export function saveAlerts(items: AlertItem[]): void {
 
 /**
  * Retention for resolved alerts: an alert whose condition cleared stays in
- * the list for 48h so history remains readable, then disappears on the next
- * derive. Active (still-true) alerts never age out regardless of age.
+ * the list for 48h counting from when it was LAST seen live ({@link
+ * AlertItem.lastSeenAt}), so history remains readable, then disappears on the
+ * next derive. Active (still-true) alerts never age out regardless of age.
  */
 const RESOLVED_RETENTION_MS = 48 * 60 * 60_000
 
 /**
  * Derive the live alert set from current sections/results, merged with the
- * stored set (surviving alerts keep firstSeenAt/read; resolved ids are kept
- * for {@link RESOLVED_RETENTION_MS} then dropped). Alerts whose account has
- * no settled result (status 'loading' or 'error') keep their previous state —
- * an in-flight or failed refresh is not evidence the condition cleared.
+ * stored set (surviving alerts keep firstSeenAt/read and get lastSeenAt
+ * stamped to this round; resolved ids are kept for {@link
+ * RESOLVED_RETENTION_MS} from their lastSeenAt, then dropped). Alerts whose
+ * account has no settled result (status 'loading' or 'error') keep their
+ * previous state — an in-flight or failed refresh is not evidence the
+ * condition cleared.
  * Pure — the caller persists the result.
  */
 export function deriveAlerts(
@@ -176,6 +187,8 @@ export function deriveAlerts(
                 kind: 'window-reset',
                 resetInMin: mins,
                 firstSeenAt: Date.now(),
+                // Stamped per round; the merge below re-stamps it with `now`
+                lastSeenAt: Date.now(),
                 read: false,
               })
             }
@@ -192,6 +205,8 @@ export function deriveAlerts(
               used: m.used,
               total: m.total,
               firstSeenAt: Date.now(),
+              // Stamped per round; the merge below re-stamps it with `now`
+              lastSeenAt: Date.now(),
               read: false,
             })
           }
@@ -209,6 +224,8 @@ export function deriveAlerts(
               balance: m.remaining,
               currency: m.unit,
               firstSeenAt: Date.now(),
+              // Stamped per round; the merge below re-stamps it with `now`
+              lastSeenAt: Date.now(),
               read: false,
             })
           }
@@ -218,10 +235,13 @@ export function deriveAlerts(
   }
 
   const stored = loadStored()
+  const now = Date.now()
   const merged: AlertItem[] = []
   for (const item of live.values()) {
     const prev = stored.find((s) => s.id === item.id)
-    merged.push(prev ? { ...item, firstSeenAt: prev.firstSeenAt, read: prev.read } : item)
+    // lastSeenAt is re-stamped every round the alert is live: the resolved
+    // retention window below counts from the LAST time it was seen.
+    merged.push(prev ? { ...item, firstSeenAt: prev.firstSeenAt, lastSeenAt: now, read: prev.read } : { ...item, lastSeenAt: now })
   }
   // Resolved history: keep recently-seen alerts that are no longer live
   // (condition cleared) for a bounded window, then let them disappear.
@@ -238,7 +258,10 @@ export function deriveAlerts(
       merged.push(old)
       continue
     }
-    if (Date.now() - old.firstSeenAt > RESOLVED_RETENTION_MS) continue
+    // Legacy persisted rows predate lastSeenAt: fall back to firstSeenAt so
+    // they keep the pre-existing (firstSeen-based) window until they expire.
+    const seenAt = typeof old.lastSeenAt === 'number' ? old.lastSeenAt : old.firstSeenAt
+    if (now - seenAt > RESOLVED_RETENTION_MS) continue
     merged.push({ ...old, resolved: true })
   }
   // Newest first for panel rendering

@@ -1,4 +1,9 @@
-import type { ProviderDef } from '../types'
+import type { ParseContext, ProviderDef } from '../types'
+import { zhCN } from '../i18n/dict.zh-CN'
+import { enUS } from '../i18n/dict.en-US'
+import type { Locale } from '../i18n/types'
+
+const DICTS = { 'zh-CN': zhCN, 'en-US': enUS } as const
 
 export const stepfun: ProviderDef = {
   id: 'stepfun',
@@ -14,12 +19,13 @@ export const stepfun: ProviderDef = {
       headers: { Authorization: `Bearer ${key}` },
     }
   },
-  async parseResponse(json) {
+  async parseResponse(json, ctx?: ParseContext) {
     // Account endpoint returns a single CNY figure; the API tolerates string numbers
     const raw = (json as { balance?: unknown }).balance
     const amount = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number.parseFloat(raw) : Number.NaN
     if (!Number.isFinite(amount)) {
-      throw new Error('Key 无效或响应格式变化')
+      const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
+      throw new Error(t.providerErrors.keyOrShapeChanged)
     }
     return [
       {

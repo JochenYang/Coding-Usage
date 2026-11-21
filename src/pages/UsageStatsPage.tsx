@@ -82,7 +82,7 @@ export function UsageStatsPage() {
           <h2 className="text-sm font-semibold text-foreground">{t.overview.heatmapTitle}</h2>
           <div className="flex items-center gap-4">
             <span className="text-xs tabular-nums text-muted-foreground">
-              {formatCompactValue(heatTotal)} tokens
+              {formatCompactValue(heatTotal)} {t.common.unitTokens}
             </span>
             <div
               role="tablist"
@@ -183,7 +183,7 @@ export function UsageStatsPage() {
           </div>
         )}
         <p className="mt-2 text-[11px] text-subtle">
-          {agentUsage.todayTotal.messages} msgs · {costText(agentUsage.todayTotal.costUsd)}
+          {agentUsage.todayTotal.messages} {t.common.unitMsgs} · {costText(agentUsage.todayTotal.costUsd)}
         </p>
       </section>
     </div>

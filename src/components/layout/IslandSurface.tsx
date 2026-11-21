@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { AlertItem } from '@/lib/alerts'
 import { DynamicIsland, DynamicIslandView, ISLAND_COLLAPSE_MS } from '@/components/beui/dynamic-island'
 import { AlertIslandBody } from './AlertIsland'
+import { useT } from '@/i18n/useT'
 
 /**
  * Bare renderer surface for the system-level island window (`#/island`):
@@ -28,6 +29,7 @@ function isValidAlert(v: unknown): v is AlertItem {
 }
 
 export function IslandSurface() {
+  const t = useT()
   const [batch, setBatch] = useState<AlertItem[]>([])
   // The body the island renders; it outlives the batch so the collapse has
   // something to shrink around. Same retained pair as the in-app island.
@@ -133,8 +135,8 @@ export function IslandSurface() {
                 dismiss()
               }}
               onDismiss={() => dismiss()}
-              dismissLabel="Dismiss"
-              openLabel="Alerts"
+              dismissLabel={t.island.dismiss}
+              openLabel={t.nav.alerts}
             />
           </DynamicIslandView>
         </DynamicIsland>

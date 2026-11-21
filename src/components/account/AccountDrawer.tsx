@@ -297,18 +297,18 @@ export function AccountDrawer({
         {/* Inline test outcome: green "normal" on success, red message on failure */}
         <div className="min-w-0 flex-1">
           {test.phase === 'ok' && (
-            <p className="truncate text-xs text-emerald-700">✓ {t.card.normal}</p>
+            <p className="truncate text-xs text-success">✓ {t.card.normal}</p>
           )}
           {test.phase === 'error' && (
             <Tooltip text={test.message} bubbleClassName="max-w-72 whitespace-normal">
-              <p className="truncate text-xs text-red-700">✕ {test.message}</p>
+              <p className="truncate text-xs text-danger">✕ {test.message}</p>
             </Tooltip>
           )}
         </div>
         {onDelete && (
           <button
             onClick={handleDelete}
-            className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-danger transition-colors hover:bg-red-50"
+            className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-danger transition-colors hover:bg-danger/10"
           >
             {t.card.delete}
           </button>

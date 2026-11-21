@@ -60,6 +60,7 @@ export const zhipu: ProviderDef = {
     }
   },
   async parseResponse(json, ctx) {
+    const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
     const body = json as {
       success?: boolean
       msg?: string
@@ -67,9 +68,10 @@ export const zhipu: ProviderDef = {
       data?: { level?: string; limits?: ZhipuLimit[] }
     }
     if (body.success !== true || !body.data?.limits) {
-      throw new Error(body.msg ?? (body.code === 401 ? 'Key 无效或已过期' : '查询失败'))
+      // `msg` is the server's own text (passed through as data, not our copy);
+      // only the fallbacks render through providerErrors.
+      throw new Error(body.msg ?? (body.code === 401 ? t.providerErrors.keyExpiredOrInvalid : t.providerErrors.queryFailed))
     }
-    const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
     const plan = (body.data.level ?? '').toUpperCase()
     const metrics: UsageMetric[] = []
     // TOKENS_LIMIT: unit=3 → 5h window, unit=6 → weekly window; legacy plans have only one
@@ -105,7 +107,7 @@ export const zhipu: ProviderDef = {
         resetsAt: typeof mcp.nextResetTime === 'number' ? mcp.nextResetTime : undefined,
       })
     }
-    if (metrics.length === 0) throw new Error('响应中没有任何额度数据')
+    if (metrics.length === 0) throw new Error(t.providerErrors.noQuotaData)
     return metrics
   },
 }

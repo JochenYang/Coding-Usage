@@ -169,21 +169,23 @@ export const minimax: ProviderDef = {
     }
   },
   async parseResponse(json, ctx) {
+    const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
     const body = json as { base_resp?: { status_code?: number; status_msg?: string }; model_remains?: unknown[] }
     const base = body.base_resp
     if (!base || typeof base.status_code !== 'number') {
-      throw new Error('响应格式变化：缺少 base_resp')
+      throw new Error(t.providerErrors.missingField('base_resp'))
     }
     if (base.status_code !== 0) {
-      const msg = base.status_msg ?? `错误码 ${base.status_code}`
-      throw new Error(base.status_code === 1004 || base.status_code === 2049 ? `Key 无效：${msg}` : msg)
+      // `status_msg` is the server's own text (data, not our copy); only the
+      // synthesized fallbacks render through providerErrors.
+      const msg = base.status_msg ?? t.providerErrors.errorCode(base.status_code)
+      throw new Error(base.status_code === 1004 || base.status_code === 2049 ? t.providerErrors.keyInvalidWithReason(msg) : msg)
     }
     const rawList = Array.isArray(body.model_remains)
       ? (body.model_remains as Array<Record<string, unknown>>)
       : []
-    if (rawList.length === 0) throw new Error('响应中没有 model_remains 数据')
+    if (rawList.length === 0) throw new Error(t.providerErrors.noModelRemains)
     const now = Date.now()
-    const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
 
     const main = rawList.find((m) => m.model_name === MAIN_MODEL_KEY)
     const extra = rawList.find((m) => m.model_name === EXTRA_MODEL_KEY)
@@ -242,7 +244,7 @@ export const minimax: ProviderDef = {
     }
 
     if (intervals.length === 0) {
-      throw new Error('订阅有效但响应字段暂不支持解析，欢迎反馈')
+      throw new Error(t.providerErrors.subscriptionUnparsed)
     }
 
     if (ctx?.fetch && ctx.key) {

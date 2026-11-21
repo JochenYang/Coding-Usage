@@ -20,17 +20,17 @@ export const deepseek: ProviderDef = {
     }
   },
   async parseResponse(json, ctx) {
+    // Locale is injected by the dispatcher via ParseContext; fallback to zh-CN when absent
+    // (e.g. SSR / unit tests calling parseResponse directly without going through fetchUsage).
+    const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
     const body = json as {
       is_available?: boolean
       balance_infos?: { currency?: string; total_balance?: string; granted_balance?: string; topped_up_balance?: string }[]
     }
     const infos = body.balance_infos
     if (!Array.isArray(infos) || infos.length === 0) {
-      throw new Error('Key 无效或响应格式变化')
+      throw new Error(t.providerErrors.keyOrShapeChanged)
     }
-    // Locale is injected by the dispatcher via ParseContext; fallback to zh-CN when absent
-    // (e.g. SSR / unit tests calling parseResponse directly without going through fetchUsage).
-    const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
     return infos.map((info, i): UsageMetric => {
       const currency = info.currency ?? ''
       const total = Number(info.total_balance)

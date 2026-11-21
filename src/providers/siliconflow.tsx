@@ -25,18 +25,18 @@ export const siliconflow: ProviderDef = {
     }
   },
   async parseResponse(json, ctx) {
+    const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
     const body = json as {
       code?: number
       data?: { balance?: string; chargeBalance?: string; totalBalance?: string }
     }
     if (body.code !== 20000 || !body.data) {
-      throw new Error(body.code === 20012 ? 'Key 无效或已过期' : '查询失败')
+      throw new Error(body.code === 20012 ? t.providerErrors.keyExpiredOrInvalid : t.providerErrors.queryFailed)
     }
-    const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
     const d = body.data
     const total = Number(d.totalBalance)
     if (!Number.isFinite(total)) {
-      throw new Error('响应格式变化：缺少 totalBalance')
+      throw new Error(t.providerErrors.missingField('totalBalance'))
     }
     return [
       {

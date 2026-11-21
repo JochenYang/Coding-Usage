@@ -166,7 +166,19 @@ function WeixinChannelBlock({ onTest }: { onTest: (cred: WebhookCredential) => P
     let cancelled = false
     void (async () => {
       while (!cancelled) {
-        const res = await bridge.ilinkPoll(qrCode)
+        // A rejected IPC promise must not kill the loop — that would leave the
+        // wizard stuck on the QR step with no feedback. Show the note and keep
+        // polling (the backoff keeps a persistently broken bridge from
+        // spinning); success/expired/error results still take the normal paths.
+        let res: IlinkPollResult
+        try {
+          res = await bridge.ilinkPoll(qrCode)
+        } catch (e) {
+          if (cancelled) return
+          setNote(t.integrations.wxLoginFailed(e instanceof Error ? e.message : String(e)))
+          await new Promise((r) => setTimeout(r, 2000))
+          continue
+        }
         if (cancelled) return
         if (res.status === 'success' && res.botToken) {
           updateSettings({ ...settings, integrations: { ...intg, weixinBotToken: res.botToken } })
@@ -203,7 +215,21 @@ function WeixinChannelBlock({ onTest }: { onTest: (cred: WebhookCredential) => P
     let cancelled = false
     void (async () => {
       while (!cancelled) {
-        const res = await bridge.ilinkActivate(token)
+        // Same rejected-promise guard as phase 1: keep the loop alive. A
+        // timeout-shaped rejection is a normal round-trip ending (silent), any
+        // other failure shows the note; both keep polling.
+        let res: IlinkActivateResult
+        try {
+          res = await bridge.ilinkActivate(token)
+        } catch (e) {
+          if (cancelled) return
+          const msg = e instanceof Error ? e.message : String(e)
+          if (!/abort|timeout/i.test(msg)) {
+            setNote(`${t.integrations.wxActivateError}: ${msg}`)
+          }
+          await new Promise((r) => setTimeout(r, 2000))
+          continue
+        }
         if (cancelled) return
         if (res.userId) {
           updateSettings({

@@ -101,7 +101,7 @@ export function CostAnalysisPage() {
             {costText(agentUsage.monthTotal.costUsd)}
           </span>
           <span className="text-xs text-muted-foreground">
-            {t.overview.monthCol} · {formatCompactValue(agentUsage.monthTotal.tokens)} tokens
+            {t.overview.monthCol} · {formatCompactValue(agentUsage.monthTotal.tokens)} {t.common.unitTokens}
           </span>
         </div>
         {pricing && (

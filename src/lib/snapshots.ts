@@ -155,7 +155,7 @@ export function getConsumedSeries(accountKeys: string[], days: number): DayPoint
   const out: DayPoint[] = []
   for (let i = 0; i < days; i++) {
     let used = 0
-    let any = false
+    let hasConsumed = false
     let pctSum = 0
     let pctCount = 0
     for (const series of perAccount) {
@@ -163,7 +163,7 @@ export function getConsumedSeries(accountKeys: string[], days: number): DayPoint
       const prev = series[i - 1]
       if (cur?.used != null && prev?.used != null && cur.used >= prev.used) {
         used += cur.used - prev.used
-        any = true
+        hasConsumed = true
       }
       if (cur?.pct != null) {
         pctSum += cur.pct
@@ -174,7 +174,7 @@ export function getConsumedSeries(accountKeys: string[], days: number): DayPoint
     out.push({
       day: head.day,
       label: head.label,
-      used: any ? used : null,
+      used: hasConsumed ? used : null,
       pct: pctCount > 0 ? Math.round(pctSum / pctCount) : null,
     })
   }

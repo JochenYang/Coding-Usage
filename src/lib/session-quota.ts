@@ -35,9 +35,11 @@ export function summarizeSessionQuota(raw: LocalPlanRaw): LocalPlanQuotaVM {
   try {
     parsed = JSON.parse(raw.body)
   } catch {
-    return unavailable('parse-failed')
+    return { ...unavailable('parse-failed'), detail: raw.detail ?? null }
   }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return unavailable('parse-failed')
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { ...unavailable('parse-failed'), detail: raw.detail ?? null }
+  }
   const body = parsed as { plan?: unknown; windows?: unknown; topUpCredits?: unknown; stale?: unknown }
   const plan = typeof body.plan === 'string' && body.plan.trim() !== '' ? body.plan.trim().slice(0, 80) : null
   const windows = Array.isArray(body.windows)

@@ -362,6 +362,8 @@ export function TrendsPage() {
               )}
             </div>
             <div className="flex items-center gap-1">
+              {/* Single reset affordance: clearing the pick list IS "show all
+                  models", so one button labeled 全部/All covers both states. */}
               <button
                 type="button"
                 onClick={() => setPicked([])}
@@ -369,15 +371,6 @@ export function TrendsPage() {
               >
                 {t.trends.filterAll}
               </button>
-              {picked.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setPicked([])}
-                  className="rounded-full px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  {t.trends.filterClear}
-                </button>
-              )}
             </div>
           </div>
           <div className="mt-2.5 flex flex-wrap gap-1.5">
