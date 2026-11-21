@@ -17,6 +17,7 @@ import { summarizeSessionQuota } from '@/lib/session-quota'
 import { ProgressBar } from '@/components/common/ProgressBar'
 import { CardWatermark } from '@/components/common/CardWatermark'
 import { cn } from '@/lib/cn'
+import jetbrainsLogo from '@/components/logos/jetbrains.png'
 
 /**
  * Plan-quota card for a client whose allowance is read from its own local
@@ -68,8 +69,10 @@ const SOURCES = {
   },
   jetbrains: {
     name: 'JetBrains AI',
-    logo: <span className="text-[11px] font-semibold leading-none text-foreground">JB</span>,
-    watermark: <span className="text-7xl font-semibold leading-none">JB</span>,
+    // Official apple-touch-icon (jetbrains.com), bundled locally like
+    // commandcode.png — the icon set ships no JetBrains brand mark
+    logo: <img src={jetbrainsLogo} className="h-5 w-5 rounded" alt="" />,
+    watermark: <img src={jetbrainsLogo} alt="" />,
     providerKey: 'jetbrains',
     load: (): Promise<LocalPlanRaw> => window.desktopBridge!.jetbrainsQuota(),
     summarize: summarizeSessionQuota,
@@ -306,49 +309,53 @@ export function LocalQuotaCard({ kind, className }: { kind: LocalQuotaKind; clas
             </div>
           )}
           {canConnectConsole && (
-            <>
+            // The whole action block is drag-exempt: pointer-down on either
+            // button would otherwise start a card drag (SortableGrid).
+            <div className="mt-3 space-y-2" data-no-drag>
               <p className="text-[11px] leading-relaxed text-subtle">{t.manage.alibabaConnectHint}</p>
-              <button
-                type="button"
-                disabled={connecting}
-                onClick={() => {
-                  const bridge = window.desktopBridge
-                  if (!bridge) return
-                  setConnecting(true)
-                  setConnectError(null)
-                  void bridge
-                    .alibabaConnect(consoleTarget)
-                    .then((result) => {
-                      if (result.ok) {
-                        // Every Alibaba card shares this session.
-                        window.dispatchEvent(new Event('quota:invalidate'))
-                        return
-                      }
-                      // A cancelled click is silence; anything the window ran
-                      // into is worth showing, including a blank page.
-                      const text = [result.reason, result.detail].filter(Boolean).join(' · ')
-                      if (text) setConnectError(text)
-                    })
-                    .catch(() => setConnectError('connect-failed'))
-                    .finally(() => setConnecting(false))
-                }}
-                className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-60"
-              >
-                {connecting ? t.manage.alibabaConnecting : t.manage.alibabaConnect}
-              </button>
-              {connectError && (
-                <p className="break-words text-[11px] leading-relaxed text-warning">{connectError}</p>
-              )}
-              {/* The console's own request is the only variant the gateway
-                  accepts; see pasted-requests.ts. */}
-              <button
-                type="button"
-                onClick={() => setPasteOpen((value) => !value)}
-                className="text-[11px] text-subtle underline underline-offset-2 hover:text-muted-foreground"
-                aria-expanded={pasteOpen}
-              >
-                {t.manage.pasteCurl}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={connecting}
+                  onClick={() => {
+                    const bridge = window.desktopBridge
+                    if (!bridge) return
+                    setConnecting(true)
+                    setConnectError(null)
+                    void bridge
+                      .alibabaConnect(consoleTarget)
+                      .then((result) => {
+                        if (result.ok) {
+                          // Every Alibaba card shares this session.
+                          window.dispatchEvent(new Event('quota:invalidate'))
+                          return
+                        }
+                        // A cancelled click is silence; anything the window ran
+                        // into is worth showing, including a blank page.
+                        const text = [result.reason, result.detail].filter(Boolean).join(' · ')
+                        if (text) setConnectError(text)
+                      })
+                      .catch(() => setConnectError('connect-failed'))
+                      .finally(() => setConnecting(false))
+                  }}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-60"
+                >
+                  {connecting ? t.manage.alibabaConnecting : t.manage.alibabaConnect}
+                </button>
+                {/* The console's own request is the only variant the gateway
+                    accepts; see pasted-requests.ts. */}
+                <button
+                  type="button"
+                  onClick={() => setPasteOpen((value) => !value)}
+                  className="text-[11px] text-subtle underline underline-offset-2 hover:text-muted-foreground"
+                  aria-expanded={pasteOpen}
+                >
+                  {t.manage.pasteCurl}
+                </button>
+                {connectError && (
+                  <p className="break-words text-[11px] leading-relaxed text-warning">{connectError}</p>
+                )}
+              </div>
               {pasteOpen && (
                 <div className="space-y-1.5" data-no-drag>
                   <p className="text-[11px] leading-relaxed text-subtle">{t.manage.pasteCurlHint}</p>
@@ -417,7 +424,7 @@ export function LocalQuotaCard({ kind, className }: { kind: LocalQuotaKind; clas
                   {pasteError && <p className="text-[11px] text-warning">{pasteErrorText(pasteError)}</p>}
                 </div>
               )}
-            </>
+            </div>
           )}
         </div>
       ) : (

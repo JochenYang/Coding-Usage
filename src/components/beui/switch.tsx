@@ -34,13 +34,22 @@ export function Switch({
   const reduce = useReducedMotion()
   const [isPressed, setIsPressed] = useState(false)
   const [isPointer, setIsPointer] = useState(false)
+  /** Track travel: w-12 (48) − thumb w-5 (20) − 2×4px inset = 20px */
+  const THUMB_TRAVEL = 20
+  const restingX = checked ? THUMB_TRAVEL : 0
 
   useEffect(() => {
     if (!thumbRef.current || reduce) return
     if (disabled && isPressed) {
-      animate(thumbRef.current, { x: [0, -2, 2, -1, 0] }, { delay: 0.2, duration: 0.6 })
+      // Shake around the resting position, always ending back at it — the
+      // resting x is state-driven now, so the keyframes must not end at 0.
+      animate(
+        thumbRef.current,
+        { x: [restingX, restingX - 2, restingX + 2, restingX - 1, restingX] },
+        { delay: 0.2, duration: 0.6 },
+      )
     }
-  }, [disabled, isPressed, reduce])
+  }, [disabled, isPressed, reduce, restingX])
 
   const squish = !disabled && isPointer && isPressed && !reduce
 
@@ -64,17 +73,21 @@ export function Switch({
           initial={false}
           data-state={checked ? "checked" : "unchecked"}
           className={cn(
-            "group peer inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full px-1 outline-none transition-colors duration-200",
+            "group peer relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full outline-none transition-colors duration-200",
             "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
             "disabled:cursor-not-allowed disabled:opacity-60",
-            checked ? "justify-end bg-accent" : "justify-start bg-muted",
+            checked ? "bg-accent" : "bg-muted",
           )}
         >
+          {/* The slide is an explicit x animation, NOT a layout animation: a
+              layout-driven thumb re-animates whenever its row reflows (e.g. a
+              filter collapsing siblings), which read as switches "parachuting"
+              back into place. Explicit x only moves on checked changes. */}
           <motion.div
             ref={thumbRef}
-            layout
-            animate={{ scale: squish ? 0.9 : 1 }}
-            className="pointer-events-none block h-5 w-5 rounded-full bg-white shadow-md"
+            initial={false}
+            animate={{ x: restingX, scale: squish ? 0.9 : 1 }}
+            className="pointer-events-none absolute left-1 top-1 block h-5 w-5 rounded-full bg-white shadow-md"
           >
             <div className={cn("size-5", squish && (checked ? "ml-1" : "mr-1"))} />
           </motion.div>
