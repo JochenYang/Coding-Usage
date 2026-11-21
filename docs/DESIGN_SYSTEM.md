@@ -13,8 +13,8 @@
   等），`.dark` 类切换主题，共享组件集中在 `common/`、`beui/`、`charts/`、`layout/`。
 - Source of Truth：`src/index.css` 的 `@theme` 块（全部颜色 Token + 明暗两套映射，`.dark` 覆盖）；
   动效的缓动权威是 `src/lib/ease.ts`，弹簧按手势就近声明（见 §7）。
-- 缺口：图表分类色板（`src/lib/overview.ts` 的 `DIST_COLORS` / `DIST_OTHER_COLOR`）非主题感知
-  （SVG `stroke` 属性无法消费 CSS 变量，已收敛为单源常量 + 文档化为例外，见 §10）。
+- 图表分类色板（`src/lib/overview.ts` 的 `DIST_COLORS` / `DIST_OTHER_COLOR`）已并入 Token 层：
+  消费 `--color-chart-1..8` 与 `subtle` 的 CSS 变量引用，随 `.dark` 重排（见 §12）。
 - 冲突记录：已解决。动效曾分裂为 `motion-presets.ts` / `ease.ts` / `drawer.tsx` 三套；
   现已合并至 `ease.ts`（`motion-presets.ts` 删除，6 处引用改道；`EASE_OUT` 两处值原本相同，
   零运行时变化），`AGENTS.md` 动效段已同步修订。
@@ -88,8 +88,7 @@
   见 `:4`）。切换只发生在 Semantic 层，组件零改动。
 - 暗色不止反色：`accent-soft` 改用透明度表达（阴影在暗底失效）；`offline` 在暗底加深保证可见。
 - 例外（恒定值，注明不参与主题）：`accent` / `success` / `warning` / `danger` 两套主题同值；
-  `island` / `island-foreground` 恒深色（它悬在页面之上，模仿硬件遮蔽区，不能跟着主题翻成浅色）；
-  图表分类色板（`DIST_COLORS`，见 §4.3）暂不同值。
+  `island` / `island-foreground` 恒深色（它悬在页面之上，模仿硬件遮蔽区，不能跟着主题翻成浅色）。
 
 ## 3. 色彩语义
 
@@ -149,7 +148,7 @@
 | PageHeader | — | Default | 左标题右 actions；`actions` 内 `gap-2` |
 | Drawer | `left/right` | Open · Closed · Esc 关闭 · body 滚动锁定 | 面板 `max-w-[min(560px,50vw)] sm:min-w-[440px]`，`bg-card`；backdrop `bg-black/40 + backdrop-blur-sm` |
 | Switch | — | Default · Disabled（果冻抖动提示） · Pressed（挤压） | 轨道 `bg-accent` 开 / `bg-muted` 关，拇指纯白（跨主题恒定，显式例外）；焦点环 `ring-ring` |
-| Loader | 17 种 `variant`（默认 `spinner`） | Loading · reduced-motion（透明度脉冲/放慢字形切换） | `role=status` + `sr-only` 标签；`size/speed` 受控；终端风 ascii 系列仅用于 agent 语境 |
+| Loader | 1 种 `variant`（`dots`） | Loading · reduced-motion（透明度脉冲） | `role=status` + `sr-only` 标签；`size/speed` 受控；全仓仅 `dots` 在用，其余 16 种动画变体已删除 |
 | Select | Trigger/Content/Item 组合 | Default · Hover · Focus-visible · Open（果冻圆角 morph）· Disabled · Selected（√标记） | 面板绝对定位于 field 内；多 Select 叠放时由布局层控单开；`inert` 关闭态 |
 | Popover | `click/hover` · `top/bottom` · 对齐三档 | Default · Open（gooey 形变）· Esc/外部关闭（焦点回触发器） | 面板 `max-w-[min(92vw,20rem)] p-4`；hover 模式 120ms 关闭延迟；触屏上 tap 同样可开 |
 | ConfirmDialog | — | Default · Focus（危险确认） | 危险操作二次确认；按钮层级按主/次排布 |
@@ -187,13 +186,13 @@ Accessibility 五条（组件评审 + 实现后各走查一次）：焦点可见
 ## 10. 审计结论与例外台账（本轮已修复）
 
 硬编码复扫：`src/` 内 `stone-/slate-` 零命中（opencode 的 `from-zinc-300 to-slate-500` 属 §8
-品牌点缀例外，保留）；hex 命中只剩 `index.css` Token 定义 + 图表分类色板单源常量。
+品牌点缀例外，保留）；hex 命中只剩 `index.css` Token 定义。
 
 | # | 发现 | 级别 | 处理结果 |
 |---|---|---|---|
 | 1 | 动效权威曾分裂三套 | Major | ✅ 已合并至 `src/lib/ease.ts`，`motion-presets.ts` 删除，6 处引用改道；`AGENTS.md` 已同步 |
 | 2 | `Switch` 用 `stone/slate` 硬编码；另有 6 处 `focus:border-stone-900`、1 处 `hover:border-stone-300`、`text-stone-600`、`text-slate-400` | Major | ✅ 已收敛：轨道 `accent/muted`、输入聚焦 `focus:border-accent`、悬停 `border-strong`、弱文本 `subtle/muted-foreground` |
-| 3 | 图表分类色板非主题感知；前三档与 `accent/warning/danger` 值重复 | Minor | ✅ 接受为例外：SVG `stroke` 属性无法消费 CSS 变量；`"其他"` 灰收敛为 `DIST_OTHER_COLOR` 单源常量，前三档有意镜像语义色浅色值 |
+| 3 | 图表分类色板非主题感知；前三档与 `accent/warning/danger` 值重复 | Minor | ✅ 已修复：`DIST_COLORS` 改为 `--color-chart-1..8`、`DIST_OTHER_COLOR` 改为 `subtle` 的 CSS 变量引用，donut 随 `.dark` 重排；当初「SVG `stroke` 属性无法消费 CSS 变量」的理由被 `DonutChart` / `StackedBarLineChart` 的既有用法推翻 |
 | 4 | `dynamic-island.tsx:235` 一次性任意值（`min-h-[37px] min-w-[126px]`） | Minor | ✅ 注释理由：镜像 iPhone pill 物理尺寸，不进 spacing scale |
 | 5 | `AGENTS.md` 动效段与 `ease.ts` 现实不符 | Minor | ✅ 已修订：`ease.ts` 只保留缓动曲线（`EASE_OUT`/`EASE_IN_OUT`），弹簧改为在各手势旁声明；`SPRING_PRESS` 等 6 个无人引用的弹簧已删除 |
 
@@ -213,7 +212,8 @@ Accessibility 五条（组件评审 + 实现后各走查一次）：焦点可见
 - **组件类名合并**：用 `cn()`（`src/lib/cn.ts`，clsx + tailwind-merge）合并与消解冲突，条件类名走 clsx 语法。
 - **图表色板**：`--color-chart-1..8` 是系列色板；`--color-stack-cache` / `-input` / `-output` 是
   堆叠柱的同一色相三级。槽位由 `src/lib/trend-analysis.ts` 的 `modelSlots()` 分配（一模型一槽），
-  保证筛选 chip、拆分图例与对比行颜色一致，且一屏最多八条曲线不撞色。
+  保证筛选 chip、拆分图例与对比行颜色一致，且一屏最多八条曲线不撞色。Overview 的 donut 分类色板
+  （`src/lib/overview.ts` 的 `DIST_COLORS`）按同一序位消费这组令牌；折叠的「其他」切片用 `subtle`。
 - **动效实现**：统一用 `motion/react`；自建组件在 `src/components/beui/`。缓动只从
   `@/lib/ease` 取（`EASE_OUT` / `EASE_IN_OUT`），弹簧写在使用它的手势组件里；所有动效必须读
   `useReducedMotion()` 并降级为透明度脉冲或静止。

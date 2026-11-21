@@ -195,15 +195,29 @@ export function buildBalanceProviders(
   return [...per.values()].sort((a, b) => b.amount - a.amount)
 }
 
-export const DIST_COLORS = ['#6366F1', '#F59E0B', '#EF4444', '#8B5CF6', '#0EA5E9', '#14B8A6', '#64748B']
+/**
+ * Categorical palette for the overview donut, one slot per chart series token
+ * (src/index.css `--color-chart-1..8`). Stored as CSS variable references, not
+ * hex, so the ring re-themes with the dark block instead of freezing the light
+ * values — SVG `stroke` presentation attributes do consume vars (same pattern
+ * as the speed line in StackedBarLineChart, see docs/DESIGN_SYSTEM.md §12).
+ */
+export const DIST_COLORS = [
+  'var(--color-chart-1)',
+  'var(--color-chart-2)',
+  'var(--color-chart-3)',
+  'var(--color-chart-4)',
+  'var(--color-chart-5)',
+  'var(--color-chart-6)',
+  'var(--color-chart-7)',
+  'var(--color-chart-8)',
+]
 
 /**
- * Muted tone for folded "other" slices. Kept as a hex constant (single source)
- * because SVG `stroke` presentation attributes cannot consume CSS vars; the
- * first three DIST_COLORS entries intentionally mirror the accent / warning /
- * danger light values for the same reason (see docs/DESIGN_SYSTEM.md §10).
+ * Muted tone for folded "other" slices: the non-categorical `subtle` token, so
+ * it stays quiet in both themes instead of competing with the series palette.
  */
-export const DIST_OTHER_COLOR = '#4B4B63'
+export const DIST_OTHER_COLOR = 'var(--color-subtle)'
 
 /** Provider-share slices of token quota totals; small shares fold into `otherLabel` */
 export function buildDistribution(
