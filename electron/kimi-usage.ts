@@ -361,15 +361,17 @@ async function offer(
 /**
  * Read the Kimi Code subscription quota.
  *
- * Tries the local Kimi Code server first, then the remote endpoint using
- * either a locally-stored OAuth token or the caller-supplied API key. Returns
+ * Tries the local Kimi Code server first, then the remote endpoint with the
+ * CLI's locally-stored OAuth token — a single identity by design: the
+ * caller-supplied key parameter was removed because no caller ever passed
+ * one, and a second identity would reintroduce the cross-account snapshot
+ * overwrite the digest key once guarded against. Returns
  * `reason: 'no-auth-file'` when neither a running server nor any credential is
  * present, which the card renders as its honest empty state.
  */
 export async function fetchKimiUsage(
   fetchImpl: FetchImpl,
   homeDir: string,
-  apiKey?: string,
 ): Promise<KimiOutcome> {
   // --- 1. Loopback server (officially documented, no credential parsing) ---
   const serverToken = await firstReadable(serverTokenPaths(homeDir))
@@ -389,10 +391,10 @@ export async function fetchKimiUsage(
     }
   }
 
-  // --- 2. Remote endpoint with a token/key ---
-  // Prefer the caller's key (the account editor field); fall back to the OAuth
-  // access token the CLI keeps fresh. A locally-stale token is still attempted
-  // once — the server is the source of truth, matching the Claude probe.
+  // --- 2. Remote endpoint with the CLI's OAuth token ---
+  // Single identity: the OAuth access token the CLI keeps fresh. A
+  // locally-stale token is still attempted once — the server is the source of
+  // truth, matching the Claude probe.
   const storedToken = await firstReadable(credentialPaths(homeDir))
   let oauthToken: string | null = null
   if (storedToken) {
@@ -405,7 +407,7 @@ export async function fetchKimiUsage(
       oauthToken = null
     }
   }
-  const token = apiKey && apiKey !== '' ? apiKey : oauthToken
+  const token = oauthToken
   if (!token) return { available: false, reason: 'no-auth-file' }
 
   const r = await offer(fetchImpl, REMOTE_USAGES_URL, {
