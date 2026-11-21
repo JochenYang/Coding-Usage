@@ -11,6 +11,22 @@ import { summarizeCodexQuota, type CodexQuotaVM } from '@/lib/codex-quota'
 import { ProgressBar } from '@/components/common/ProgressBar'
 import { CardWatermark } from '@/components/common/CardWatermark'
 import { cn } from '@/lib/cn'
+import type { Dict } from '@/i18n/types'
+
+/**
+ * Map the endpoint's window length to a localized label. The known 5h / 7d /
+ * 30d lengths carry their own dict keys; any other length the endpoint may
+ * grow falls back to an approximate count instead of showing raw seconds.
+ */
+function codexWindowLabel(seconds: number, t: Dict): string {
+  if (seconds === 18000) return t.windows.rolling
+  if (seconds === 604800) return t.windows.weekly
+  if (seconds === 2592000) return t.windows.monthly
+  if (seconds <= 0) return t.windows.generic
+  const h = Math.round(seconds / 3600)
+  if (h < 48) return t.windows.hoursLabel(h)
+  return t.windows.daysLabel(Math.round(seconds / 86400))
+}
 
 /**
  * Codex subscription quota card. Reads the local ChatGPT login via the
@@ -103,7 +119,7 @@ export function CodexQuotaCard({ className }: { className?: string }) {
           <div className="flex items-center gap-1.5">
             <h2 className="text-sm font-semibold text-foreground">Codex</h2>
             {vm?.available && vm.plan && (
-              <span className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10px] text-subtle">{vm.plan}</span>
+              <span className="shrink-0 max-w-[10rem] truncate rounded-full bg-muted px-1.5 py-px text-[10px] text-subtle">{vm.plan}</span>
             )}
           </div>
           <p className="text-[11px] text-subtle">{t.manage.subscriptionTitle}</p>
@@ -119,9 +135,9 @@ export function CodexQuotaCard({ className }: { className?: string }) {
           {[vm.primary, vm.secondary].map(
             (win, i) =>
               win && (
-                <div key={`${win.label}-${i}`}>
+                <div key={`${win.windowSeconds}-${i}`}>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">{win.label}</span>
+                    <span className="text-muted-foreground">{codexWindowLabel(win.windowSeconds, t)}</span>
                     <span
                       className={cn(
                         'tabular-nums',

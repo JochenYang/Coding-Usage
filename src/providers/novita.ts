@@ -27,10 +27,11 @@ export const novita: ProviderDef = {
       const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
       throw new Error(t.providerErrors.keyOrShapeChanged)
     }
+    const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
     return [
       {
         id: 'novita-balance',
-        label: '可用余额（USD）',
+        label: t.provider.balanceLabel('USD'),
         kind: 'balance',
         remaining: Math.round((units / 10_000) * 100) / 100,
         unit: 'USD',

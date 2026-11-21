@@ -110,6 +110,8 @@ export interface Dict {
     lifetimeCost: string
     lifetimeCalls: string
     planExpiry: string
+    usageSpent: string
+    totalToppedUp: string
   }
   metric: {
     unlimited: string
@@ -133,6 +135,11 @@ export interface Dict {
     rolling: string
     weekly: string
     monthly: string
+    /** Codex fallback: a window the endpoint did not give a length for */
+    generic: string
+    /** Codex fallback for an unusual window length: hours / days */
+    hoursLabel: (n: number) => string
+    daysLabel: (n: number) => string
     rateLimited: string
     fiveHour: string
     weeklyPlan: string
@@ -526,6 +533,8 @@ export interface Dict {
     grokNoAuth: string
     grokReauth: string
     grokBilling: string
+    /** Grok probe failed for a non-login reason (network/timeout/server) */
+    grokUnavailable: string
     /** Banked reset tokens left (gRPC-Web enhancement) */
     grokResetsLeft: (n: number) => string
     /** Expiry of the earliest banked token; `date` is a locale date */
@@ -646,14 +655,12 @@ export interface Dict {
   }
   /** Kimi Code subscription quota card (local loopback server / remote usages endpoint) */
   kimiQuota: {
-    title: string
     subtitle: string
     windowWeekly: string
     windowFiveHour: string
     windowMonthTotal: string
     windowMonthCode: string
     windowOther: string
-    noLocalLogin: string
     staleLogin: string
     percentNote: string
     walletTitle: string

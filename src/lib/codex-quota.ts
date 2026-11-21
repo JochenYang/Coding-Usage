@@ -12,8 +12,8 @@
  */
 
 export interface CodexWindowVM {
-  /** Window label: 5 小时 / 7 天 / 30 天 by the endpoint's limit_window_seconds */
-  label: string
+  /** Window length in seconds; the card maps it to a localized label */
+  windowSeconds: number
   /** Used percentage 0-100 */
   percent: number
   resetsAt: number | null
@@ -50,16 +50,6 @@ export interface CodexQuotaVM {
   individualLimit: CodexSpendLimitVM | null
   /** Epoch ms of this fetch */
   fetchedAt: number | null
-}
-
-function windowLabel(seconds: number): string {
-  if (seconds === 18000) return '5 小时窗口'
-  if (seconds === 604800) return '7 天窗口'
-  if (seconds === 2592000) return '30 天窗口'
-  const h = Math.round(seconds / 3600)
-  if (h < 48) return `${h} 小时窗口`
-  const d = Math.round(seconds / 86400)
-  return `${d} 天窗口`
 }
 
 function numOrNull(value: unknown): number | null {
@@ -99,7 +89,9 @@ function parseWindow(raw: unknown): CodexWindowVM | null {
   const seconds = typeof w.limit_window_seconds === 'number' ? w.limit_window_seconds : typeof w.limitWindowSeconds === 'number' ? w.limitWindowSeconds : 0
   // The endpoint has been seen with both spellings; `resets_at` may be ISO.
   const resetsAt = toEpochMs(w.reset_at ?? w.resetAt ?? w.resets_at)
-  return { label: seconds > 0 ? windowLabel(seconds) : '窗口', percent, resetsAt }
+  // Localized labels are the card's job (dict lookup by windowSeconds); the VM
+  // carries only the raw seconds so a locale switch never needs a re-probe.
+  return { windowSeconds: seconds, percent, resetsAt }
 }
 
 function parseCredits(raw: unknown): CodexCreditsVM | null {

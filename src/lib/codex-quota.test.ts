@@ -26,7 +26,8 @@ describe('summarizeCodexQuota', () => {
     const vm = ok(LIVE)
     expect(vm.available).toBe(true)
     expect(vm.plan).toBe('free')
-    expect(vm.primary).toMatchObject({ label: '30 天窗口', percent: 0, resetsAt: 1796039275000 })
+    // The VM carries raw seconds; the card maps them to a localized label
+    expect(vm.primary).toMatchObject({ windowSeconds: 2592000, percent: 0, resetsAt: 1796039275000 })
     expect(vm.secondary).toBeNull()
     // Zero credits-available is not worth a row
     expect(vm.resetCredits).toBeNull()
@@ -42,7 +43,7 @@ describe('summarizeCodexQuota', () => {
         rate_limit_reset_credits: { available_count: 2 },
       }),
     )
-    expect(vm.primary).toMatchObject({ label: '5 小时窗口', percent: 61 })
+    expect(vm.primary).toMatchObject({ windowSeconds: 18000, percent: 61 })
     expect(vm.primary?.resetsAt).toBe(Date.parse('2026-11-02T12:00:00Z'))
     expect(vm.credits).toEqual({ unlimited: false, balance: 12.5 })
     expect(vm.resetCredits).toBe(2)
@@ -74,5 +75,31 @@ describe('summarizeCodexQuota', () => {
     const vm = ok('not json')
     expect(vm.available).toBe(false)
     expect(vm.reason).toBe('bad-response')
+  })
+
+  it('carries the reset-credits expiry through as epoch ms and drops it when absent', () => {
+    // present: expiresAtMs reaches the card as a number (renderer-side parse of
+    // the enhancement the probe merged in — P24)
+    const present = ok(
+      JSON.stringify({
+        rate_limit: { primary_window: { used_percent: 10, limit_window_seconds: 18000 } },
+        rate_limit_reset_credits: { available_count: 3, expiresAtMs: 1_800_000_000_000 },
+      }),
+    )
+    expect(present.resetCredits).toBe(3)
+    expect(present.resetCreditsExpiry).toBe(1_800_000_000_000)
+    // absent: the whole block missing leaves both fields null, never 0
+    const absent = ok(JSON.stringify({ rate_limit: { primary_window: { used_percent: 10, limit_window_seconds: 18000 } } }))
+    expect(absent.resetCredits).toBeNull()
+    expect(absent.resetCreditsExpiry).toBeNull()
+    // a non-numeric expiry degrades to null instead of poisoning the card
+    const broken = ok(
+      JSON.stringify({
+        rate_limit: { primary_window: { used_percent: 10, limit_window_seconds: 18000 } },
+        rate_limit_reset_credits: { available_count: 3, expiresAtMs: 'soon' },
+      }),
+    )
+    expect(broken.resetCredits).toBe(3)
+    expect(broken.resetCreditsExpiry).toBeNull()
   })
 })

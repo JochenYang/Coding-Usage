@@ -27,10 +27,11 @@ export const stepfun: ProviderDef = {
       const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
       throw new Error(t.providerErrors.keyOrShapeChanged)
     }
+    const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
     return [
       {
         id: 'stepfun-balance',
-        label: '账户余额（CNY）',
+        label: t.provider.balanceLabel('CNY'),
         kind: 'balance',
         remaining: Math.round(amount * 100) / 100,
         unit: 'CNY',

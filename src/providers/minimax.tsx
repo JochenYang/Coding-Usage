@@ -251,9 +251,10 @@ export const minimax: ProviderDef = {
       const baseUrl = MINIMAX_BASE_URLS[ctx.regionId ?? 'cn'] ?? MINIMAX_BASE_URLS.cn
       const expiresAt = await fetchExpiry(ctx, ctx.key, baseUrl)
       if (expiresAt) {
+        const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
         intervals.push({
           id: 'minimax-expiry',
-          label: '套餐到期',
+          label: t.provider.planExpiry,
           kind: 'expiry',
           expiresAt,
         })

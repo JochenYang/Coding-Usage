@@ -26,16 +26,17 @@ export const openrouter: ProviderDef = {
       throw new Error(t.providerErrors.keyOrShapeChanged)
     }
     const usage = typeof data.total_usage === 'number' ? data.total_usage : 0
+    const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
     return [
       {
         id: 'openrouter-balance',
-        label: '剩余额度（USD）',
+        label: t.provider.balanceLabel('USD'),
         kind: 'balance',
         remaining: Math.round((data.total_credits - usage) * 100) / 100,
         unit: 'USD',
         detail: [
-          { label: '已用', value: usage },
-          { label: '累计充值', value: data.total_credits },
+          { label: t.provider.usageSpent, value: usage },
+          { label: t.provider.totalToppedUp, value: data.total_credits },
         ],
       },
     ]

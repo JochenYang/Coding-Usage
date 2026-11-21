@@ -32,11 +32,11 @@ export const opencode: ProviderDef = {
     }
   },
   async parseResponse(json, ctx) {
+    const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
     const usage = (json as { usage?: Record<string, ZenWindow> }).usage
     if (!usage || typeof usage !== 'object') {
-      throw new Error('响应缺少 usage 字段')
+      throw new Error(t.providerErrors.missingField('usage'))
     }
-    const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
     const metrics: UsageMetric[] = []
     for (const w of WINDOWS) {
       const win = usage[w.key]
@@ -53,7 +53,7 @@ export const opencode: ProviderDef = {
         resetsAt: win.resetsAt ? Date.parse(win.resetsAt) : undefined,
       })
     }
-    if (metrics.length === 0) throw new Error('响应中没有任何窗口数据')
+    if (metrics.length === 0) throw new Error(t.providerErrors.noQuotaData)
     return metrics
   },
 }
