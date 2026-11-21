@@ -603,3 +603,51 @@ describe('measurable active time', () => {
     expect(rows[0]!.tokPerSec).toBe(10)
   })
 })
+
+describe('credits series (Qoder gateway billing)', () => {
+  const creditDay = (dayKey: string, credits: number): DayPointVM => ({ ...day(dayKey, 0), credits })
+
+  it('conserves credits through bucketize and computeTotals without folding them into tokens', () => {
+    // A quarter-length window so bucketize steps up to weekly columns; credits
+    // land on scattered days, and the fixture zeros elsewhere are the sparse
+    // days a Qoder-only account would report.
+    const points = denseSeries('2026-01-01', 90).map((p, i) => ({ ...p, credits: i % 7 === 3 ? 12 : 0 }))
+    // The odd 7.5 rides on a day that still carries its tokens: credits must
+    // not disturb the token headline either way.
+    points[40] = { ...points[40]!, credits: 7.5 }
+
+    const buckets = bucketize(points)
+    const bucketCredits = buckets.reduce((s, b) => s + b.credits, 0)
+    const pointCredits = points.reduce((s, p) => s + p.credits, 0)
+    // Conservation: every credit survives bucketing — 13 scattered 12-credit
+    // days (i ≡ 3 mod 7) plus the odd 7.5 on day 40
+    expect(bucketCredits).toBe(pointCredits)
+    expect(pointCredits).toBe(156 + 7.5)
+
+    const totals = computeTotals(buckets, 'all')
+    expect(totals.credits).toBe(pointCredits)
+    // Credits are an independent unit: the token headline is untouched by them
+    const withoutCredits = computeTotals(bucketize(denseSeries('2026-01-01', 90)), 'all')
+    expect(totals.tokens).toBe(withoutCredits.tokens)
+    // and a credits-less series sums to exactly zero, never NaN
+    expect(withoutCredits.credits).toBe(0)
+  })
+
+  it('densified zero days carry 0 credits so a pre-credits cache cannot fake a balance', () => {
+    // densifySeries inserts zero rows for days the scan never reported; those
+    // rows must not invent credits, and a persisted point missing the field
+    // (old cache) contributes 0 instead of NaN.
+    const sparse = [creditDay('2026-01-01', 30), creditDay('2026-01-09', 5)]
+    const dense = densifySeries(sparse).points
+    expect(dense.length).toBe(9)
+    expect(dense.reduce((s, p) => s + p.credits, 0)).toBe(35)
+
+    // A persisted point written before the credits field existed has NO key at
+    // all — simulate that exact shape (the double cast is the simulation of
+    // old JSON, not a production pattern).
+    const legacy = dense.map(({ credits: _dropped, ...rest }) => rest) as unknown as DayPointVM[]
+    const totals = computeTotals(bucketize(legacy), 'all')
+    expect(totals.credits).toBe(0)
+    expect(Number.isFinite(totals.credits)).toBe(true)
+  })
+})

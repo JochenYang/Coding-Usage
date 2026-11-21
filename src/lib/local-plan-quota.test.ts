@@ -57,6 +57,34 @@ describe('summarizeCursorQuota', () => {
     expect(vm.plan).toBe('Premium')
   })
 
+  it('carries the credit-grant balance through and leaves it absent when no grant is usable', () => {
+    // present: the first usable grant wins, expiry degrades to null when the
+    // payload carries garbage (renderer-side parse of the P24 enhancement)
+    const present = summarizeCursorQuota({
+      available: true,
+      body: JSON.stringify({
+        planUsage: { totalPercentUsed: 12 },
+        creditGrants: [
+          { remainingUsd: 'not-a-number', expiresAt: 1 },
+          { remainingUsd: 4.5, expiresAt: 1_800_000_000_000 },
+        ],
+      }),
+    })
+    expect(present.creditBalance).toEqual({ remainingUsd: 4.5, expiresAt: 1_800_000_000_000 })
+    // absent: no grants field at all is a missing field, not a 0 balance
+    const absent = summarizeCursorQuota({
+      available: true,
+      body: JSON.stringify({ planUsage: { totalPercentUsed: 12 } }),
+    })
+    expect(absent.creditBalance).toBeNull()
+    // an empty grants array behaves like an absent one
+    const empty = summarizeCursorQuota({
+      available: true,
+      body: JSON.stringify({ planUsage: { totalPercentUsed: 12 }, creditGrants: [] }),
+    })
+    expect(empty.creditBalance).toBeNull()
+  })
+
   it('renders a single Auto row when only that pool is reported', () => {
     const vm = summarizeCursorQuota({
       available: true,
