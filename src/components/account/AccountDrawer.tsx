@@ -205,6 +205,14 @@ export function AccountDrawer({
           </div>
 
           <div className="mt-3">
+            {def.id === 'warp' && (
+              // Warp's key can start billed agent runs. The warning sits here,
+              // at the paste site: the providers-page subtitle truncates to one
+              // line, so it cannot carry this (P23 constraint).
+              <p className="mb-1.5 text-[11px] leading-snug text-warning">
+                {t.providers.warp.tagline}
+              </p>
+            )}
             <div className="mb-1 flex items-center justify-between">
               <label className="block text-[11px] uppercase tracking-wide text-subtle">
                 {t.settings.apiKeyLabel}

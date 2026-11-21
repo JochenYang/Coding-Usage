@@ -13,6 +13,7 @@ import { commandcode } from './commandcode'
 import { ollamaCloud } from './ollama-cloud'
 import { cursor } from './cursor'
 import { copilot } from './copilot'
+import { warp } from './warp'
 
 /** Add a new provider: write an adapter file and register it below */
 export const PROVIDERS: ProviderDef[] = [
@@ -30,6 +31,7 @@ export const PROVIDERS: ProviderDef[] = [
   ollamaCloud,
   cursor,
   copilot,
+  warp,
 ]
 
 export function getProvider(id: string): ProviderDef | undefined {

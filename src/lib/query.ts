@@ -11,14 +11,21 @@ const bridge = window.desktopBridge
  * Transport shared by every provider request. Under Electron it routes through
  * the main process (`net.fetch`, not subject to CORS); in the browser it uses
  * plain fetch. Returns null when the request could not be completed at all.
+ *
+ * `init` is the optional POST override for GraphQL-style endpoints whose query
+ * travels in a JSON body (see ParseContext.fetch). It is additive on purpose:
+ * every existing GET adapter keeps its exact call shape, and under Electron
+ * the body still rides the same net:fetch bridge — no adapter opens its own
+ * transport.
  */
 async function transportFetch(
   url: string,
   headers: Record<string, string>,
+  init?: { method?: 'POST'; body?: string },
 ): Promise<{ status: number; json: unknown } | null> {
   if (bridge) {
     try {
-      const r = await bridge.fetch(url, headers)
+      const r = await bridge.fetch(url, headers, init)
       let json: unknown = null
       try {
         json = JSON.parse(r.body)
@@ -31,7 +38,7 @@ async function transportFetch(
     }
   }
   try {
-    const res = await fetch(url, { headers })
+    const res = await fetch(url, { headers, ...init })
     let json: unknown = null
     try {
       json = await res.json()
@@ -50,8 +57,8 @@ async function transportFetch(
  * the outcome in a synthetic Response so adapters can uniformly call `.json()`.
  */
 async function makeCtxFetch(): Promise<NonNullable<ParseContext['fetch']>> {
-  return async (targetUrl: string, targetHeaders: Record<string, string>) => {
-    const r = await transportFetch(targetUrl, targetHeaders)
+  return async (targetUrl: string, targetHeaders: Record<string, string>, init?: { method?: 'POST'; body?: string }) => {
+    const r = await transportFetch(targetUrl, targetHeaders, init)
     // No usable response at all (status 0 is the bridge's failure marker):
     // surface as a thrown error so the adapter's own try/catch treats it as a
     // soft failure, exactly like a failed native fetch did before.

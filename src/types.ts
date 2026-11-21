@@ -43,7 +43,18 @@ export interface ParseContext {
   regionId?: string
   /** Current entry's API key, reused for Authorization on adapter-issued requests */
   key?: string
-  fetch?: (url: string, headers: Record<string, string>) => Promise<Response>
+  /**
+   * `init` is an opt-in POST override for GraphQL-style endpoints whose query
+   * must travel in a JSON body (the Warp adapter is the only user so far).
+   * It stays optional so every existing GET adapter call site is untouched,
+   * and it still routes through the main-process net:fetch bridge under
+   * Electron — the adapter never opens its own transport.
+   */
+  fetch?: (
+    url: string,
+    headers: Record<string, string>,
+    init?: { method?: 'POST'; body?: string },
+  ) => Promise<Response>
   /** Active UI locale; adapters use it to pick the right dict when rendering metric labels. */
   locale?: string
 }
