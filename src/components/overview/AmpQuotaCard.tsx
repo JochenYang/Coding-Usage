@@ -98,7 +98,7 @@ function parseAmpBody(
     if (typeof w.percent !== 'number' || !Number.isFinite(w.percent)) continue
     const known = KNOWN_METER_IDS.find((id) => id === w.id)
     const resetsAt = typeof w.resetsAt === 'number' && Number.isFinite(w.resetsAt) ? w.resetsAt : null
-    meters.push({ id: known ?? 'other', percent: w.percent, resetsAt })
+    meters.push({ id: known ?? 'other', percent: Math.min(100, Math.max(0, w.percent)), resetsAt })
   }
   // A money figure must be a non-negative USD amount; anything else stays absent.
   const usd = (value: unknown): number | null =>
@@ -229,7 +229,7 @@ export function AmpQuotaCard({ className }: { className?: string }) {
           <div className="flex items-center gap-1.5">
             <h2 className="text-sm font-semibold text-foreground">Amp</h2>
             {vm?.available && vm.plan && (
-              <span className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10px] text-subtle">{vm.plan}</span>
+              <span className="shrink-0 max-w-[10rem] truncate rounded-full bg-muted px-1.5 py-px text-[10px] text-subtle">{vm.plan}</span>
             )}
           </div>
           <p className="text-[11px] text-subtle">{t.ampQuota.subtitle}</p>

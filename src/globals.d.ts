@@ -146,7 +146,7 @@ declare global {
     claudeUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Gemini Code Assist quota via the local Gemini CLI OAuth login (refresh happens in main) */
     geminiUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
-    /** Grok Build (SuperGrok) quota via the local `grok login` state; body is a normalized {percent,resetsAt,plan,email} */
+    /** Grok Build (SuperGrok) quota via the local `grok login` state; body is a normalized {percent,resetsAt,plan,remainingResets?,resetsExpireAt?} */
     grokUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
     /** Qoder global build: credits pool from the IDE's own usage endpoint */
     qoderQuota(): Promise<{

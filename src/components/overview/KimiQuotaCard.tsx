@@ -174,8 +174,8 @@ export function KimiQuotaCard({ className }: { className?: string }) {
         </p>
       ) : (
         <div className="mt-3 space-y-3">
-          {vm.windows.map((win) => (
-            <div key={win.id}>
+          {vm.windows.map((win, i) => (
+            <div key={`${win.id}-${i}`}>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">{WINDOW_LABELS[win.id](t)}</span>
                 <span

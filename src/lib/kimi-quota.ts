@@ -35,8 +35,6 @@ export interface KimiQuotaVM {
   reason: string | null
   windows: KimiWindowVM[]
   wallet: KimiWalletVM | null
-  /** Which surface answered: 'local-server' or 'remote' */
-  source: string | null
   /** Epoch ms of this fetch */
   fetchedAt: number | null
 }
@@ -55,7 +53,7 @@ const KNOWN_IDS: readonly KimiWindowId[] = ['fiveHour', 'weekly', 'monthTotal', 
 
 /** Unavailable view: every failure path yields the same honest empty shape */
 function unavailable(reason: string | null): KimiQuotaVM {
-  return { available: false, reason, windows: [], wallet: null, source: null, fetchedAt: null }
+  return { available: false, reason, windows: [], wallet: null, fetchedAt: null }
 }
 
 /**
@@ -135,8 +133,6 @@ export function summarizeKimiQuota(raw: {
       reason: null,
       windows,
       wallet: parseWallet(payload.wallet),
-      // A non-string source is dropped rather than stringified into a label
-      source: typeof payload.source === 'string' ? payload.source : null,
       fetchedAt: Date.now(),
     }
   }

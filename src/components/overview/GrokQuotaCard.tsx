@@ -61,6 +61,10 @@ export function GrokQuotaCard({ className }: { className?: string }) {
       })
     setLoading(true)
     // Race against a hard timeout: a hung IPC must not leave the card loading.
+    // The probe also queues behind the global concurrency-2 quota slot, so a
+    // cold start where heavier probes run first can exceed this budget — the
+    // timeout keeps whatever snapshot was painted instead of wiping it, and
+    // the next refresh tick self-heals.
     let watchdogTimer: ReturnType<typeof setTimeout> | null = null
     const watchdog = new Promise<never>((_resolve, reject) => {
       watchdogTimer = setTimeout(() => reject(new Error('timeout')), 12_000)
@@ -74,7 +78,9 @@ export function GrokQuotaCard({ className }: { className?: string }) {
       .catch(() => {
         refreshed = true
         if (cancelled) return
-        setVm(summarizeGrokQuota({ available: false, reason: 'timeout' }))
+        // A watchdog timeout must not wipe the snapshot painted above: keep
+        // the last reading on screen instead of flashing an unavailable state.
+        setVm((prev) => prev ?? summarizeGrokQuota({ available: false, reason: 'timeout' }))
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -111,7 +117,13 @@ export function GrokQuotaCard({ className }: { className?: string }) {
         <p className="mt-3 text-xs text-subtle">{t.card.loading}</p>
       ) : !vm?.available ? (
         <p className="mt-3 text-xs leading-relaxed text-subtle">
-          {staleLogin ? t.manage.grokReauth : t.manage.grokNoAuth}
+          {staleLogin
+            ? t.manage.grokReauth
+            : vm?.reason === 'no-auth-file'
+              ? t.manage.grokNoAuth
+              : // network / timeout / server errors: pointing at the login
+                // file would send the user hunting in the wrong place
+                t.manage.grokUnavailable}
         </p>
       ) : (
         <div className="mt-3">

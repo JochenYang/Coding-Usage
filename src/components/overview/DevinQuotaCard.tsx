@@ -80,7 +80,7 @@ function parseDevinBody(body: string): { plan: string | null; windows: DevinWind
     if (typeof w.percent !== 'number' || !Number.isFinite(w.percent)) continue
     const known = KNOWN_WINDOW_IDS.find((id) => id === w.id)
     const resetsAt = typeof w.resetsAt === 'number' && Number.isFinite(w.resetsAt) ? w.resetsAt : null
-    windows.push({ id: known ?? 'other', percent: w.percent, resetsAt })
+    windows.push({ id: known ?? 'other', percent: Math.min(100, Math.max(0, w.percent)), resetsAt })
   }
   if (windows.length === 0) return null
   const plan = typeof record.plan === 'string' && record.plan !== '' ? record.plan : null
@@ -100,8 +100,11 @@ function summarizeDevinQuota(raw: { available: boolean; body?: string; reason?: 
 /**
  * Race budget for the main-process probe. `electron/devin-quota.ts` bounds
  * its single Connect-RPC call at 10s (AbortSignal.timeout), so 15s covers a
- * full round-trip with IPC overhead. The effect cleanup clears the timer, so
- * a settled race leaves nothing behind.
+ * full round-trip with IPC overhead. The probe also queues behind the global
+ * concurrency-2 quota slot, so a simultaneous cold-start refresh can exceed
+ * this budget once — the next refresh tick self-heals from the persisted
+ * snapshot. The effect cleanup clears the timer, so a settled race leaves
+ * nothing behind.
  */
 const PROBE_RACE_TIMEOUT_MS = 15_000
 
@@ -191,7 +194,7 @@ export function DevinQuotaCard({ className }: { className?: string }) {
           <div className="flex items-center gap-1.5">
             <h2 className="text-sm font-semibold text-foreground">Devin</h2>
             {vm?.available && vm.plan && (
-              <span className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10px] text-subtle">{vm.plan}</span>
+              <span className="shrink-0 max-w-[10rem] truncate rounded-full bg-muted px-1.5 py-px text-[10px] text-subtle">{vm.plan}</span>
             )}
           </div>
           <p className="text-[11px] text-subtle">{t.manage.subscriptionTitle}</p>

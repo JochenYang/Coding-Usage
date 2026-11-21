@@ -269,7 +269,7 @@ export function LocalQuotaCard({ kind, className }: { kind: LocalQuotaKind; clas
           <div className="flex items-center gap-1.5">
             <h2 className="text-sm font-semibold text-foreground">{source.name}</h2>
             {vm?.available && vm.plan && (
-              <span className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10px] text-subtle">
+              <span className="shrink-0 max-w-[10rem] truncate rounded-full bg-muted px-1.5 py-px text-[10px] text-subtle">
                 {vm.plan}
               </span>
             )}

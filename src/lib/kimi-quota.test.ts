@@ -27,7 +27,6 @@ describe('summarizeKimiQuota', () => {
       ),
     })
     expect(vm.available).toBe(true)
-    expect(vm.source).toBe('local-server')
     expect(vm.windows.map((w) => w.id)).toEqual(['fiveHour', 'weekly', 'monthTotal', 'monthCode', 'other'])
     expect(vm.windows.map((w) => w.percent)).toEqual([1, 2, 3, 4, 5])
     expect(vm.fetchedAt).not.toBeNull()
@@ -108,7 +107,6 @@ describe('summarizeKimiQuota', () => {
       }),
     })
     expect(vm.available).toBe(true)
-    expect(vm.source).toBe('remote')
     expect(vm.windows).toEqual([{ id: 'monthTotal', percent: 42.5, resetsAt: 1_800_000_000_000 }])
     expect(vm.wallet).toEqual({ remaining: 12.5, total: null, used: 87.5, currency: 'CNY' })
   })
@@ -120,7 +118,6 @@ describe('summarizeKimiQuota', () => {
         reason: body === 'not json' ? 'bad-response' : 'malformed-body',
         windows: [],
         wallet: null,
-        source: null,
         fetchedAt: null,
       })
     }
@@ -132,15 +129,10 @@ describe('summarizeKimiQuota', () => {
       reason: 'http-401',
       windows: [],
       wallet: null,
-      source: null,
       fetchedAt: null,
     })
     // The declared type is non-null, but the value crosses IPC untrusted
     expect(summarizeKimiQuota(null as unknown as { available: boolean }).available).toBe(false)
     expect(summarizeKimiQuota('garbage' as unknown as { available: boolean }).reason).toBeNull()
-    // A non-string source is dropped rather than stringified into a label
-    expect(
-      summarizeKimiQuota({ available: true, body: bodyOf([{ id: 'fiveHour', percent: 1 }], { source: 42 }) }).source,
-    ).toBeNull()
   })
 })

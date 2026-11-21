@@ -110,7 +110,7 @@ function parseFactoryBody(
     if (typeof w.percent !== 'number' || !Number.isFinite(w.percent)) continue
     const known = KNOWN_WINDOW_IDS.find((id) => id === w.id)
     const resetsAt = typeof w.resetsAt === 'number' && Number.isFinite(w.resetsAt) ? w.resetsAt : null
-    windows.push({ id: known ?? 'other', percent: w.percent, resetsAt })
+    windows.push({ id: known ?? 'other', percent: Math.min(100, Math.max(0, w.percent)), resetsAt })
   }
   if (windows.length === 0) return null
   const topUpCredits =
@@ -135,8 +135,12 @@ function summarizeFactoryQuota(raw: { available: boolean; body?: string; reason?
  * Race budget for the main-process probe. `electron/factory-quota.ts` bounds
  * each request at 10s and may chain billing/limits -> legacy usage ->
  * auth/me, so a worst-case probe legitimately runs 30s; a shorter race would
- * declare `timeout` on a probe that was still working. The effect cleanup
- * clears the timer, so a settled race leaves nothing behind.
+ * declare `timeout` on a probe that was still working. On top of that the
+ * probe queues behind the global concurrency-2 quota slot, so a cold start
+ * where every card probes at once can push the total past this budget — the
+ * race declares timeout once and the next refresh tick self-heals from the
+ * persisted snapshot. The effect cleanup clears the timer, so a settled race
+ * leaves nothing behind.
  */
 const PROBE_RACE_TIMEOUT_MS = 35_000
 
@@ -228,7 +232,7 @@ export function FactoryQuotaCard({ className }: { className?: string }) {
           <div className="flex items-center gap-1.5">
             <h2 className="text-sm font-semibold text-foreground">Factory Droid</h2>
             {vm?.available && vm.plan && (
-              <span className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10px] text-subtle">{vm.plan}</span>
+              <span className="shrink-0 max-w-[10rem] truncate rounded-full bg-muted px-1.5 py-px text-[10px] text-subtle">{vm.plan}</span>
             )}
           </div>
           <p className="text-[11px] text-subtle">{t.manage.subscriptionTitle}</p>
