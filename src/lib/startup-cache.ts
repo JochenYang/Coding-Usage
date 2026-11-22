@@ -1,5 +1,5 @@
 import type { ProviderResult } from '../types'
-import { AGENT_CLIENTS, readPricingMeta, type AgentUsageVM } from './agent-usage'
+import { AGENT_CLIENTS, readPricingMeta, type AgentPeriodVM, type AgentUsageVM } from './agent-usage'
 
 /**
  * Startup cache for the two slow-to-compute surfaces (provider fetch results
@@ -160,22 +160,44 @@ function normalizeClientRows(value: unknown): AgentUsageVM['clients'] {
     if (entry == null || typeof entry !== 'object') continue
     const row = entry as AgentUsageVM['clients'][number]
     if (typeof row.client !== 'string' || !known.has(row.client)) continue
-    out.push({
-      ...row,
-      today: withPeriodDefaults(row.today),
-      month: withPeriodDefaults(row.month),
-      allTime: withPeriodDefaults(row.allTime),
-      models: Array.isArray(row.models)
-        ? row.models.map((m) => ({
-            ...m,
-            today: withPeriodDefaults(m.today),
-            month: withPeriodDefaults(m.month),
-            allTime: withPeriodDefaults(m.allTime),
-          }))
-        : [],
-    })
+    out.push(
+      dropMissingWeek({
+        ...row,
+        today: withPeriodDefaults(row.today),
+        month: withPeriodDefaults(row.month),
+        week: isPeriod(row.week) ? withPeriodDefaults(row.week) : undefined,
+        allTime: withPeriodDefaults(row.allTime),
+        models: Array.isArray(row.models)
+          ? row.models.map((m) =>
+              dropMissingWeek({
+                ...m,
+                today: withPeriodDefaults(m.today),
+                month: withPeriodDefaults(m.month),
+                week: isPeriod(m.week) ? withPeriodDefaults(m.week) : undefined,
+                allTime: withPeriodDefaults(m.allTime),
+              }),
+            )
+          : [],
+      }),
+    )
   }
   return out
+}
+
+/** A usage period as cached: an object of counters. An array or a scalar is not one. */
+function isPeriod(value: unknown): value is AgentPeriodVM {
+  return value != null && typeof value === 'object' && !Array.isArray(value)
+}
+
+/**
+ * Remove a `week` the cache does not really carry. A summary written before
+ * the week column existed deserializes without it (or with null), and a zero
+ * put in its place would read like a measurement; absent, the card shows a
+ * dash until the next scan fills the column in.
+ */
+function dropMissingWeek<T extends { week?: unknown }>(value: T): T {
+  if (!isPeriod(value.week)) delete value.week
+  return value
 }
 
 /**
@@ -224,14 +246,19 @@ export function loadCachedAgentUsage(): AgentUsageVM | null {
       clients: normalizeClientRows(parsed.clients),
       todayTotal: withPeriodDefaults(parsed.todayTotal),
       monthTotal: withPeriodDefaults(parsed.monthTotal),
+      // Same rule as the rows: the week windows stay absent on an old cache
+      weekTotal: isPeriod(parsed.weekTotal) ? withPeriodDefaults(parsed.weekTotal) : undefined,
+      last7Total: isPeriod(parsed.last7Total) ? withPeriodDefaults(parsed.last7Total) : undefined,
+      last7ByAgent: Array.isArray(parsed.last7ByAgent) ? parsed.last7ByAgent : undefined,
       allTimeTotal: withPeriodDefaults(parsed.allTimeTotal),
       other:
         parsed.other && typeof parsed.other === 'object'
-          ? {
+          ? dropMissingWeek({
               today: withPeriodDefaults(parsed.other.today),
               month: withPeriodDefaults(parsed.other.month),
+              week: isPeriod(parsed.other.week) ? withPeriodDefaults(parsed.other.week) : undefined,
               all: withPeriodDefaults(parsed.other.all),
-            }
+            })
           : null,
     }
   } catch {

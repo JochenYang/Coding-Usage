@@ -13,6 +13,7 @@
  * never prompts, responses, or any message content.
  */
 import { displayProviderName } from './provider-labels'
+import { AGENT_LABELS } from './agent-labels'
 
 /**
  * Local agent clients tracked through the tokscale scan. Ids must be valid
@@ -110,6 +111,12 @@ export interface AgentModelVM {
   model: string
   today: AgentPeriodVM
   month: AgentPeriodVM
+  /**
+   * Calendar week so far (Monday through today). Absent on a cached summary
+   * written before the week column existed — then the figure is unknown, not
+   * zero, and the card shows a dash for it.
+   */
+  week?: AgentPeriodVM
   allTime: AgentPeriodVM
 }
 
@@ -119,6 +126,8 @@ export interface AgentClientVM {
   exists: boolean
   today: AgentPeriodVM
   month: AgentPeriodVM
+  /** Calendar week so far; absent on an old cache, see AgentModelVM.week */
+  week?: AgentPeriodVM
   allTime: AgentPeriodVM
   /**
    * Models this agent called, sorted by all-time tokens descending.
@@ -210,13 +219,26 @@ export interface AgentUsageVM {
   clients: AgentClientVM[]
   /** Unclassified contributions (missing/synthetic client ids) — keeps the
    *  per-agent rows summing to the real totals */
-  other: { today: AgentPeriodVM; month: AgentPeriodVM; all: AgentPeriodVM } | null
+  other: { today: AgentPeriodVM; month: AgentPeriodVM; week?: AgentPeriodVM; all: AgentPeriodVM } | null
   todayTotal: AgentPeriodVM
   monthTotal: AgentPeriodVM
+  /** Calendar week so far (Monday through today); absent on an old cache */
+  weekTotal?: AgentPeriodVM
   allTimeTotal: AgentPeriodVM
   todayByModel: CostSliceVM[]
   monthCostByProvider: CostSliceVM[]
   monthCostByModel: CostSliceVM[]
+  /**
+   * The rolling last seven days (today included) by agent — the token figures
+   * the distribution card's shares are taken of — and the period total. Absent
+   * on a cached summary written before the window existed.
+   *
+   * By agent, not by the model's router like `monthCostByProvider`: every
+   * entry names its agent, so these slices add up to the period total, and
+   * they line up with the rows of the usage table.
+   */
+  last7ByAgent?: CostSliceVM[]
+  last7Total?: AgentPeriodVM
   /** per-day total tokens (oldest first) — powers the trend chart */
   dailySeries: DayPointVM[]
   /**
@@ -400,12 +422,14 @@ function emptyVM(
       exists: false,
       today: zero(),
       month: zero(),
+      week: zero(),
       allTime: zero(),
       models: [],
     })),
     other: null,
     todayTotal: zero(),
     monthTotal: zero(),
+    weekTotal: zero(),
     allTimeTotal: zero(),
     todayByModel: [],
     monthCostByProvider: [],
@@ -501,8 +525,24 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
   const todayStr = todayKey()
   const monthPrefix = todayStr.slice(0, 7)
 
+  // Two week windows, anchored to the real local date like today and this
+  // month are. The calendar week (Monday through today) is the usage table's
+  // "this week" column; the rolling seven days (today included) is what the
+  // distribution card's shares are taken of. ISO weeks start on Monday.
+  const weekStart = weekStartKey(todayStr)
+  const last7Start = shiftDayKey(todayStr, 6)
+  const window = (date: string) => ({
+    isToday: date === todayStr,
+    isMonthDay: date.startsWith(monthPrefix),
+    // A key from the future (clock skew) belongs to neither week
+    isWeekDay: date >= weekStart && date <= todayStr,
+    isLast7Day: date >= last7Start && date <= todayStr,
+  })
+
   let todayTotal = zero()
   let monthTotal = zero()
+  let weekTotal = zero()
+  let last7Total = zero()
   let allTimeTotal = zero()
   // Month-level price coverage: tokens not repriced from our table, and the
   // subset of those with no usable cost at all (the displayed total is then a
@@ -511,25 +551,38 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
   let monthUnknownTokens = 0
   let otherAll: AgentPeriodVM = zero()
   let otherMonth: AgentPeriodVM = zero()
+  let otherWeek: AgentPeriodVM = zero()
   let otherToday: AgentPeriodVM = zero()
 
   const monthByClient = new Map<string, SliceAgg>()
   const allByClient = new Map<string, SliceAgg>()
+  const weekByClient = new Map<string, SliceAgg>()
   const todayByClient = new Map<string, SliceAgg>()
   const todayByModel = new Map<string, SliceAgg>()
   const monthByProvider = new Map<string, SliceAgg>()
+  const last7ByAgent = new Map<string, SliceAgg>()
   const monthByModel = new Map<string, SliceAgg>()
   // Catalog-priced flags per model label (an entry counts as priced when the
   // main process repriced it; tokscale-native costs stay unpriced)
   const todayModelPriced = new Map<string, boolean>()
   const monthModelPriced = new Map<string, boolean>()
-  // Agent × model cross-cut, keyed by client then model id. Kept for both
-  // periods a row needs (today/month) plus all-time, because the card lets a
-  // user expand an agent and read its models under the same three columns.
-  const modelsByClient = new Map<string, Map<string, { today: SliceAgg; month: SliceAgg; all: SliceAgg }>>()
+  // Agent × model cross-cut, keyed by client then model id. Kept for every
+  // period a row needs (today/week/month) plus all-time, because the card lets
+  // a user expand an agent and read its models under the same columns.
+  const modelsByClient = new Map<
+    string,
+    Map<string, { today: SliceAgg; month: SliceAgg; week: SliceAgg; all: SliceAgg }>
+  >()
 
   /** Record one entry into the agent × model buckets */
-  const addAgentModel = (owner: string, model: string, period: AgentPeriodVM, isToday: boolean, isMonthDay: boolean): void => {
+  const addAgentModel = (
+    owner: string,
+    model: string,
+    period: AgentPeriodVM,
+    isToday: boolean,
+    isWeekDay: boolean,
+    isMonthDay: boolean,
+  ): void => {
     let perClient = modelsByClient.get(owner)
     if (!perClient) {
       perClient = new Map()
@@ -537,20 +590,22 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
     }
     let row = perClient.get(model)
     if (!row) {
-      row = { today: zero(), month: zero(), all: zero() }
+      row = { today: zero(), month: zero(), week: zero(), all: zero() }
       perClient.set(model, row)
     }
     row.all = addPeriod(row.all, period)
     if (isMonthDay) row.month = addPeriod(row.month, period)
+    if (isWeekDay) row.week = addPeriod(row.week, period)
     if (isToday) row.today = addPeriod(row.today, period)
   }
 
   for (let i = 0; i < contribs.length; i++) {
     const c = contribs[i]
-    const isToday = c.date === todayStr
-    const isMonthDay = c.date.startsWith(monthPrefix)
+    const { isToday, isMonthDay, isWeekDay, isLast7Day } = window(c.date)
     const p = dayPeriod(c.totals, c.tokenBreakdown)
     allTimeTotal = addPeriod(allTimeTotal, p)
+    if (isLast7Day) last7Total = addPeriod(last7Total, p)
+    if (isWeekDay) weekTotal = addPeriod(weekTotal, p)
     if (isMonthDay) monthTotal = addPeriod(monthTotal, p)
     if (isToday) todayTotal = addPeriod(todayTotal, p)
     // After the loop the `p` for today is recomputed from clients below —
@@ -571,6 +626,7 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
         // so the diff below only captures the synthetic totals-vs-clients gap.
         if (owner === '__other__') {
           otherToday = addPeriod(otherToday, period)
+          otherWeek = addPeriod(otherWeek, period)
           otherAll = addPeriod(otherAll, period)
           if (isMonthDay) otherMonth = addPeriod(otherMonth, period)
           continue
@@ -579,18 +635,20 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
         // All-time buckets live here (not just in the non-today branch):
         // today is part of the cumulative totals too
         addSlice(allByClient, owner, period)
+        addSlice(weekByClient, owner, period)
+        addSlice(last7ByAgent, owner, period)
         const model = typeof e.modelId === 'string' && e.modelId ? e.modelId : undefined
         if (model) {
           addSlice(todayByModel, model, period)
           if (e.priced === true) todayModelPriced.set(model, true)
-          addAgentModel(owner, model, period, true, isMonthDay)
+          addAgentModel(owner, model, period, true, true, isMonthDay)
         }
-        // Today always sits inside the current month: feed the month/provider
-        // buckets too, otherwise every "本月" figure and the distribution
-        // donut silently exclude today's spend until tomorrow.
+        // Today always sits inside the current month and both week windows:
+        // feed those buckets too, otherwise every "本周"/"本月" figure and the
+        // distribution donut silently exclude today's spend until tomorrow.
+        const provider = typeof e.providerId === 'string' && e.providerId ? e.providerId : undefined
         if (isMonthDay) {
           addSlice(monthByClient, owner, period)
-          const provider = typeof e.providerId === 'string' && e.providerId ? e.providerId : undefined
           if (provider) addSlice(monthByProvider, provider, period)
           if (model) {
             addSlice(monthByModel, model, period)
@@ -602,6 +660,7 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
       // but not in any client entry)
       const dayOther = subtract(p, dayFromClients)
       otherToday = addPeriod(otherToday, dayOther)
+      otherWeek = addPeriod(otherWeek, dayOther)
       otherAll = addPeriod(otherAll, dayOther)
       otherMonth = addPeriod(otherMonth, dayOther)
     } else {
@@ -614,10 +673,13 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
         const owner = typeof e.client === 'string' && e.client ? e.client : '__other__'
         if (owner === '__other__') {
           otherAll = addPeriod(otherAll, period)
+          if (isWeekDay) otherWeek = addPeriod(otherWeek, period)
           if (isMonthDay) otherMonth = addPeriod(otherMonth, period)
           continue
         }
         addSlice(allByClient, owner, period)
+        if (isWeekDay) addSlice(weekByClient, owner, period)
+        if (isLast7Day) addSlice(last7ByAgent, owner, period)
         if (isMonthDay) addSlice(monthByClient, owner, period)
         const provider = typeof e.providerId === 'string' && e.providerId ? e.providerId : undefined
         const model = typeof e.modelId === 'string' && e.modelId ? e.modelId : undefined
@@ -626,7 +688,7 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
           addSlice(monthByModel, model, period)
           if (e.priced === true) monthModelPriced.set(model, true)
         }
-        if (model) addAgentModel(owner, model, period, false, isMonthDay)
+        if (model) addAgentModel(owner, model, period, false, isWeekDay, isMonthDay)
       }
     }
   }
@@ -634,13 +696,14 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
   const clients: AgentClientVM[] = AGENT_CLIENTS.map((c) => {
     const today = todayByClient.get(c) ?? zero()
     const month = monthByClient.get(c) ?? zero()
+    const week = weekByClient.get(c) ?? zero()
     const all = allByClient.get(c) ?? zero()
     // Ranked by all-time tokens so the heaviest model of each agent reads first
     // under every period column. Call count is the tie-break: token-zero rows
     // (credits-billed turns) would otherwise fall back to first-seen order,
     // which puts the longest-unused model on top.
     const models: AgentModelVM[] = [...(modelsByClient.get(c) ?? new Map()).entries()]
-      .map(([model, row]) => ({ model, today: row.today, month: row.month, allTime: row.all }))
+      .map(([model, row]) => ({ model, today: row.today, month: row.month, week: row.week, allTime: row.all }))
       .sort((a, b) => b.allTime.tokens - a.allTime.tokens || b.allTime.messages - a.allTime.messages)
     return {
       client: c,
@@ -652,6 +715,7 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
         today.messages + month.messages + all.messages > 0,
       today,
       month,
+      week,
       allTime: all,
       models,
     }
@@ -723,19 +787,28 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
     clients,
     other:
       otherToday.tokens > 0 ||
+      otherWeek.tokens > 0 ||
       otherMonth.tokens > 0 ||
       otherAll.tokens > 0 ||
       // A credits-only bucket (no tokens anywhere) is still real usage
       otherToday.credits > 0 ||
+      otherWeek.credits > 0 ||
       otherMonth.credits > 0 ||
       otherAll.credits > 0
-        ? { today: otherToday, month: otherMonth, all: otherAll }
+        ? { today: otherToday, month: otherMonth, week: otherWeek, all: otherAll }
         : null,
     todayTotal,
     monthTotal,
+    weekTotal,
     allTimeTotal,
     todayByModel: sortedByTokens([...todayByModel.entries()], todayModelPriced),
     monthCostByProvider: sortedByProviderCost([...monthByProvider.entries()]),
+    last7ByAgent: sortedByTokens(
+      [...last7ByAgent.entries()].map(
+        ([id, value]): [string, SliceAgg] => [AGENT_LABELS[id as AgentClientId] ?? id, value],
+      ),
+    ),
+    last7Total,
     // Models sort by cost so the ranking answers "where did the money go";
     // catalog-unpriced models (cost 0) sink to the bottom but stay listed in
     // full with the unpriced label instead of being cut off.
@@ -800,6 +873,25 @@ const DAILY_RETENTION_DAYS = 90
 function todayKey(): string {
   const d = new Date()
   return `${d.getFullYear()}-${`${d.getMonth() + 1}`.padStart(2, '0')}-${`${d.getDate()}`.padStart(2, '0')}`
+}
+
+/** Local calendar day key (YYYY-MM-DD) `daysBack` days before `dayKey` */
+function shiftDayKey(dayKey: string, daysBack: number): string {
+  const [year, month, day] = dayKey.split('-').map(Number)
+  const d = new Date(year, month - 1, day)
+  d.setDate(d.getDate() - daysBack)
+  return `${d.getFullYear()}-${`${d.getMonth() + 1}`.padStart(2, '0')}-${`${d.getDate()}`.padStart(2, '0')}`
+}
+
+/**
+ * Key of the Monday of the week `dayKey` falls in (ISO weeks start on
+ * Monday). The "this week" column spans that day through today.
+ */
+function weekStartKey(dayKey: string): string {
+  const [year, month, day] = dayKey.split('-').map(Number)
+  // getDay(): 0 is Sunday, which is the last day of the week — six days back
+  const sinceMonday = (new Date(year, month - 1, day).getDay() + 6) % 7
+  return shiftDayKey(dayKey, sinceMonday)
 }
 
 function loadDaily(): Record<string, number> {

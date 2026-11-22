@@ -210,3 +210,73 @@ describe('price coverage', () => {
     expect(vm.priceCoverage.monthUnknownTokens).toBe(0)
   })
 })
+
+describe('week windows', () => {
+  /** Local calendar day key `days` away from `base` (negative = earlier) */
+  function shiftKey(base: string, days: number): string {
+    const [y, m, d] = base.split('-').map(Number)
+    const date = new Date(y, m - 1, d)
+    date.setDate(date.getDate() + days)
+    const pad = (n: number): string => `${n}`.padStart(2, '0')
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+  }
+
+  /** Monday of the week today falls in — worked out here, apart from the module */
+  function mondayKey(): string {
+    const sinceMonday = (new Date().getDay() + 6) % 7
+    return shiftKey(localDay(0), -sinceMonday)
+  }
+
+  const tokens = (input: number) => ({ input, output: 0 })
+
+  it('counts Monday through today as this week, and nothing from before Monday', () => {
+    const monday = mondayKey()
+    const vm = scan([
+      day(shiftKey(monday, -1), [{ client: 'kimi', modelId: 'm', tokens: tokens(1000) }]),
+      day(monday, [{ client: 'kimi', modelId: 'm', tokens: tokens(100) }]),
+      day(localDay(0), [{ client: 'kimi', modelId: 'm', tokens: tokens(50) }]),
+    ])
+
+    const kimi = vm.clients.find((c) => c.client === 'kimi')
+    // On a Monday both dated entries fall on the same day; the sum is the same
+    expect(kimi?.week?.tokens).toBe(150)
+    expect(kimi?.models[0]?.week?.tokens).toBe(150)
+    expect(vm.weekTotal?.tokens).toBe(150)
+    // The day before Monday still counts toward the cumulative figure
+    expect(kimi?.allTime.tokens).toBe(1150)
+  })
+
+  it('takes the rolling week as today plus the six days before it, by agent', () => {
+    const vm = scan([
+      day(localDay(7), [{ client: 'kimi', modelId: 'm', tokens: tokens(700) }]),
+      day(localDay(6), [{ client: 'kimi', modelId: 'm', tokens: tokens(60) }]),
+      day(localDay(0), [
+        { client: 'opencode', modelId: 'm', tokens: tokens(10) },
+        { client: 'kimi', modelId: 'm', tokens: tokens(5) },
+      ]),
+    ])
+
+    expect(vm.last7Total?.tokens).toBe(75)
+    // One slice per agent, named the way the usage table names its rows; an
+    // entry without a router id is not left out, so the slices add up to the total
+    expect(vm.last7ByAgent).toEqual([
+      expect.objectContaining({ label: 'Kimi Code', tokens: 65 }),
+      expect.objectContaining({ label: 'OpenCode', tokens: 10 }),
+    ])
+    expect(vm.last7ByAgent?.reduce((sum, s) => sum + s.tokens, 0)).toBe(75)
+  })
+
+  it('leaves a key from the future out of both week windows', () => {
+    const vm = scan([day(localDay(-1), [{ client: 'kimi', modelId: 'm', tokens: tokens(9) }])])
+
+    expect(vm.weekTotal?.tokens).toBe(0)
+    expect(vm.last7Total?.tokens).toBe(0)
+  })
+
+  it('routes unclassified rows of this week into the other bucket', () => {
+    const vm = scan([day(localDay(0), [{ modelId: 'm', tokens: tokens(30) }])])
+
+    expect(vm.other?.week?.tokens).toBe(30)
+    expect(vm.weekTotal?.tokens).toBe(30)
+  })
+})
