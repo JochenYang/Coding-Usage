@@ -126,7 +126,9 @@ electron/
   webhook-send.ts / webhook-channels.ts
                           # 告警 webhook 发送，webhook:send 通道用；channels 是各平台 payload 的
                           # 纯函数适配层（平台成功判定也在此），IPC 只暴露「按通道发送」而不是
-                          # 开放 POST 代理
+                          # 开放 POST 代理。通道：wecom / feishu（可选签名校验）/ dingtalk（可选
+                          # 加签）/ discord / slack / bark / ntfy / telegram / weixin；
+                          # 钉钉与飞书签名在主进程用 node:crypto 计算，secret 不落日志
 ```
 
 ## 3. 数据流

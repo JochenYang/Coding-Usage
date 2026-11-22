@@ -1,5 +1,17 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, MessageCircle, MessageSquare, MessagesSquare, Send, Share2 } from 'lucide-react'
+import {
+  ChevronDown,
+  Hash,
+  MessageCircle,
+  MessageSquare,
+  MessageSquareText,
+  MessagesSquare,
+  MessageSquareDot,
+  Radio,
+  Send,
+  Share2,
+  Smartphone,
+} from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
@@ -25,7 +37,20 @@ type TestState = 'idle' | 'sending' | 'ok' | 'fail'
 type WxPhase = 'idle' | 'qr' | 'activate'
 
 /** Credential fields the drafts object tracks (chat id included for UX, not secret) */
-type DraftKey = 'wecomWebhook' | 'feishuWebhook' | 'telegramBotToken' | 'telegramChatId'
+type DraftKey =
+  | 'wecomWebhook'
+  | 'feishuWebhook'
+  | 'feishuSecret'
+  | 'dingtalkWebhook'
+  | 'dingtalkSecret'
+  | 'discordWebhook'
+  | 'slackWebhook'
+  | 'barkServer'
+  | 'barkKey'
+  | 'ntfyServer'
+  | 'ntfyTopic'
+  | 'telegramBotToken'
+  | 'telegramChatId'
 
 type Drafts = Record<DraftKey, string>
 
@@ -36,7 +61,15 @@ interface ChannelField {
 }
 
 /** Channels configured through plain credential inputs (weixin is wizard-driven) */
-type InputChannelId = 'wecom' | 'feishu' | 'telegram'
+type InputChannelId =
+  | 'wecom'
+  | 'feishu'
+  | 'telegram'
+  | 'dingtalk'
+  | 'discord'
+  | 'slack'
+  | 'bark'
+  | 'ntfy'
 
 interface ChannelDef {
   id: InputChannelId
@@ -60,7 +93,10 @@ const CHANNELS: ChannelDef[] = [
     icon: MessagesSquare,
     name: (t) => t.integrations.chanFeishu,
     hint: (t) => t.integrations.chanFeishuHint,
-    fields: (t) => [{ key: 'feishuWebhook', label: t.integrations.fWebhookUrl, placeholder: t.integrations.phFeishu }],
+    fields: (t) => [
+      { key: 'feishuWebhook', label: t.integrations.fWebhookUrl, placeholder: t.integrations.phFeishu },
+      { key: 'feishuSecret', label: t.integrations.fSecret, placeholder: t.integrations.phFeishuSecret },
+    ],
   },
   {
     id: 'telegram',
@@ -72,6 +108,50 @@ const CHANNELS: ChannelDef[] = [
       { key: 'telegramChatId', label: t.integrations.fChatId, placeholder: t.integrations.phChatId },
     ],
   },
+  {
+    id: 'dingtalk',
+    icon: MessageSquareText,
+    name: (t) => t.integrations.chanDingtalk,
+    hint: (t) => t.integrations.chanDingtalkHint,
+    fields: (t) => [
+      { key: 'dingtalkWebhook', label: t.integrations.fWebhookUrl, placeholder: t.integrations.phDingtalk },
+      { key: 'dingtalkSecret', label: t.integrations.fSecret, placeholder: t.integrations.phDingtalkSecret },
+    ],
+  },
+  {
+    id: 'discord',
+    icon: Hash,
+    name: (t) => t.integrations.chanDiscord,
+    hint: (t) => t.integrations.chanDiscordHint,
+    fields: (t) => [{ key: 'discordWebhook', label: t.integrations.fWebhookUrl, placeholder: t.integrations.phDiscord }],
+  },
+  {
+    id: 'slack',
+    icon: MessageSquareDot,
+    name: (t) => t.integrations.chanSlack,
+    hint: (t) => t.integrations.chanSlackHint,
+    fields: (t) => [{ key: 'slackWebhook', label: t.integrations.fWebhookUrl, placeholder: t.integrations.phSlack }],
+  },
+  {
+    id: 'bark',
+    icon: Smartphone,
+    name: (t) => t.integrations.chanBark,
+    hint: (t) => t.integrations.chanBarkHint,
+    fields: (t) => [
+      { key: 'barkServer', label: t.integrations.fServer, placeholder: t.integrations.phBarkServer },
+      { key: 'barkKey', label: t.integrations.fKey, placeholder: t.integrations.phBarkKey },
+    ],
+  },
+  {
+    id: 'ntfy',
+    icon: Radio,
+    name: (t) => t.integrations.chanNtfy,
+    hint: (t) => t.integrations.chanNtfyHint,
+    fields: (t) => [
+      { key: 'ntfyServer', label: t.integrations.fServer, placeholder: t.integrations.phNtfyServer },
+      { key: 'ntfyTopic', label: t.integrations.fTopic, placeholder: t.integrations.phNtfyTopic },
+    ],
+  },
 ]
 
 /** Credential pieces the IPC needs for one channel, built from drafts */
@@ -80,20 +160,40 @@ function credFor(channel: InputChannelId, drafts: Drafts): WebhookCredential {
     case 'wecom':
       return { url: drafts.wecomWebhook.trim() }
     case 'feishu':
-      return { url: drafts.feishuWebhook.trim() }
+      return { url: drafts.feishuWebhook.trim(), secret: drafts.feishuSecret.trim() }
+    case 'dingtalk':
+      return { url: drafts.dingtalkWebhook.trim(), secret: drafts.dingtalkSecret.trim() }
+    case 'discord':
+      return { url: drafts.discordWebhook.trim() }
+    case 'slack':
+      return { url: drafts.slackWebhook.trim() }
+    case 'bark':
+      return { url: drafts.barkServer.trim(), key: drafts.barkKey.trim() }
+    case 'ntfy':
+      return { url: drafts.ntfyServer.trim(), topic: drafts.ntfyTopic.trim() }
     case 'telegram':
       return { token: drafts.telegramBotToken.trim(), chatId: drafts.telegramChatId.trim() }
   }
 }
 
 function isCredFilled(channel: InputChannelId, drafts: Drafts): boolean {
-  const cred = credFor(channel, drafts)
   switch (channel) {
     case 'wecom':
+      return drafts.wecomWebhook.trim().startsWith('https://')
     case 'feishu':
-      return !!cred.url && cred.url.startsWith('https://')
+      return drafts.feishuWebhook.trim().startsWith('https://')
+    case 'dingtalk':
+      return drafts.dingtalkWebhook.trim().startsWith('https://')
+    case 'discord':
+      return drafts.discordWebhook.trim().startsWith('https://')
+    case 'slack':
+      return drafts.slackWebhook.trim().startsWith('https://hooks.slack.com/')
+    case 'bark':
+      return !!drafts.barkKey.trim()
+    case 'ntfy':
+      return !!drafts.ntfyTopic.trim()
     case 'telegram':
-      return !!cred.token && !!cred.chatId
+      return !!drafts.telegramBotToken.trim() && !!drafts.telegramChatId.trim()
   }
 }
 
@@ -452,6 +552,16 @@ function PushHistoryBlock() {
         return t.integrations.chanWecom
       case 'feishu':
         return t.integrations.chanFeishu
+      case 'dingtalk':
+        return t.integrations.chanDingtalk
+      case 'discord':
+        return t.integrations.chanDiscord
+      case 'slack':
+        return t.integrations.chanSlack
+      case 'bark':
+        return t.integrations.chanBark
+      case 'ntfy':
+        return t.integrations.chanNtfy
       case 'telegram':
         return t.integrations.chanTelegram
       case 'weixin':
@@ -523,6 +633,15 @@ export function IntegrationsPage({ className }: IntegrationsPageProps) {
   const [drafts, setDrafts] = useState<Drafts>({
     wecomWebhook: plain(intg.wecomWebhook),
     feishuWebhook: plain(intg.feishuWebhook),
+    feishuSecret: plain(intg.feishuSecret),
+    dingtalkWebhook: plain(intg.dingtalkWebhook),
+    dingtalkSecret: plain(intg.dingtalkSecret),
+    discordWebhook: plain(intg.discordWebhook),
+    slackWebhook: plain(intg.slackWebhook),
+    barkServer: intg.barkServer,
+    barkKey: plain(intg.barkKey),
+    ntfyServer: intg.ntfyServer,
+    ntfyTopic: plain(intg.ntfyTopic),
     telegramBotToken: plain(intg.telegramBotToken),
     telegramChatId: intg.telegramChatId,
   })
@@ -536,6 +655,15 @@ export function IntegrationsPage({ className }: IntegrationsPageProps) {
     setDrafts((d) => ({
       wecomWebhook: plain(intg.wecomWebhook) || d.wecomWebhook,
       feishuWebhook: plain(intg.feishuWebhook) || d.feishuWebhook,
+      feishuSecret: plain(intg.feishuSecret) || d.feishuSecret,
+      dingtalkWebhook: plain(intg.dingtalkWebhook) || d.dingtalkWebhook,
+      dingtalkSecret: plain(intg.dingtalkSecret) || d.dingtalkSecret,
+      discordWebhook: plain(intg.discordWebhook) || d.discordWebhook,
+      slackWebhook: plain(intg.slackWebhook) || d.slackWebhook,
+      barkServer: intg.barkServer || d.barkServer,
+      barkKey: plain(intg.barkKey) || d.barkKey,
+      ntfyServer: intg.ntfyServer || d.ntfyServer,
+      ntfyTopic: plain(intg.ntfyTopic) || d.ntfyTopic,
       telegramBotToken: plain(intg.telegramBotToken) || d.telegramBotToken,
       telegramChatId: intg.telegramChatId || d.telegramChatId,
     }))
@@ -565,6 +693,15 @@ export function IntegrationsPage({ className }: IntegrationsPageProps) {
       ...intg,
       wecomWebhook: drafts.wecomWebhook.trim(),
       feishuWebhook: drafts.feishuWebhook.trim(),
+      feishuSecret: drafts.feishuSecret.trim(),
+      dingtalkWebhook: drafts.dingtalkWebhook.trim(),
+      dingtalkSecret: drafts.dingtalkSecret.trim(),
+      discordWebhook: drafts.discordWebhook.trim(),
+      slackWebhook: drafts.slackWebhook.trim(),
+      barkServer: drafts.barkServer.trim(),
+      barkKey: drafts.barkKey.trim(),
+      ntfyServer: drafts.ntfyServer.trim(),
+      ntfyTopic: drafts.ntfyTopic.trim(),
       telegramBotToken: drafts.telegramBotToken.trim(),
       telegramChatId: drafts.telegramChatId.trim(),
     }

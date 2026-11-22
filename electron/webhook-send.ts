@@ -8,7 +8,7 @@ import {
 import { ensureIlinkSessionWarm, recoverIlinkSession } from './weixin-session'
 
 /** Channel ids this app can send through */
-const CHANNELS = ['wecom', 'feishu', 'telegram', 'weixin']
+const CHANNELS = ['wecom', 'feishu', 'telegram', 'weixin', 'dingtalk', 'discord', 'slack', 'bark', 'ntfy']
 
 /**
  * Delivers one alert batch through one channel.
@@ -47,6 +47,9 @@ export async function sendWebhook(
       token: typeof c.token === 'string' ? c.token : undefined,
       chatId: typeof c.chatId === 'string' ? c.chatId : undefined,
       userId: typeof c.userId === 'string' ? c.userId : undefined,
+      secret: typeof c.secret === 'string' ? c.secret : undefined,
+      key: typeof c.key === 'string' ? c.key : undefined,
+      topic: typeof c.topic === 'string' ? c.topic : undefined,
     },
     title,
     text,

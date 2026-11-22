@@ -108,6 +108,24 @@ export interface IntegrationsSettings {
   wecomWebhook: string
   /** Feishu / Lark group-robot webhook URL (open.feishu.cn or open.larksuite.com) */
   feishuWebhook: string
+  /** Feishu signature secret; empty = the bot uses keyword/IP security (no signing) */
+  feishuSecret: string
+  /** DingTalk custom-robot webhook URL; empty = not configured */
+  dingtalkWebhook: string
+  /** DingTalk signature secret ("加签" security setting); empty = keyword mode */
+  dingtalkSecret: string
+  /** Discord channel webhook URL; empty = not configured */
+  discordWebhook: string
+  /** Slack App incoming-webhook URL (hooks.slack.com); empty = not configured */
+  slackWebhook: string
+  /** Bark server base; empty = the public api.day.app */
+  barkServer: string
+  /** Bark push key (device-specific); empty = not configured */
+  barkKey: string
+  /** ntfy server base; empty = the public ntfy.sh */
+  ntfyServer: string
+  /** ntfy topic to publish to; empty = not configured */
+  ntfyTopic: string
   /** Telegram bot token from @BotFather */
   telegramBotToken: string
   /** Telegram chat id the bot is allowed to post to (not a secret — no encryption) */

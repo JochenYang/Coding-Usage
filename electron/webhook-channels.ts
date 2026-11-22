@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHmac, randomUUID } from 'node:crypto'
 
 /**
  * Alert-push channel adapters (pure, testable without Electron).
@@ -9,13 +9,22 @@ import { randomUUID } from 'node:crypto'
  * POST proxy. Response semantics differ per platform too — the success check
  * lives here for the same reason.
  *
- * Platform notes (verified 2026-09):
+ * Platform notes (verified 2026-09, new channels 2026-11):
  * - wecom:     POST <webhook> {msgtype:"markdown", markdown:{content}}.
  *              Answers HTTP 200 with {"errcode":0} on success.
  * - feishu:    POST <webhook> {msg_type:"text", content:{text}}. The webhook
  *              host distinguishes the China site (open.feishu.cn) from Lark
  *              (open.larksuite.com); the format is identical. Newer bots
- *              answer {"code":0}, legacy ones {"StatusCode":0}.
+ *              answer {"code":0}, legacy ones {"StatusCode":0}. Bots with the
+ *              signature security setting also need `timestamp` (seconds) and
+ *              `sign` = base64(HmacSHA256(key=`${timestamp}\n${secret}`,
+ *              message empty)) in the body — computed here, never stored.
+ * - dingtalk:  POST <webhook> {msgtype:"markdown", markdown:{title,text}}.
+ *              Answers HTTP 200 with {"errcode":0}. With the recommended
+ *              "signed" security setting the URL grows
+ *              `&timestamp=<ms>&sign=<urlEncode(base64(HmacSHA256(
+ *              key=secret, msg=`${timestamp}\n${secret}`)))>` (official doc:
+ *              open.dingtalk.com custom-robot security settings).
  * - telegram:  POST https://api.telegram.org/bot<token>/sendMessage
  *              {chat_id, text}. Plain text (no parse_mode): alert copy may
  *              contain characters that Telegram's markdown parser rejects.
@@ -28,20 +37,48 @@ import { randomUUID } from 'node:crypto'
  *              silent-drop shape ({ret:-2,errmsg:"prepare failed"} = stale
  *              session or burst throttle; {ret:0} without message_id =
  *              accepted but never rendered).
+ * - discord:   POST <webhook> {content}. Discord answers 204 No Content (no
+ *              body) on success, so success is the HTTP status alone; errors
+ *              are JSON {message, code}.
+ * - slack:     POST <hooks.slack.com webhook> {text}. The Slack App incoming
+ *              webhook is the official replacement for the retired legacy
+ *              custom integrations. Success is HTTP 200 with a plain-text
+ *              "ok" body (not JSON); failures are non-200.
+ * - bark:      POST <server>/<key> {title, body} (iOS push; the public host
+ *              is api.day.app, self-hosted instances swap the server).
+ *              Answers {"code":200}.
+ * - ntfy:      POST <server>/<topic> with the plain text as the body and the
+ *              title in an X-Title header (Content-Type text/plain). Success
+ *              is HTTP 200 with a JSON {"id":...} body.
  */
 
-export type PushChannel = 'wecom' | 'feishu' | 'telegram' | 'weixin'
+export type PushChannel =
+  | 'wecom'
+  | 'feishu'
+  | 'telegram'
+  | 'weixin'
+  | 'dingtalk'
+  | 'discord'
+  | 'slack'
+  | 'bark'
+  | 'ntfy'
 
 /** Credential pieces for any channel; only the relevant fields are used */
 export interface PushCredential {
-  /** wecom / feishu full webhook URL */
+  /** wecom / feishu / dingtalk / discord / slack webhook URL; bark / ntfy server base */
   url?: string
-  /** telegram bot token / weixin iLink bot token */
+  /** telegram bot token / weixin iLink bot token / bark push key */
   token?: string
   /** telegram chat id */
   chatId?: string
   /** weixin: ilink_user_id push target */
   userId?: string
+  /** dingtalk / feishu signature secret (机器人安全设置里的加签密钥) */
+  secret?: string
+  /** bark push key (path segment after the server) */
+  key?: string
+  /** ntfy topic (path segment after the server) */
+  topic?: string
 }
 
 export interface ChannelRequest {
@@ -60,9 +97,37 @@ const WEIXIN_TEXT_ITEM = 1
 
 const WECOM_CONTENT_LIMIT = 3800
 const TELEGRAM_TEXT_LIMIT = 4000
+/** DingTalk markdown text cap (kept at the wecom size for uniform batches) */
+const DINGTALK_CONTENT_LIMIT = 3800
+/** Discord message content hard limit */
+const DISCORD_CONTENT_LIMIT = 2000
+/** Bark body cap */
+const BARK_BODY_LIMIT = 4096
+/** Default public Bark host when the user did not configure a self-hosted one */
+const BARK_DEFAULT_SERVER = 'https://api.day.app'
+/** Default public ntfy host */
+const NTFY_DEFAULT_SERVER = 'https://ntfy.sh'
 
 function str(v: string | undefined): string {
   return typeof v === 'string' ? v.trim() : ''
+}
+
+/** Feishu signature: HmacSHA256 keyed by `${seconds}\n${secret}` over an empty message, base64 */
+export function feishuSign(seconds: number, secret: string): string {
+  return createHmac('sha256', `${seconds}\n${secret}`).update('').digest('base64')
+}
+
+/** DingTalk signature: HmacSHA256 keyed by the secret over `${ms}\n${secret}`, base64 + urlEncode */
+export function dingtalkSign(ms: number, secret: string): string {
+  const raw = createHmac('sha256', secret).update(`${ms}\n${secret}`).digest('base64')
+  return encodeURIComponent(raw)
+}
+
+/** Append the DingTalk signed query parameters to the webhook URL */
+function signedDingtalkUrl(url: string, secret: string): string {
+  const ms = Date.now()
+  const joiner = url.includes('?') ? '&' : '?'
+  return `${url}${joiner}timestamp=${ms}&sign=${dingtalkSign(ms, secret)}`
 }
 
 /** Assemble the request for one channel; null when the credential is unusable */
@@ -85,9 +150,26 @@ export function buildChannelRequest(
     case 'feishu': {
       const url = str(cred.url)
       if (!url.startsWith('https://')) return null
+      const secret = str(cred.secret)
+      // Signed bots reject a body without their timestamp/sign pair
+      const sign =
+        secret ? { timestamp: Math.floor(Date.now() / 1000), sign: feishuSign(Math.floor(Date.now() / 1000), secret) } : {}
       return {
         url,
-        body: JSON.stringify({ msg_type: 'text', content: { text: `${title}\n${body}` } }),
+        body: JSON.stringify({ msg_type: 'text', content: { text: `${title}\n${body}` }, ...sign }),
+      }
+    }
+    case 'dingtalk': {
+      const url = str(cred.url)
+      if (!url.startsWith('https://')) return null
+      const secret = str(cred.secret)
+      const finalUrl = secret ? signedDingtalkUrl(url, secret) : url
+      return {
+        url: finalUrl,
+        body: JSON.stringify({
+          msgtype: 'markdown',
+          markdown: { title, text: `**${title}**\n${body}`.slice(0, DINGTALK_CONTENT_LIMIT) },
+        }),
       }
     }
     case 'telegram': {
@@ -127,6 +209,40 @@ export function buildChannelRequest(
         }),
       }
     }
+    case 'discord': {
+      const url = str(cred.url)
+      if (!url.startsWith('https://')) return null
+      return {
+        url,
+        body: JSON.stringify({ content: `${title}\n${body}`.slice(0, DISCORD_CONTENT_LIMIT) }),
+      }
+    }
+    case 'slack': {
+      const url = str(cred.url)
+      // The Slack App webhook URL is host-bound; anything else is a mis-paste
+      if (!url.startsWith('https://hooks.slack.com/')) return null
+      return { url, body: JSON.stringify({ text: `${title}\n${body}` }) }
+    }
+    case 'bark': {
+      const key = str(cred.key)
+      if (!key) return null
+      const server = str(cred.url) || BARK_DEFAULT_SERVER
+      if (!server.startsWith('https://')) return null
+      return {
+        url: `${server.replace(/\/+$/, '')}/${encodeURIComponent(key)}`,
+        body: JSON.stringify({ title, body: body.slice(0, BARK_BODY_LIMIT) }),
+      }
+    }
+    case 'ntfy': {
+      const server = str(cred.url) || NTFY_DEFAULT_SERVER
+      const topic = str(cred.topic)
+      if (!server.startsWith('https://') || !topic) return null
+      return {
+        url: `${server.replace(/\/+$/, '')}/${encodeURIComponent(topic)}`,
+        headers: { 'Content-Type': 'text/plain', 'X-Title': title.slice(0, 200) },
+        body: body.slice(0, 4096),
+      }
+    }
   }
 }
 
@@ -137,19 +253,32 @@ export function buildChannelRequest(
  */
 export function isChannelSuccess(channel: PushChannel, httpOk: boolean, json: unknown): boolean {
   if (!httpOk) return false
+  // Channels whose success shape is the HTTP status alone: Discord answers
+  // 204 No Content, Slack a plain-text "ok" — neither is JSON, so the
+  // parseable-ack rule below must not swallow them. Their failures are
+  // non-200 and surface through channelErrorDetail instead.
+  if (channel === 'discord' || channel === 'slack') return true
+  if (channel === 'ntfy') {
+    // 200 always carries the JSON {"id":...} publish receipt; an unparseable
+    // body (gateway HTML) proves nothing arrived, so ntfy stays fail-closed
+    return json != null && typeof json === 'object'
+  }
   if (json == null || typeof json !== 'object') {
     // An unparseable 200 body (gateway HTML page etc.) proves nothing arrived:
-    // every channel, weixin included, needs a parseable ack to count success
+    // every remaining channel needs a parseable ack to count success
     return false
   }
   const obj = json as Record<string, unknown>
   switch (channel) {
     case 'wecom':
+    case 'dingtalk':
       return obj.errcode === 0
     case 'feishu':
       return obj.code === 0 || obj.StatusCode === 0
     case 'telegram':
       return obj.ok === true
+    case 'bark':
+      return obj.code === 200
     case 'weixin': {
       // Fail-closed delivery ack: a real delivery carries either an explicit
       // zero code or a message_id. HTTP 200 with NEITHER is the platform's

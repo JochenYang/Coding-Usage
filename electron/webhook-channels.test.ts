@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { buildChannelRequest, channelErrorDetail, isChannelSuccess } from './webhook-channels'
 
@@ -137,5 +138,95 @@ describe('channelErrorDetail', () => {
     expect(channelErrorDetail('weixin', 200, { data: { ret: 1001, errmsg: 'session gone' } })).toBe('weixin-1001: session gone')
     expect(channelErrorDetail('telegram', 502, null)).toBe('HTTP 502')
     expect(channelErrorDetail('telegram', 502, 'html')).toBe('HTTP 502')
+  })
+})
+
+describe('dingtalk', () => {
+  it('builds the markdown payload without signing when no secret is set', () => {
+    const ok = buildChannelRequest('dingtalk', { url: 'https://oapi.dingtalk.com/robot/send?access_token=x' }, 'Title', 'Body')
+    expect(ok?.url).toBe('https://oapi.dingtalk.com/robot/send?access_token=x')
+    expect(bodyOf(ok ?? { body: '' })).toEqual({
+      msgtype: 'markdown',
+      markdown: { title: 'Title', text: '**Title**\nBody' },
+    })
+  })
+
+  it('appends timestamp+sign to the URL when a secret is set', () => {
+    const ok = buildChannelRequest(
+      'dingtalk',
+      { url: 'https://oapi.dingtalk.com/robot/send?access_token=x', secret: 'SEC123' },
+      'T',
+      'B',
+    )
+    expect(ok?.url.startsWith('https://oapi.dingtalk.com/robot/send?access_token=x&timestamp=')).toBe(true)
+    expect(ok?.url).toMatch(/&sign=[^&]+$/)
+    // The signature is urlEncoded base64: no raw "+" or "/" may leak through
+    expect(decodeURIComponent(ok?.url.split('&sign=')[1] ?? '')).toMatch(/^[A-Za-z0-9+/]+={0,2}$/)
+    expect(buildChannelRequest('dingtalk', { url: 'http://oapi.dingtalk.com/x' }, 'T', 'B')).toBeNull()
+  })
+
+  it('counts errcode 0 as success', () => {
+    expect(isChannelSuccess('dingtalk', true, { errcode: 0 })).toBe(true)
+    expect(isChannelSuccess('dingtalk', true, { errcode: 310000, errmsg: 'sign not match' })).toBe(false)
+  })
+})
+
+describe('feishu signature mode', () => {
+  it('adds timestamp/sign to the body when a secret is set', () => {
+    const ok = buildChannelRequest('feishu', { url: 'https://open.feishu.cn/hook', secret: 'S' }, 'T', 'B')
+    const body = bodyOf(ok ?? { body: '' })
+    expect(body.msg_type).toBe('text')
+    expect(typeof body.timestamp).toBe('number')
+    // Keyed by "${timestamp}\n${secret}" over an empty message
+    const ts = body.timestamp as number
+    const expected = createHmac('sha256', `${ts}\nS`).update('').digest('base64')
+    expect(body.sign).toBe(expected)
+  })
+})
+
+describe('discord', () => {
+  it('builds the content payload and treats 204 no-body as success', () => {
+    const ok = buildChannelRequest('discord', { url: 'https://discord.com/api/webhooks/1/x' }, 'Title', 'Body')
+    expect(bodyOf(ok ?? { body: '' })).toEqual({ content: 'Title\nBody' })
+    // Content is capped at Discord's 2000-char limit
+    const long = buildChannelRequest('discord', { url: 'https://discord.com/api/webhooks/1/x' }, 'T', 'x'.repeat(3000))
+    expect(((bodyOf(long ?? { body: '' }).content as string) ?? '').length).toBe(2000)
+    expect(isChannelSuccess('discord', true, null)).toBe(true)
+    expect(isChannelSuccess('discord', false, null)).toBe(false)
+  })
+})
+
+describe('slack', () => {
+  it('requires the hooks.slack.com host and reads the plain-text ok', () => {
+    const ok = buildChannelRequest('slack', { url: 'https://hooks.slack.com/services/T/B/X' }, 'Title', 'Body')
+    expect(bodyOf(ok ?? { body: '' })).toEqual({ text: 'Title\nBody' })
+    expect(buildChannelRequest('slack', { url: 'https://evil.example/services/T/B/X' }, 'T', 'B')).toBeNull()
+    expect(isChannelSuccess('slack', true, null)).toBe(true)
+  })
+})
+
+describe('bark', () => {
+  it('defaults to the public host and appends the key path', () => {
+    const ok = buildChannelRequest('bark', { key: 'abc' }, 'Title', 'Body')
+    expect(ok?.url).toBe('https://api.day.app/abc')
+    expect(bodyOf(ok ?? { body: '' })).toEqual({ title: 'Title', body: 'Body' })
+    const self = buildChannelRequest('bark', { url: 'https://bark.self.example/', key: 'k' }, 'T', 'B')
+    expect(self?.url).toBe('https://bark.self.example/k')
+    expect(isChannelSuccess('bark', true, { code: 200 })).toBe(true)
+    expect(isChannelSuccess('bark', true, { code: 400, message: 'bad' })).toBe(false)
+  })
+})
+
+describe('ntfy', () => {
+  it('posts plain text with an X-Title header', () => {
+    const ok = buildChannelRequest('ntfy', { url: 'https://ntfy.example', topic: 'alerts' }, 'Title', 'Body')
+    expect(ok?.url).toBe('https://ntfy.example/alerts')
+    expect(ok?.body).toBe('Body')
+    expect(ok?.headers?.['X-Title']).toBe('Title')
+    expect(ok?.headers?.['Content-Type']).toBe('text/plain')
+    expect(buildChannelRequest('ntfy', { url: 'https://ntfy.example' }, 'T', 'B')).toBeNull()
+    // The JSON receipt is required; a bare 200 with an HTML body proves nothing
+    expect(isChannelSuccess('ntfy', true, { id: 'x', time: 1 })).toBe(true)
+    expect(isChannelSuccess('ntfy', true, null)).toBe(false)
   })
 })

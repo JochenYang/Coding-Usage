@@ -249,6 +249,16 @@ export interface Dict {
     chanWecomHint: string
     chanFeishu: string
     chanFeishuHint: string
+    chanDingtalk: string
+    chanDingtalkHint: string
+    chanDiscord: string
+    chanDiscordHint: string
+    chanSlack: string
+    chanSlackHint: string
+    chanBark: string
+    chanBarkHint: string
+    chanNtfy: string
+    chanNtfyHint: string
     chanTelegram: string
     chanTelegramHint: string
     chanWeixin: string
@@ -287,8 +297,21 @@ export interface Dict {
     fBotToken: string
     fChatId: string
     fSendKey: string
+    fSecret: string
+    fKey: string
+    fServer: string
+    fTopic: string
     phWecom: string
     phFeishu: string
+    phFeishuSecret: string
+    phDingtalk: string
+    phDingtalkSecret: string
+    phDiscord: string
+    phSlack: string
+    phBarkServer: string
+    phBarkKey: string
+    phNtfyServer: string
+    phNtfyTopic: string
     phBotToken: string
     phChatId: string
     phSendKey: string

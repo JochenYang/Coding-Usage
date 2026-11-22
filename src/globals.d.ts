@@ -45,18 +45,33 @@ declare global {
   }
 
   /** Alert-push channel ids accepted by `webhook:send` */
-  type WebhookChannel = 'wecom' | 'feishu' | 'telegram' | 'weixin'
+  type WebhookChannel =
+    | 'wecom'
+    | 'feishu'
+    | 'telegram'
+    | 'weixin'
+    | 'dingtalk'
+    | 'discord'
+    | 'slack'
+    | 'bark'
+    | 'ntfy'
 
   /** Credential pieces for a webhook send; only the channel-relevant fields are used */
   interface WebhookCredential {
-    /** wecom / feishu full webhook URL */
+    /** wecom / feishu / dingtalk / discord / slack webhook URL; bark / ntfy server base */
     url?: string
-    /** telegram bot token / weixin iLink bot token */
+    /** telegram bot token / weixin iLink bot token / bark push key */
     token?: string
     /** telegram chat id */
     chatId?: string
     /** weixin ilink_user_id push target */
     userId?: string
+    /** dingtalk / feishu signature secret */
+    secret?: string
+    /** bark push key */
+    key?: string
+    /** ntfy topic */
+    topic?: string
   }
 
   /** `ilink:begin` — fresh WeChat login QR (data: URL image) */

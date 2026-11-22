@@ -116,7 +116,24 @@ export function configuredChannels(intg: IntegrationsSettings): UsableChannel[] 
     out.push({ channel: 'wecom', cred: { url: intg.wecomWebhook } })
   }
   if (intg.feishuWebhook && !intg.feishuWebhook.startsWith(ENC_PREFIX)) {
-    out.push({ channel: 'feishu', cred: { url: intg.feishuWebhook } })
+    const secret = intg.feishuSecret && !intg.feishuSecret.startsWith(ENC_PREFIX) ? intg.feishuSecret : undefined
+    out.push({ channel: 'feishu', cred: { url: intg.feishuWebhook, ...(secret ? { secret } : {}) } })
+  }
+  if (intg.dingtalkWebhook && !intg.dingtalkWebhook.startsWith(ENC_PREFIX)) {
+    const secret = intg.dingtalkSecret && !intg.dingtalkSecret.startsWith(ENC_PREFIX) ? intg.dingtalkSecret : undefined
+    out.push({ channel: 'dingtalk', cred: { url: intg.dingtalkWebhook, ...(secret ? { secret } : {}) } })
+  }
+  if (intg.discordWebhook && !intg.discordWebhook.startsWith(ENC_PREFIX)) {
+    out.push({ channel: 'discord', cred: { url: intg.discordWebhook } })
+  }
+  if (intg.slackWebhook && !intg.slackWebhook.startsWith(ENC_PREFIX)) {
+    out.push({ channel: 'slack', cred: { url: intg.slackWebhook } })
+  }
+  if (intg.barkKey && !intg.barkKey.startsWith(ENC_PREFIX)) {
+    out.push({ channel: 'bark', cred: { url: intg.barkServer || undefined, key: intg.barkKey } })
+  }
+  if (intg.ntfyTopic && !intg.ntfyTopic.startsWith(ENC_PREFIX)) {
+    out.push({ channel: 'ntfy', cred: { url: intg.ntfyServer || undefined, topic: intg.ntfyTopic } })
   }
   if (
     intg.telegramBotToken &&
