@@ -10,6 +10,24 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.10.4] - 2026-11-23
+
+### 中文
+- 概览页按新设计稿重做：四张指标卡加入品牌插画，底部改为「用量分布 / 近期活动 / 账号使用情况」三张卡，每页末尾有页脚波浪（滚到页尾才出现），概览右下角有吉祥物；没有告警时告警中心与「近期活动」显示铃铛插画
+- 侧栏到内容区的间距收紧到与窗口左边距一致（展开、收起都是 12px），侧栏去掉底色和分隔线
+- 本地 Agent 用量表的第二列由「本月」改为「本周」（自然周，周一到今天）；用量分布改为最近 7 天并按 Agent 归并（各扇形加起来等于总数），卡片上标明统计窗口
+- 「待处理」改为「近期活动」时间线：查询出错的账号置顶，其后是仍在生效的告警，最新的在前
+- 新增「账号使用情况」：累计用量最高的三个本地 Agent，以及今天是否在用
+- 新增文字级强调色与状态色令牌，概览页的小字在明暗两套主题下都达到 4.5:1 对比度
+
+### English
+- Redesigned the overview to the new design: brand illustrations on the four KPI cards, a bottom row of usage distribution / recent activity / account usage, a footer wave at the end of every page (it appears once the page is scrolled to its end), a mascot in the overview's bottom-right corner, and a bell illustration wherever there are no alerts (alerts page, recent activity)
+- The gap between the sidebar and the page is now the same as the window's left margin (12px, expanded or collapsed); the rail lost its background and divider
+- The local agent usage table's second column is now "this week" (the calendar week, Monday through today) instead of "this month"; the usage distribution covers the last 7 days and is grouped by agent (the slices add up to the total), and the card states its window
+- "Action center" is now a "Recent activity" timeline: accounts whose query failed first, then the alerts still live, newest first
+- New "Account usage" card: the three heaviest local agents by all-time usage, and whether each ran today
+- New text-grade accent and status tokens; the overview's small text reaches 4.5:1 contrast in both themes
+
 ## [v0.10.3] - 2026-11-22
 
 ### 中文
