@@ -18,7 +18,9 @@ import {
   isSameEntry,
   loadSettings,
   loadSettingsDetailed,
+  needsMirrorRecovery,
   persistSettings,
+  restoreSettingsDocument,
   SECRET_INTEGRATION_FIELDS,
   KEY_V3,
 } from './storage'
@@ -100,6 +102,17 @@ import { buildSections, type Card, type Section } from './sections'
 // this React module.
 export { buildSections }
 export type { Card, Section }
+
+/**
+ * How this launch got its settings from the file mirror:
+ * - `none`: there was nothing to recover — localStorage already held a
+ *   settings document, or the mirror was never written;
+ * - `pending`: the mirror is being read back, and nothing is saved meanwhile;
+ * - `restored`: the mirror was put back and its accounts were loaded;
+ * - `unrecovered`: the mirror had to be read but did not come back (damaged,
+ *   unreadable, or not writable into localStorage), so the defaults stand.
+ */
+type StartupRecovery = 'none' | 'pending' | 'restored' | 'unrecovered'
 
 /**
  * App-wide data layer: settings + per-account fetch results + refresh scheduler
@@ -191,8 +204,21 @@ export function DataProvider({
     settings: loadSettings(),
     results: loadCachedResults(),
     alerts: loadAlerts(),
+    // With no settings document in localStorage, the defaults loaded above are
+    // not the user's settings: the file mirror may still have them. Nothing
+    // may be saved until it has been read back (see the recovery effect).
+    recovery: (needsMirrorRecovery(!!window.desktopBridge) ? 'pending' : 'none') as StartupRecovery,
   }))
   const [settings, setSettings] = useState<Settings>(boot.settings)
+  const [recovery, setRecovery] = useState<StartupRecovery>(boot.recovery)
+  const recoveryPending = recovery === 'pending'
+  // A launch that needed the mirror and did not get it back is still running
+  // on the empty defaults. Writing them anywhere would destroy the only copy
+  // of the accounts: into the mirror directly, or into localStorage — where
+  // they would make the next launch skip recovery and mirror them anyway. So
+  // nothing is persisted until the user changes something; until then every
+  // launch reads the mirror again.
+  const runningOnDefaults = recovery === 'unrecovered' && settings === boot.settings
   // Replaying the last persisted fetch results makes the first paint show
   // real numbers; the rows' stale derivation keeps the honesty (10 min mark).
   const [results, setResults] = useState<Record<string, ProviderResult>>(boot.results)
@@ -237,6 +263,14 @@ export function DataProvider({
     // every credential (fresh DPAPI blobs) on every cycle and could write back a
     // settings snapshot older than an edit made in the foreground.
     if (background) return
+    // Hold while startup recovery is still reading the mirror: the settings in
+    // state are the empty defaults until then, and the mirror write below would
+    // replace the only copy of the accounts with them.
+    if (recoveryPending) return
+    // Hold just the same after a recovery that did not succeed (see
+    // `runningOnDefaults`): the defaults must reach neither localStorage nor
+    // the mirror until there is a real change to save.
+    if (runningOnDefaults) return
     // Persist first, then mirror the encrypted v3 document to a userData file
     // so a lost/corrupt localStorage can be restored on next launch.
     void (async () => {
@@ -247,33 +281,58 @@ export function DataProvider({
         if (rawV3) void bridge.settingsBackupWrite(rawV3)
       }
     })()
-  }, [settings, background])
+  }, [settings, background, recoveryPending, runningOnDefaults])
 
   // Startup recovery: when localStorage has no settings at all (fresh profile
-  // or a wiped/corrupt leveldb), fall back to the userData file mirror.
+  // or a wiped/corrupt leveldb), fall back to the userData file mirror. It
+  // runs before anything is persisted, so the mirror still holds what the
+  // previous launch saved when it is read.
+  //
+  // The window is one IPC round-trip, and a change made inside it loses to
+  // the restored settings: the accounts come back whole, which matters more
+  // than a preference toggled in the first milliseconds of the launch.
   useEffect(() => {
+    if (!recoveryPending) return
     void (async () => {
-      const bridge = window.desktopBridge
-      if (!bridge) return
-      if (localStorage.getItem(KEY_V3) || localStorage.getItem('coding-usage.settings.v2')) return
-      const backup = await bridge.settingsBackupRead()
-      if (backup) {
-        try {
-          localStorage.setItem(KEY_V3, backup)
-          const loaded = loadSettingsDetailed()
-          setSettings(loaded.settings)
-          // By now the results cache is already in state, so the split's
-          // cleanup of stored readings cannot reach it: drop the re-indexed
-          // providers from the in-memory copy too, or the first paint shows
-          // one account's numbers on another's card.
-          dropAccountResults(loaded.split.reindexed)
-        } catch {
-          // ignore — user can re-enter accounts
+      // The gate opens no matter how the recovery goes. Staying closed would
+      // silently drop every change the user makes in this session, which is
+      // worse than starting without the restored accounts.
+      let next: StartupRecovery = 'unrecovered'
+      try {
+        const backup = await window.desktopBridge?.settingsBackupRead()
+        // The gate only opens under a bridge, so no answer at all means the
+        // bridge itself is gone: nothing came back, which is not "no mirror"
+        if (backup === undefined) {
+          console.warn('[data] the desktop bridge went away during recovery; starting without the mirror')
+        } else if (backup === null) {
+          // No mirror was ever written: a fresh profile, not a lost one
+          next = 'none'
+        } else {
+          const outcome = restoreSettingsDocument(backup)
+          if (outcome === 'restored') {
+            const loaded = loadSettingsDetailed()
+            setSettings(loaded.settings)
+            // By now the results cache is already in state, so the split's
+            // cleanup of stored readings cannot reach it: drop the re-indexed
+            // providers from the in-memory copy too, or the first paint shows
+            // one account's numbers on another's card.
+            dropAccountResults(loaded.split.reindexed)
+            next = 'restored'
+          } else {
+            // `empty` or `corrupt`: either way there is nothing to restore,
+            // and saying which tells a blank file from a damaged one
+            console.warn(`[data] the settings mirror is ${outcome}; starting without it`)
+          }
         }
+      } catch (error) {
+        // Unreadable, or read but not writable back into localStorage
+        console.warn(`[data] could not restore the settings mirror: ${error instanceof Error ? error.message : String(error)}`)
       }
+      setRecovery(next)
     })()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount
-  }, [])
+    // dropAccountResults is stable; the gate itself is the only trigger
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recoveryPending])
 
   // One-shot hydration/migration after mount (Electron only):
   // 1. v3 data loads with ciphertext keys — decrypt them into memory so the UI
@@ -281,7 +340,11 @@ export function DataProvider({
   //    ciphertext key and get a 401; acceptable and self-healing.
   // 2. v2 data under a capable bridge migrates straight to encrypted v3 via
   //    persistSettings (which verifies, then drops the plaintext v2 key).
+  // It runs once startup recovery has settled: accounts restored from the
+  // mirror arrive as ciphertext too, and skipping this for them would leave
+  // every request of the session failing with 401.
   useEffect(() => {
+    if (recoveryPending) return
     const bridge = window.desktopBridge
     if (!bridge) return
     if (hasEncryptedKeys(settings)) {
@@ -338,11 +401,16 @@ export function DataProvider({
         // (ciphertext keys → 401s) and needed this re-run anyway.
         void refreshAll({ silent: true })
       })()
-    } else if (hasLegacyV2Store()) {
+    } else if (hasLegacyV2Store() && !runningOnDefaults) {
+      // Only what the launch actually loaded from v2 is worth migrating. After
+      // a failed recovery the key can still be there with nothing loadable in
+      // it, and what is in memory is the empty default: persisting it here
+      // would get around the hold in `runningOnDefaults` — the next launch
+      // would find a settings document and never read the mirror again.
       void persistSettings(settings)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- hydration runs once on mount
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hydration runs once per launch, after recovery
+  }, [recoveryPending])
 
   // WeChat iLink keep-alive: main owns the getupdates long-poll once a
   // decrypted bot token exists. The app is opened on demand, so the loop
@@ -500,13 +568,16 @@ export function DataProvider({
   )
 
   useEffect(() => {
+    // Nothing to fetch while startup recovery is still reading the mirror;
+    // it runs again on the restored settings once recovery has settled.
+    if (recoveryPending) return
     // Under Electron with encrypted keys the mount fetch would race key
     // decryption (ciphertext keys → 401s); hydration drives the single
     // startup fetch cycle instead. Every other path fetches immediately.
     if (window.desktopBridge && hasEncryptedKeys(settings)) return
     void refreshAll()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [recoveryPending])
 
   // Persist the latest fetch results for the next launch's instant paint.
   // Debounced: a manual refresh flips results N times and only the settled
@@ -567,6 +638,11 @@ export function DataProvider({
     [alerts],
   )
 
+  // `runningOnDefaults` learns that the user changed something from `settings`
+  // no longer being the object the launch started from. This and the two entry
+  // edits below are user actions, so that reading holds; an automatic update
+  // has to keep the same object, or the hold after a failed recovery lifts on
+  // its own.
   const updateSettings = useCallback((next: Settings) => {
     // Sync the ref immediately: the drawer's save→close sequence runs
     // endSettingsEdit in the same event, before the state update re-renders.

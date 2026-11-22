@@ -3,7 +3,15 @@ import type { ProviderConfig, ProviderResult } from '../types'
 import { loadAlerts, renameAlertAccountKeys, saveAlerts, type AlertItem } from './alerts'
 import { getSnapshots, recordSnapshot, remapSnapshotStore, type AccountSnapshot } from './snapshots'
 import { loadCachedResults, saveCachedResults, withoutAccountResults } from './startup-cache'
-import { KEY_V3, loadSettings, loadSettingsDetailed, normalizeProviders, saveSettings } from './storage'
+import {
+  KEY_V3,
+  loadSettings,
+  loadSettingsDetailed,
+  needsMirrorRecovery,
+  normalizeProviders,
+  restoreSettingsDocument,
+  saveSettings,
+} from './storage'
 
 /**
  * Zhipu, Kimi, SiliconFlow and MiniMax each used to be one provider whose
@@ -403,6 +411,118 @@ describe('recovery after the results cache is already in memory', () => {
     // sees which provider was re-indexed and can clear its in-memory readings
     expect(recovered.settings).toEqual(first.settings)
     expect(recovered.split.reindexed).toEqual(['zhipu'])
+  })
+})
+
+describe('startup recovery from the file mirror', () => {
+  const has = (...keys: string[]): boolean => keys.some((key) => localStorage.getItem(key) != null)
+  const put = (key: string, value: string): void => localStorage.setItem(key, value)
+
+  it('waits for the mirror only under a bridge and with no settings document at all', () => {
+    // No bridge: the browser build has no mirror to read
+    expect(needsMirrorRecovery(false)).toBe(false)
+    expect(needsMirrorRecovery(true)).toBe(true)
+  })
+
+  it.each(['coding-usage.settings.v3', 'coding-usage.settings.v2', 'coding-usage.settings.v1'])(
+    'does not wait when %s holds a document',
+    (key) => {
+      put(key, '{}')
+      expect(needsMirrorRecovery(true)).toBe(false)
+    },
+  )
+
+  it.each(['coding-usage.settings.v3', 'coding-usage.settings.v2', 'coding-usage.settings.v1'])(
+    'waits when %s is there but holds no document',
+    (key) => {
+      // A torn write or a blank value: the load path answers the defaults for
+      // any of these just as it would for a missing key
+      for (const value of ['', '   ', 'enc', '{"providers":{"zhipu":[{"apiKey":"enc', '[]', 'null']) {
+        put(key, value)
+        expect(needsMirrorRecovery(true), JSON.stringify(value)).toBe(true)
+      }
+    },
+  )
+
+  it('does not wait while any one key still holds a document', () => {
+    // A broken v3 with the accounts still under the legacy key
+    put(KEY_V3, 'enc')
+    put('coding-usage.settings.v2', '{}')
+    expect(needsMirrorRecovery(true)).toBe(false)
+  })
+
+  it('loads from the next key when an earlier one holds no document, as the gate assumes', () => {
+    vi.stubGlobal('window', { desktopBridge: {} })
+    // The gate is closed because a key holds a document, so the load has to
+    // reach that document — the defaults here would be saved over the mirror
+    put(KEY_V3, '{"providers":{"kimi":[{"apiKey":"enc')
+    put('coding-usage.settings.v2', '{')
+    put('coding-usage.settings.v1', JSON.stringify({ providers: { kimi: [account('legacy')] } }))
+    expect(needsMirrorRecovery(true)).toBe(false)
+    expect(labels(loadSettingsDetailed().settings.providers.kimi)).toEqual(['legacy'])
+
+    // A v3 that parses but is no document must not shadow the accounts under v2
+    put(KEY_V3, '[]')
+    put('coding-usage.settings.v2', JSON.stringify({ providers: { kimi: [account('plain')] } }))
+    expect(needsMirrorRecovery(true)).toBe(false)
+    expect(labels(loadSettingsDetailed().settings.providers.kimi)).toEqual(['plain'])
+  })
+
+  it('waits, instead of throwing, when storage itself cannot be read', () => {
+    // A leveldb that will not open throws from getItem
+    vi.stubGlobal('localStorage', {
+      getItem: () => {
+        throw new Error('NotFoundError')
+      },
+    })
+    expect(needsMirrorRecovery(true)).toBe(true)
+  })
+
+  it('restores a mirror document as it is, to be loaded like any other launch', () => {
+    // The restored document is the encrypted one desktop installs use, which
+    // is only read under a bridge
+    vi.stubGlobal('window', { desktopBridge: {} })
+    const backup = JSON.stringify({
+      providers: { zhipu: [account('intl', 'intl'), account('cn', 'cn')] },
+    })
+    expect(restoreSettingsDocument(backup)).toBe('restored')
+    expect(has(KEY_V3)).toBe(true)
+    // The usual load path takes over from here: split, drop stale readings
+    const loaded = loadSettingsDetailed()
+    expect(labels(loaded.settings.providers.zai)).toEqual(['intl'])
+    expect(loaded.split.reindexed).toEqual(['zhipu'])
+  })
+
+  it('stores a document an editor prefixed with a byte-order mark without the mark', () => {
+    // JSON.parse rejects a leading mark, so storing the text as read would
+    // hand the load path a document it cannot open
+    vi.stubGlobal('window', { desktopBridge: {} })
+    const document = JSON.stringify({ providers: { kimi: [account('main')] } })
+    expect(restoreSettingsDocument(`\uFEFF${document}`)).toBe('restored')
+    expect(localStorage.getItem(KEY_V3)).toBe(document)
+    expect(labels(loadSettingsDetailed().settings.providers.kimi)).toEqual(['main'])
+  })
+
+  it('reports an absent mirror and leaves storage alone', () => {
+    for (const backup of [null, undefined]) {
+      expect(restoreSettingsDocument(backup)).toBe('absent')
+    }
+    expect(has(KEY_V3)).toBe(false)
+  })
+
+  it('reports a blank file as empty: what an interrupted write leaves behind', () => {
+    for (const backup of ['', ' \n', '\uFEFF']) {
+      expect(restoreSettingsDocument(backup), JSON.stringify(backup)).toBe('empty')
+    }
+    expect(has(KEY_V3)).toBe(false)
+  })
+
+  it('refuses a mirror that is not a settings document', () => {
+    // Truncated JSON, and JSON of another shape
+    for (const backup of ['{"providers":{"zhipu":[{"apiKey":"enc', '[]', 'null', '42', '"text"']) {
+      expect(restoreSettingsDocument(backup), JSON.stringify(backup)).toBe('corrupt')
+    }
+    expect(has(KEY_V3)).toBe(false)
   })
 })
 

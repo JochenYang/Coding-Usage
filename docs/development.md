@@ -39,6 +39,20 @@ npm test           # vitest 单元测试
   账号迁移（`normalizeProviders`：带 `regionId` 的旧账号按国内 / 国际归位，读数缓存清理、快照与
   告警按旧键→新键重命名，每台机器只执行一次；启动加载与设置备份导入共用这一入口；用例在
   `src/lib/storage.test.ts` 与 `src/providers/split-sites.test.ts`）。
+- **启动恢复**：改动 `src/lib/data-context.tsx` 的启动编排（保存 / 恢复 / 解密 / 首次刷新）或
+  `electron/settings-mirror.ts` 时，验证「localStorage 被清空、只剩镜像文件」这条路径：镜像读回
+  之前不得有任何保存或镜像写入，恢复出的账号要被解密并触发首次刷新；镜像缺失、损坏、为空或读取出错时
+  按全新状态正常启动且不卡住，并且在用户改动设置之前既不写本地存储也不写镜像；本地存储完好的常规启动
+  行为不变。可复现的做法（内置浏览器）：`npx vite --port 4198` 起开发服务器，清空 localStorage，
+  挂一个 `LocaleProvider` + `DataProvider`，注入记录调用顺序的假桌面桥（`settingsBackupRead` 返回由
+  测试**手动放行**的 promise；`on*` 方法要返回取消订阅函数），放行前后各取一次调用序列——不要用定时器
+  模拟跨进程延迟，内置浏览器会节流定时器，结果不可信。要覆盖的情形：镜像完好、没有镜像文件、镜像内容
+  损坏、镜像为空文件、镜像带 UTF-8 BOM、读取出错、镜像完好但写回 localStorage 失败（包一层
+  `Storage.prototype.setItem` 让它对 v3 键抛错）、恢复失败后用户改了一项设置、恢复失败后的第二次启动
+  （要重新读镜像且不覆盖）、localStorage 的 v3 键在但内容不是文档（要触发恢复）、v2 键在但内容不是文档
+  且镜像损坏（不得触发 v2 迁移保存，否则下次启动会跳过恢复）、v3 完好的常规启动（不读镜像）、v2 完好的
+  常规启动（照常迁移到 v3）。文件层的行为（整体替换、排队、占用重试、绕过队列的直读看不到空文件或残缺文件）由
+  `electron/settings-mirror.test.ts` 覆盖。机制说明见 `ARCHITECTURE.md`「设置镜像与启动恢复」。
 - **样式**：改 `@theme` token 时确认浅色 / 深色 / 跟随系统三态一致；用 DevTools 看计算值，
   不要只看类名。
 

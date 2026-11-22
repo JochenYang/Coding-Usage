@@ -1,6 +1,5 @@
 import { BrowserWindow } from 'electron'
-import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { readSettingsMirror } from './settings-mirror'
 
 /** How long one background cycle may take before its window is closed anyway. */
 const CYCLE_TIMEOUT_MS = 90_000
@@ -149,9 +148,7 @@ const MAX_REFRESH_MINUTES = 120
 /** The user's refresh interval, read from the settings mirror. */
 async function refreshMinutes(userData: string): Promise<number> {
   try {
-    const parsed: unknown = JSON.parse(
-      await readFile(join(userData, 'settings-backup.json'), 'utf8'),
-    )
+    const parsed: unknown = JSON.parse((await readSettingsMirror(userData)) ?? 'null')
     if (parsed == null || typeof parsed !== 'object') return 0
     const minutes = (parsed as { autoRefreshMin?: unknown }).autoRefreshMin
     // Clamped, not passed through: an imported backup can carry an unbounded

@@ -276,27 +276,30 @@ function parseStored(rawText: string): LoadedSettings {
 }
 
 export function loadSettingsDetailed(): LoadedSettings {
-  // Corruption-tolerant cascade: fresh v3 → legacy v2 → v1 → defaults.
-  // A broken v3 must NOT fall through to empty settings — v2 may still hold
-  // the plaintext copy and a file mirror (via IPC) may exist too.
+  // Corruption-tolerant cascade: v3 → legacy v2 → v1 → defaults. A key that is
+  // missing or holds no settings document is skipped at every step, counted
+  // exactly as `needsMirrorRecovery` counts it: a key this path cannot load
+  // must not look like "nothing to recover" there, or the empty defaults
+  // returned here would be saved over the mirror that still has the accounts.
+  const hasBridge = typeof window !== 'undefined' && !!window.desktopBridge
   try {
-    const rawV3 = localStorage.getItem(KEY_V3)
-    if (rawV3 && window.desktopBridge) {
+    for (const key of [KEY_V3, KEY_V2, KEY_V1]) {
+      // v3 is only ever written under a bridge; without one it is not this
+      // build's document to read
+      if (key === KEY_V3 && !hasBridge) continue
+      const raw = readStored(key)
+      if (!isSettingsDocument(raw)) continue
       try {
-        return parseStored(rawV3)
+        const loaded = parseStored(raw)
+        if (key === KEY_V1) {
+          // After upgrade, clear the legacy key and persist under the new key
+          saveSettings(loaded.settings)
+          localStorage.removeItem(KEY_V1)
+        }
+        return loaded
       } catch {
-        // v3 is corrupt — fall through to v2 instead of losing accounts
+        // Not loadable after all: the next key gets its chance
       }
-    }
-    const rawV2 = localStorage.getItem(KEY_V2)
-    if (rawV2) return parseStored(rawV2)
-    const rawV1 = localStorage.getItem(KEY_V1)
-    if (rawV1) {
-      const loaded = parseStored(rawV1)
-      // After upgrade, clear the legacy key and persist under the new key
-      saveSettings(loaded.settings)
-      localStorage.removeItem(KEY_V1)
-      return loaded
     }
   } catch {
     // ignore — file mirror (Electron) or defaults below
@@ -311,6 +314,66 @@ export function loadSettingsDetailed(): LoadedSettings {
  */
 export function loadSettings(): Settings {
   return loadSettingsDetailed().settings
+}
+
+/**
+ * True when this launch has a desktop bridge but no settings document in
+ * localStorage — a wiped or corrupt leveldb — so the file mirror may hold the
+ * only copy of the accounts. Everything that persists has to wait until the
+ * mirror has been read back: the settings in memory are the empty defaults
+ * until then, and saving them would replace that only copy.
+ */
+export function needsMirrorRecovery(hasBridge: boolean): boolean {
+  if (!hasBridge) return false
+  return ![KEY_V3, KEY_V2, KEY_V1].some((key) => isSettingsDocument(readStored(key)))
+}
+
+/** The value stored under `key`, or null when storage will not say. */
+function readStored(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    // Reading storage itself failed (a broken leveldb): nothing can be loaded
+    // from it either, so the mirror is what is left
+    return null
+  }
+}
+
+/**
+ * Whether `raw` is a settings document — what decides if a launch has
+ * anything to load. A key that is there but holds no document (a torn write,
+ * a blank value) is as good as missing: the load path answers the defaults
+ * for it, and only the mirror still has the accounts.
+ */
+function isSettingsDocument(raw: string | null): raw is string {
+  if (!raw) return false
+  try {
+    return isObject(JSON.parse(raw))
+  } catch {
+    return false
+  }
+}
+
+export type MirrorRestore = 'restored' | 'absent' | 'empty' | 'corrupt'
+
+/**
+ * Put a settings document read from the file mirror back into localStorage.
+ * `absent` when there is no mirror (a fresh install), `empty` for a blank
+ * file — what an interrupted plain write leaves behind — and `corrupt` when
+ * what was read is not a settings document; storage is left untouched in all
+ * three cases, so a damaged mirror never replaces the defaults with garbage.
+ * The document is stored as it is — its accounts are then loaded, split-moved
+ * and decrypted like those of any other launch.
+ */
+export function restoreSettingsDocument(backup: unknown): MirrorRestore {
+  if (typeof backup !== 'string') return 'absent'
+  // utf8 decoding keeps a byte-order mark; an editor that touched the file
+  // can leave one, and JSON.parse would then reject the document
+  const document = backup.replace(/^\uFEFF/, '')
+  if (document.trim() === '') return 'empty'
+  if (!isSettingsDocument(document)) return 'corrupt'
+  localStorage.setItem(KEY_V3, document)
+  return 'restored'
 }
 
 export function saveSettings(s: Settings): void {

@@ -18,6 +18,7 @@ import {
   Tray,
 } from 'electron'
 import { autoUpdater } from 'electron-updater'
+import { readSettingsMirror, writeSettingsMirror } from './settings-mirror'
 import { Background } from './background'
 import { guessLocale, mergeTrayPrefs, TRAY_LABELS, type TrayPrefs } from './tray-prefs'
 import { fetchClaudeUsage, fetchGeminiUsage, type QuotaOutcome } from './subscription-quotas'
@@ -1190,21 +1191,21 @@ function registerIpc(): void {
   // in userData so a corrupted/lost localStorage leveldb can be restored.
   ipcMain.handle('settings:backup-write', (_event, payload: unknown): void => {
     if (typeof payload !== 'string' || payload.length === 0) return
-    // Fire-and-forget mirror; the catch swallows async rejections the outer
+    // Fire-and-forget mirror; the catch reports async rejections the outer
     // (synchronous) handler could never see. The background cycle reads that
     // mirror for the interval, so a settings change also re-arms it.
-    void writeFile(join(app.getPath('userData'), 'settings-backup.json'), payload, 'utf8')
+    void writeSettingsMirror(app.getPath('userData'), payload)
       .then(() => void background?.reschedule())
-      .catch(() => {})
+      .catch((error: unknown) => {
+        console.error(
+          `[settings] could not write the backup mirror: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      })
   })
 
-  ipcMain.handle('settings:backup-read', async (): Promise<string | null> => {
-    try {
-      return await readFile(join(app.getPath('userData'), 'settings-backup.json'), 'utf8')
-    } catch {
-      return null
-    }
-  })
+  ipcMain.handle('settings:backup-read', async (): Promise<string | null> =>
+    readSettingsMirror(app.getPath('userData')),
+  )
 
   // Custom caption buttons (DOM-drawn replacements for the native overlay).
   ipcMain.handle('window:minimize', (): void => {
