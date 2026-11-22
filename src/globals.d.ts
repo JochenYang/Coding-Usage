@@ -335,6 +335,12 @@ declare global {
     hideWindow(): Promise<void>
     /** Real quit through the tray/confirm flow (sets the pass-through gate first) */
     quitApp(): Promise<void>
+    /**
+     * Push the renderer's locale / theme to the main process so the tray menu
+     * speaks the same language and follows the same dark-light mode. The patch
+     * is partial: `{locale}` and `{theme}` may be sent independently.
+     */
+    syncTrayPrefs(patch: { locale?: string; theme?: string }): Promise<void>
     /** Open an https URL in the system browser (main process validates the scheme) */
     openExternal(url: string): Promise<boolean>
     /** Current maximize state for the caption-button glyph */

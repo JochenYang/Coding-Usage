@@ -85,6 +85,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     applyResolvedToDom(resolved)
   }, [resolved])
 
+  // 托盘菜单的原生深浅色跟随应用主题（仅桌面壳有此通道）。'system' 原样
+  // 透传：themeSource='system' 不覆盖媒体查询，渲染层的 system 检测读到的
+  // 仍是真实系统偏好；切回 system 模式时上面的 effect 会重新校准。
+  useEffect(() => {
+    void window.desktopBridge?.syncTrayPrefs({ theme })
+  }, [theme])
+
   // Favicon: always follow the OS/browser `prefers-color-scheme` so the icon
   // stays visible regardless of the app's manual theme override.
   useEffect(() => {

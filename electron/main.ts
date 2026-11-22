@@ -9,6 +9,7 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  nativeTheme,
   net,
   safeStorage,
   session,
@@ -18,6 +19,7 @@ import {
 } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { Background } from './background'
+import { guessLocale, mergeTrayPrefs, TRAY_LABELS, type TrayPrefs } from './tray-prefs'
 import { fetchClaudeUsage, fetchGeminiUsage, type QuotaOutcome } from './subscription-quotas'
 import { fetchGrokUsage } from './grok-usage'
 import { qoderStoreBody, readQoderQuota, type QoderQuotaOutcome } from './qoder-quota'
@@ -344,6 +346,29 @@ function createWindow(): void {
   }
 }
 
+// Tray-menu prefs converge on the renderer's first `prefs:tray-sync` push.
+// The theme default mirrors ThemeProvider's no-record fallback (dark).
+let trayPrefs: TrayPrefs = { locale: guessLocale(app.getLocale()), theme: 'dark' }
+
+/** Rebuild the tray context menu from the current prefs (labels follow locale). */
+function rebuildTrayMenu(): void {
+  if (!tray) return
+  const labels = TRAY_LABELS[trayPrefs.locale]
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: labels.show, click: () => showMainWindow() },
+      { type: 'separator' },
+      {
+        label: labels.quit,
+        click: () => {
+          isQuitting = true
+          app.quit()
+        },
+      },
+    ]),
+  )
+}
+
 function createTray(): void {
   // Rounded transparent tray icon from the bundled asset; the inlined
   // base64 square stays as a fallback if the path is unavailable (e.g. a
@@ -354,19 +379,7 @@ function createTray(): void {
   }
   tray = new Tray(icon)
   tray.setToolTip('Coding Usage')
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: 'Show', click: () => showMainWindow() },
-      { type: 'separator' },
-      {
-        label: 'Quit',
-        click: () => {
-          isQuitting = true
-          app.quit()
-        },
-      },
-    ]),
-  )
+  rebuildTrayMenu()
   // Left click also brings the window up (typical Windows tray behavior)
   tray.on('click', () => showMainWindow())
 }
@@ -1214,6 +1227,16 @@ function registerIpc(): void {
   ipcMain.handle('app:quit', (): void => {
     isQuitting = true
     app.quit()
+  })
+
+  // Renderer pushes its locale / theme so the tray menu speaks the same
+  // language and follows the same dark-light mode. 'system' passes through
+  // untouched, so the renderer's matchMedia-based system detection keeps
+  // reading the real OS preference instead of an overridden one.
+  ipcMain.handle('prefs:tray-sync', (_event, patch: unknown): void => {
+    trayPrefs = mergeTrayPrefs(trayPrefs, patch)
+    nativeTheme.themeSource = trayPrefs.theme
+    rebuildTrayMenu()
   })
 
   // Open an external URL in the system browser. The URL must be https —

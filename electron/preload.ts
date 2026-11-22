@@ -94,6 +94,7 @@ const desktopBridge: DesktopBridge = {
   toggleMaximizeWindow: () => ipcRenderer.invoke('window:maximize-toggle'),
   hideWindow: () => ipcRenderer.invoke('window:hide'),
   quitApp: () => ipcRenderer.invoke('app:quit'),
+  syncTrayPrefs: (patch) => ipcRenderer.invoke('prefs:tray-sync', patch),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   getWindowMaximized: () => ipcRenderer.invoke('window:get-maximized'),
   onWindowMaximized: (callback) => {

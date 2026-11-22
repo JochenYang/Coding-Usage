@@ -41,6 +41,8 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     document.documentElement.lang = locale
     const t = DICTS[locale]
     document.title = `${t.app.title} · ${t.app.tagline}`
+    // 托盘菜单与界面保持同一语言（仅桌面壳有此通道）
+    void window.desktopBridge?.syncTrayPrefs({ locale })
   }, [locale])
 
   const setLocale = useCallback((next: Locale) => {
