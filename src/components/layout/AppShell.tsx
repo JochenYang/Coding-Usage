@@ -20,7 +20,11 @@ export function AppShell({
       <Sidebar view={view} onNavigate={navigate} />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar onNavigate={navigate} />
-        <main className="flex-1 overflow-y-auto">
+        {/* relative: form sr-only labels are position:absolute without offsets —
+            without a positioned ancestor here their containing block is the root
+            element, so a long page's labels escape main's overflow clipping and
+            stretch the document (double scrollbar on the integrations page) */}
+        <main className="relative flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-6">{children}</div>
         </main>
       </div>
