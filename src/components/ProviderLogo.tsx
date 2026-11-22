@@ -12,6 +12,7 @@ import {
   SiliconCloud,
   Stepfun,
   Volcengine,
+  ZAI,
   Zhipu,
 } from '@lobehub/icons'
 import { cn } from '@/lib/cn'
@@ -28,6 +29,9 @@ import warpLogo from '@/components/logos/warp.svg'
  */
 const ICON_MAP: Record<string, ReactNode> = {
   'zhipu-color': <Zhipu.Color />,
+  // Z.ai (the international Zhipu brand) ships no .Color variant; .Avatar is
+  // its brand tile
+  zai: <ZAI.Avatar size={16} />,
   'MiniMax-color': <Minimax.Color />,
   'openrouter-color': <OpenRouter.Color />,
   'kimi-color': <Kimi.Color />,
@@ -63,6 +67,7 @@ const ICON_MAP: Record<string, ReactNode> = {
  */
 const WATERMARK_MAP: Record<string, ReactNode> = {
   'zhipu-color': <Zhipu />,
+  zai: <ZAI />,
   'MiniMax-color': <Minimax />,
   'openrouter-color': <OpenRouter />,
   'kimi-color': <Kimi />,

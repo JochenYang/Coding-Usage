@@ -2,14 +2,50 @@ import type { ParseContext, ProviderDef, UsageMetric } from '../types'
 import { UNLIMITED_KEY } from '../lib/metric-helpers'
 import { zhCN } from '../i18n/dict.zh-CN'
 import { enUS } from '../i18n/dict.en-US'
-import type { Locale } from '../i18n/types'
+import type { Dict, Locale } from '../i18n/types'
 
 const DICTS = { 'zh-CN': zhCN, 'en-US': enUS } as const
 
-const MINIMAX_BASE_URLS: Record<string, string> = {
-  cn: 'https://www.minimaxi.com',
-  intl: 'https://www.minimax.io',
+/** Per-site facts for the MiniMax Token Plan: the two sites are separate accounts, so each is its own provider. */
+interface MiniMaxSite<Id extends keyof Dict['providers'] = keyof Dict['providers']> {
+  /** Provider id; doubles as the key of its copy in the dictionary */
+  id: Id
+  name: string
+  /** Open-platform API host the coding-plan endpoints live on */
+  baseUrl: string
+  /** The endpoints refuse a request without a console Referer */
+  referer: string
+  docsUrl: string
+  keyUrl: string
 }
+
+/**
+ * They used to be one provider with a region switch; accounts saved before
+ * the split are moved by `normalizeProviders` (storage.ts).
+ *
+ * The China site moved off `minimaxi.com` in 2026-11: the console now lives on
+ * `platform.minimax.cn` (the old host redirects there) and the API docs name
+ * `api.minimax.cn` as the host. The international site keeps the China
+ * Referer it has always sent — it is what the live endpoint was verified with.
+ */
+const MINIMAX_SITES = {
+  cn: {
+    id: 'minimax',
+    name: 'MiniMax Token Plan',
+    baseUrl: 'https://api.minimax.cn',
+    referer: 'https://platform.minimax.cn/',
+    docsUrl: 'https://platform.minimax.cn/docs/m-plan/faq',
+    keyUrl: 'https://platform.minimax.cn/console/keys',
+  },
+  intl: {
+    id: 'minimax-intl',
+    name: 'MiniMax Token Plan Intl',
+    baseUrl: 'https://www.minimax.io',
+    referer: 'https://platform.minimaxi.com/',
+    docsUrl: 'https://platform.minimax.io/docs/m-plan/faq',
+    keyUrl: 'https://platform.minimax.io/console/keys',
+  },
+} as const satisfies Record<'cn' | 'intl', MiniMaxSite>
 
 /**
  * Real endpoint: `/v1/api/openplatform/coding_plan/remains`
@@ -118,16 +154,16 @@ function toEpochMs(v: unknown): number | undefined {
 async function fetchExpiry(
   ctx: ParseContext,
   key: string,
-  regionBaseUrl: string,
+  site: MiniMaxSite,
 ): Promise<number | undefined> {
   if (!ctx.fetch) return undefined
   try {
     const url =
-      `${regionBaseUrl}/v1/api/openplatform/charge/combo/cycle_audio_resource_package` +
+      `${site.baseUrl}/v1/api/openplatform/charge/combo/cycle_audio_resource_package` +
       `?biz_line=2&cycle_type=1&resource_package_type=7`
     const res = await ctx.fetch(url, {
       Authorization: `Bearer ${key}`,
-      Referer: 'https://platform.minimaxi.com/',
+      Referer: site.referer,
       Accept: 'application/json',
     })
     if (!res.ok) return undefined
@@ -145,121 +181,122 @@ async function fetchExpiry(
   }
 }
 
-export const minimax: ProviderDef = {
-  id: 'minimax',
-  name: 'MiniMax Token Plan',
-  accent: 'from-red-500 to-orange-500',
-  logo: 'MiniMax-color',
-  tagline: (t) => t.providers.minimax.tagline,
-  regions: (t) => [
-    { id: 'cn', label: t.regions.minimaxCN, baseUrl: MINIMAX_BASE_URLS.cn },
-    { id: 'intl', label: t.regions.minimaxIntl, baseUrl: MINIMAX_BASE_URLS.intl },
-  ],
-  docsUrl: 'https://platform.minimaxi.com/docs/token-plan/faq',
-  keyUrl: 'https://platform.minimaxi.com/user-center/basic-information/interface-key',
-  buildRequest(key, regionId) {
-    const baseUrl = MINIMAX_BASE_URLS[regionId ?? 'cn'] ?? MINIMAX_BASE_URLS.cn
-    return {
-      url: `${baseUrl}/v1/api/openplatform/coding_plan/remains`,
-      headers: {
-        Authorization: `Bearer ${key}`,
-        Referer: 'https://platform.minimaxi.com/',
-        Accept: 'application/json',
-      },
-    }
-  },
-  async parseResponse(json, ctx) {
-    const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
-    const body = json as { base_resp?: { status_code?: number; status_msg?: string }; model_remains?: unknown[] }
-    const base = body.base_resp
-    if (!base || typeof base.status_code !== 'number') {
-      throw new Error(t.providerErrors.missingField('base_resp'))
-    }
-    if (base.status_code !== 0) {
-      // `status_msg` is the server's own text (data, not our copy); only the
-      // synthesized fallbacks render through providerErrors.
-      const msg = base.status_msg ?? t.providerErrors.errorCode(base.status_code)
-      throw new Error(base.status_code === 1004 || base.status_code === 2049 ? t.providerErrors.keyInvalidWithReason(msg) : msg)
-    }
-    const rawList = Array.isArray(body.model_remains)
-      ? (body.model_remains as Array<Record<string, unknown>>)
-      : []
-    if (rawList.length === 0) throw new Error(t.providerErrors.noModelRemains)
-    const now = Date.now()
+/** Shared parser: the coding-plan payload is identical on both sites. */
+async function parseMinimaxQuota(json: unknown, ctx: ParseContext | undefined, site: MiniMaxSite): Promise<UsageMetric[]> {
+  const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
+  const body = json as { base_resp?: { status_code?: number; status_msg?: string }; model_remains?: unknown[] }
+  const base = body.base_resp
+  if (!base || typeof base.status_code !== 'number') {
+    throw new Error(t.providerErrors.missingField('base_resp'))
+  }
+  if (base.status_code !== 0) {
+    // `status_msg` is the server's own text (data, not our copy); only the
+    // synthesized fallbacks render through providerErrors.
+    const msg = base.status_msg ?? t.providerErrors.errorCode(base.status_code)
+    throw new Error(base.status_code === 1004 || base.status_code === 2049 ? t.providerErrors.keyInvalidWithReason(msg) : msg)
+  }
+  const rawList = Array.isArray(body.model_remains)
+    ? (body.model_remains as Array<Record<string, unknown>>)
+    : []
+  if (rawList.length === 0) throw new Error(t.providerErrors.noModelRemains)
+  const now = Date.now()
 
-    const main = rawList.find((m) => m.model_name === MAIN_MODEL_KEY)
-    const extra = rawList.find((m) => m.model_name === EXTRA_MODEL_KEY)
+  const main = rawList.find((m) => m.model_name === MAIN_MODEL_KEY)
+  const extra = rawList.find((m) => m.model_name === EXTRA_MODEL_KEY)
 
-    const intervals: UsageMetric[] = []
+  const intervals: UsageMetric[] = []
 
-    // 1. Plan · 5h quota (`general` model's 5h window) — the 5h window is never classified as unlimited
-    if (main) {
-      const pm = parseModel(main)
-      if (pm) {
-        const m = buildMetric(
-          'minimax-5h',
-          t.windows.fiveHour,
-          pm.intervalTotal,
-          pm.intervalRemainingPercent,
-          pm.intervalRemainsMs,
-          now,
-          { unlimited: false },
-        )
-        if (m) intervals.push(m)
-      }
+  // 1. Plan · 5h quota (`general` model's 5h window) — the 5h window is never classified as unlimited
+  if (main) {
+    const pm = parseModel(main)
+    if (pm) {
+      const m = buildMetric(
+        'minimax-5h',
+        t.windows.fiveHour,
+        pm.intervalTotal,
+        pm.intervalRemainingPercent,
+        pm.intervalRemainsMs,
+        now,
+        { unlimited: false },
+      )
+      if (m) intervals.push(m)
     }
+  }
 
-    // 2. Plan · Weekly/monthly quota (`general` model's weekly) — classified as unlimited when total=0
-    if (main) {
-      const pm = parseModel(main)
-      if (pm) {
-        const m = buildMetric(
-          'minimax-weekly',
-          t.windows.weeklyPlan,
-          pm.weeklyTotal,
-          pm.weeklyRemainingPercent,
-          pm.weeklyRemainsMs,
-          now,
-          { unlimited: true },
-        )
-        if (m) intervals.push(m)
-      }
+  // 2. Plan · Weekly/monthly quota (`general` model's weekly) — classified as unlimited when total=0
+  if (main) {
+    const pm = parseModel(main)
+    if (pm) {
+      const m = buildMetric(
+        'minimax-weekly',
+        t.windows.weeklyPlan,
+        pm.weeklyTotal,
+        pm.weeklyRemainingPercent,
+        pm.weeklyRemainsMs,
+        now,
+        { unlimited: true },
+      )
+      if (m) intervals.push(m)
     }
+  }
 
-    // 3. Video bonus (`video` model's weekly fields, an independent sub-quota) — `video` generally has a concrete total count and is never classified as unlimited
-    if (extra) {
-      const pm = parseModel(extra)
-      if (pm) {
-        const m = buildMetric(
-          'minimax-video-bonus',
-          t.windows.videoWeekly,
-          pm.weeklyTotal,
-          pm.weeklyRemainingPercent,
-          pm.weeklyRemainsMs,
-          now,
-          { unlimited: false },
-        )
-        if (m) intervals.push(m)
-      }
+  // 3. Video bonus (`video` model's weekly fields, an independent sub-quota) — `video` generally has a concrete total count and is never classified as unlimited
+  if (extra) {
+    const pm = parseModel(extra)
+    if (pm) {
+      const m = buildMetric(
+        'minimax-video-bonus',
+        t.windows.videoWeekly,
+        pm.weeklyTotal,
+        pm.weeklyRemainingPercent,
+        pm.weeklyRemainsMs,
+        now,
+        { unlimited: false },
+      )
+      if (m) intervals.push(m)
     }
+  }
 
-    if (intervals.length === 0) {
-      throw new Error(t.providerErrors.subscriptionUnparsed)
-    }
+  if (intervals.length === 0) {
+    throw new Error(t.providerErrors.subscriptionUnparsed)
+  }
 
-    if (ctx?.fetch && ctx.key) {
-      const baseUrl = MINIMAX_BASE_URLS[ctx.regionId ?? 'cn'] ?? MINIMAX_BASE_URLS.cn
-      const expiresAt = await fetchExpiry(ctx, ctx.key, baseUrl)
-      if (expiresAt) {
-        const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
-        intervals.push({
-          id: 'minimax-expiry',
-          label: t.provider.planExpiry,
-          kind: 'expiry',
-          expiresAt,
-        })
-      }
+  if (ctx?.fetch && ctx.key) {
+    const expiresAt = await fetchExpiry(ctx, ctx.key, site)
+    if (expiresAt) {
+      intervals.push({
+        id: 'minimax-expiry',
+        label: t.provider.planExpiry,
+        kind: 'expiry',
+        expiresAt,
+      })
     }
-    return intervals
-  },
+  }
+  return intervals
 }
+
+function minimaxDef<Id extends keyof Dict['providers']>(site: MiniMaxSite<Id>): ProviderDef {
+  return {
+    id: site.id,
+    name: site.name,
+    accent: 'from-red-500 to-orange-500',
+    logo: 'MiniMax-color',
+    tagline: (t) => t.providers[site.id].tagline,
+    docsUrl: site.docsUrl,
+    keyUrl: site.keyUrl,
+    buildRequest(key) {
+      return {
+        url: `${site.baseUrl}/v1/api/openplatform/coding_plan/remains`,
+        headers: {
+          Authorization: `Bearer ${key}`,
+          Referer: site.referer,
+          Accept: 'application/json',
+        },
+      }
+    },
+    parseResponse: (json, ctx) => parseMinimaxQuota(json, ctx, site),
+  }
+}
+
+export const minimax = minimaxDef(MINIMAX_SITES.cn)
+export const minimaxIntl = minimaxDef(MINIMAX_SITES.intl)

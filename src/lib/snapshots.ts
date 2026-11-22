@@ -50,17 +50,21 @@ function loadStore(): Store {
   return {}
 }
 
-function saveStore(store: Store): void {
+/** Persist the store; false when it could not be written at all. */
+function saveStore(store: Store): boolean {
   try {
     localStorage.setItem(KEY, JSON.stringify(store))
+    return true
   } catch {
     // quota exceeded → drop oldest halves per account and retry once
     const trimmed: Store = {}
     for (const [k, list] of Object.entries(store)) trimmed[k] = list.slice(-Math.floor(MAX_PER_ACCOUNT / 2))
     try {
       localStorage.setItem(KEY, JSON.stringify(trimmed))
+      return true
     } catch {
       // give up silently; snapshots are best-effort
+      return false
     }
   }
 }
@@ -98,6 +102,34 @@ export function recordSnapshot(accountKey: string, metrics: UsageMetric[]): void
 
 export function getSnapshots(accountKey: string): AccountSnapshot[] {
   return loadStore()[accountKey] ?? []
+}
+
+/**
+ * Move each renamed account's history to its new key, in place. The rename
+ * runs in two phases — collect and delete, then write back — because the keys
+ * shuffle among themselves (`a-1` becomes `a-0` while `a-0` becomes `b-0`);
+ * renaming one at a time would hand one account's history to another.
+ */
+export function remapSnapshotStore(store: Store, renamed: Record<string, string>): Store {
+  const moved = new Map<string, AccountSnapshot[]>()
+  for (const [from, to] of Object.entries(renamed)) {
+    const list = store[from]
+    if (!list) continue
+    moved.set(to, list)
+    delete store[from]
+  }
+  for (const [to, list] of moved) store[to] = list
+  return store
+}
+
+/**
+ * Apply an account-key rename to the persisted history; a no-op when nothing
+ * is renamed. False when the renamed store could not be written, so the
+ * caller knows the rename has not happened yet.
+ */
+export function renameSnapshotKeys(renamed: Record<string, string>): boolean {
+  if (Object.keys(renamed).length === 0) return true
+  return saveStore(remapSnapshotStore(loadStore(), renamed))
 }
 
 export interface DayPoint {

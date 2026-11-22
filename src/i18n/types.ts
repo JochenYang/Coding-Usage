@@ -82,11 +82,15 @@ export interface Dict {
   providers: {
     opencode: { name: string; tagline: string; plan: string }
     zhipu: { name: string; tagline: string; plan: string }
+    zai: { name: string; tagline: string; plan: string }
     kimi: { name: string; tagline: string; plan: string }
+    'kimi-intl': { name: string; tagline: string; plan: string }
     deepseek: { name: string; tagline: string; plan: string }
     siliconflow: { name: string; tagline: string; plan: string }
+    'siliconflow-intl': { name: string; tagline: string; plan: string }
     openrouter: { name: string; tagline: string; plan: string }
     minimax: { name: string; tagline: string; plan: string }
+    'minimax-intl': { name: string; tagline: string; plan: string }
     volcengine: { name: string; tagline: string; plan: string }
     stepfun: { name: string; tagline: string; plan: string }
     novita: { name: string; tagline: string; plan: string }
@@ -169,16 +173,6 @@ export interface Dict {
     warpMonthlyRequests: string
     /** Warp: the combined user+workspace add-on credit pool */
     warpBonusCredits: string
-  }
-  regions: {
-    zhipuCN: string
-    zhipuIntl: string
-    kimiCN: string
-    kimiIntl: string
-    minimaxCN: string
-    minimaxIntl: string
-    siliconflowCN: string
-    siliconflowIntl: string
   }
   autoRefresh: {
     manual: string

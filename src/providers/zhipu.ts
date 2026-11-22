@@ -5,9 +5,23 @@ import type { Locale } from '../i18n/types'
 
 const DICTS = { 'zh-CN': zhCN, 'en-US': enUS } as const
 
-const ZHIPU_BASE_URLS: Record<string, string> = {
-  cn: 'https://open.bigmodel.cn',
-  intl: 'https://api.z.ai',
+/**
+ * GLM Coding Plan (open.bigmodel.cn) and Z.ai Coding Plan (api.z.ai). Both
+ * sites answer the same monitor endpoint with the same payload, so the two
+ * providers share one parser and differ only in host, brand and links.
+ *
+ * They used to be a single provider with a China / International region
+ * switch. The two sites are separate accounts with separate subscriptions, so
+ * each is its own entry in the add-account menu (accounts saved under the old
+ * merged provider are moved by `normalizeProviders` in storage.ts).
+ */
+const MONITOR_PATH = '/api/monitor/usage/quota/limit'
+const ZHIPU_MONITOR_URL = `https://open.bigmodel.cn${MONITOR_PATH}`
+const ZAI_MONITOR_URL = `https://api.z.ai${MONITOR_PATH}`
+
+/** The usage API authenticates with the raw key in the `Authorization` header (no Bearer prefix). */
+function monitorRequest(url: string, key: string): { url: string; headers: Record<string, string> } {
+  return { url, headers: { Authorization: key, 'Accept-Language': 'en-US,en' } }
 }
 
 interface ZhipuLimit {
@@ -39,75 +53,79 @@ function usedPercent(limit: ZhipuLimit): number | null {
   return Math.round((used / total) * 100)
 }
 
+/** Shared parser: the monitor payload is identical on both sites. */
+async function parseCodingPlanQuota(json: unknown, ctx?: Parameters<ProviderDef['parseResponse']>[1]): Promise<UsageMetric[]> {
+  const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
+  const body = json as {
+    success?: boolean
+    msg?: string
+    code?: number
+    data?: { level?: string; limits?: ZhipuLimit[] }
+  }
+  if (body.success !== true || !body.data?.limits) {
+    // `msg` is the server's own text (passed through as data, not our copy);
+    // only the fallbacks render through providerErrors.
+    throw new Error(body.msg ?? (body.code === 401 ? t.providerErrors.keyExpiredOrInvalid : t.providerErrors.queryFailed))
+  }
+  const plan = (body.data.level ?? '').toUpperCase()
+  const metrics: UsageMetric[] = []
+  // TOKENS_LIMIT: unit=3 → 5h window, unit=6 → weekly window; legacy plans have only one
+  const tokenLimits = body.data.limits
+    .filter((l) => l.type === 'TOKENS_LIMIT' || l.type === 'CREDIT_LIMIT')
+    .sort((a, b) => (a.unit ?? 0) - (b.unit ?? 0))
+  const windowNames =
+    tokenLimits.length > 1 ? [t.windows.fiveHour, t.windows.weeklyPlan] : [t.windows.planQuota]
+  tokenLimits.forEach((l, i) => {
+    const percent = usedPercent(l)
+    if (percent == null) return
+    metrics.push({
+      id: `zhipu-tokens-${i}`,
+      label: plan ? `${plan} · ${windowNames[i]}` : windowNames[i],
+      kind: 'percent',
+      percent,
+      used: typeof l.currentValue === 'number' ? l.currentValue : undefined,
+      total: typeof l.usage === 'number' ? l.usage : undefined,
+      resetsAt: typeof l.nextResetTime === 'number' ? l.nextResetTime : undefined,
+    })
+  })
+  // TIME_LIMIT: MCP monthly call count
+  const mcp = body.data.limits.find((l) => l.type === 'TIME_LIMIT')
+  if (mcp && typeof mcp.currentValue === 'number') {
+    metrics.push({
+      id: 'zhipu-mcp',
+      label: t.windows.mcpMonthly,
+      kind: 'percent',
+      percent: mcp.usage ? (mcp.currentValue / mcp.usage) * 100 : 0,
+      used: mcp.currentValue,
+      total: mcp.usage,
+      unit: `${mcp.currentValue} / ${mcp.usage ?? '?'}`,
+      resetsAt: typeof mcp.nextResetTime === 'number' ? mcp.nextResetTime : undefined,
+    })
+  }
+  if (metrics.length === 0) throw new Error(t.providerErrors.noQuotaData)
+  return metrics
+}
+
 export const zhipu: ProviderDef = {
   id: 'zhipu',
-  name: 'Z.ai',
+  name: 'GLM Coding Plan',
   accent: 'from-sky-500 to-cyan-500',
   logo: 'zhipu-color',
   tagline: (t) => t.providers.zhipu.tagline,
-  regions: (t) => [
-    { id: 'cn', label: t.regions.zhipuCN, baseUrl: ZHIPU_BASE_URLS.cn },
-    { id: 'intl', label: t.regions.zhipuIntl, baseUrl: ZHIPU_BASE_URLS.intl },
-  ],
   docsUrl: 'https://docs.bigmodel.cn/cn/coding-plan/usage-notes',
   keyUrl: 'https://bigmodel.cn/console/coding-plan',
-  buildRequest(key, regionId) {
-    const baseUrl = ZHIPU_BASE_URLS[regionId ?? 'cn'] ?? ZHIPU_BASE_URLS.cn
-    // Zhipu's usage API authenticates with the raw key directly in the `Authorization` header (no Bearer prefix)
-    return {
-      url: `${baseUrl}/api/monitor/usage/quota/limit`,
-      headers: { Authorization: key, 'Accept-Language': 'en-US,en' },
-    }
-  },
-  async parseResponse(json, ctx) {
-    const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
-    const body = json as {
-      success?: boolean
-      msg?: string
-      code?: number
-      data?: { level?: string; limits?: ZhipuLimit[] }
-    }
-    if (body.success !== true || !body.data?.limits) {
-      // `msg` is the server's own text (passed through as data, not our copy);
-      // only the fallbacks render through providerErrors.
-      throw new Error(body.msg ?? (body.code === 401 ? t.providerErrors.keyExpiredOrInvalid : t.providerErrors.queryFailed))
-    }
-    const plan = (body.data.level ?? '').toUpperCase()
-    const metrics: UsageMetric[] = []
-    // TOKENS_LIMIT: unit=3 → 5h window, unit=6 → weekly window; legacy plans have only one
-    const tokenLimits = body.data.limits
-      .filter((l) => l.type === 'TOKENS_LIMIT' || l.type === 'CREDIT_LIMIT')
-      .sort((a, b) => (a.unit ?? 0) - (b.unit ?? 0))
-    const windowNames =
-      tokenLimits.length > 1 ? [t.windows.fiveHour, t.windows.weeklyPlan] : [t.windows.planQuota]
-    tokenLimits.forEach((l, i) => {
-      const percent = usedPercent(l)
-      if (percent == null) return
-      metrics.push({
-        id: `zhipu-tokens-${i}`,
-        label: plan ? `${plan} · ${windowNames[i]}` : windowNames[i],
-        kind: 'percent',
-        percent,
-        used: typeof l.currentValue === 'number' ? l.currentValue : undefined,
-        total: typeof l.usage === 'number' ? l.usage : undefined,
-        resetsAt: typeof l.nextResetTime === 'number' ? l.nextResetTime : undefined,
-      })
-    })
-    // TIME_LIMIT: MCP monthly call count
-    const mcp = body.data.limits.find((l) => l.type === 'TIME_LIMIT')
-    if (mcp && typeof mcp.currentValue === 'number') {
-      metrics.push({
-        id: 'zhipu-mcp',
-        label: t.windows.mcpMonthly,
-        kind: 'percent',
-        percent: mcp.usage ? (mcp.currentValue / mcp.usage) * 100 : 0,
-        used: mcp.currentValue,
-        total: mcp.usage,
-        unit: `${mcp.currentValue} / ${mcp.usage ?? '?'}`,
-        resetsAt: typeof mcp.nextResetTime === 'number' ? mcp.nextResetTime : undefined,
-      })
-    }
-    if (metrics.length === 0) throw new Error(t.providerErrors.noQuotaData)
-    return metrics
-  },
+  buildRequest: (key) => monitorRequest(ZHIPU_MONITOR_URL, key),
+  parseResponse: parseCodingPlanQuota,
+}
+
+export const zai: ProviderDef = {
+  id: 'zai',
+  name: 'Z.ai Coding Plan',
+  accent: 'from-sky-500 to-cyan-500',
+  logo: 'zai',
+  tagline: (t) => t.providers.zai.tagline,
+  docsUrl: 'https://docs.z.ai/devpack/overview',
+  keyUrl: 'https://z.ai/manage-apikey',
+  buildRequest: (key) => monitorRequest(ZAI_MONITOR_URL, key),
+  parseResponse: parseCodingPlanQuota,
 }

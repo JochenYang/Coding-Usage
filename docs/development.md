@@ -35,7 +35,10 @@ npm test           # vitest 单元测试
 - **API 改动**：用真实 Key 写入 `localStorage`（桌面 `coding-usage.settings.v3`、浏览器 v2）
   端到端跑 `fetchUsage`，覆盖两种传输（bridge fetch 与直连）的 ok / error。
 - **回归**：改动 `src/lib/storage.ts` 或 `src/lib/query.ts` 时，额外验证 v1→v2→v3 迁移：
-  加密 v3 读取与回填、safeStorage 不可用时的明文回退、旧 v2 的校验后删除。
+  加密 v3 读取与回填、safeStorage 不可用时的明文回退、旧 v2 的校验后删除；以及双站 provider 拆分的
+  账号迁移（`normalizeProviders`：带 `regionId` 的旧账号按国内 / 国际归位，读数缓存清理、快照与
+  告警按旧键→新键重命名，每台机器只执行一次；启动加载与设置备份导入共用这一入口；用例在
+  `src/lib/storage.test.ts` 与 `src/providers/split-sites.test.ts`）。
 - **样式**：改 `@theme` token 时确认浅色 / 深色 / 跟随系统三态一致；用 DevTools 看计算值，
   不要只看类名。
 
@@ -56,14 +59,21 @@ npm test           # vitest 单元测试
 
 1. 在 `src/providers/` 新建 `<id>.ts`（或 `.tsx`），实现 `ProviderDef`（`src/types.ts`）：
    `buildRequest(key, regionId?)` + `async parseResponse(json, ctx?)`。
-2. 在 `src/providers/registry.ts` 的 `PROVIDERS` 数组注册。多区域时在适配器声明 `regions`，
-   用 `regionId` 选择 baseUrl。
+2. 在 `src/providers/registry.ts` 的 `PROVIDERS` 数组注册。一个服务商有国内 / 国际两站时，两站是
+   独立账号、独立订阅的，拆成两个 provider、各自固定主机（智谱、Kimi、SiliconFlow、MiniMax 都是
+   这样）——合并成一条只能靠添加账号时「选区域」区分，列表里看不出是哪一站，换站必须改区域而
+   不能并存两个账号。`ProviderDef.regions` / `regionId` 仅为读取旧数据保留，目前没有适配器使用。
+   拆开后 `buildRequest(key)` 必须无视 `regionId`：一个带旧区域的账号若留在错误的 provider 下，key
+   就会发到另一站。以后再拆开一个带 `regions` 的旧 provider 时，在 `src/lib/storage.ts` 的
+   `SPLIT_SITE_PROVIDERS` 登记「国内 id → 国际 id」——`normalizeProviders` 会据此迁移存量账号
+   （启动加载与设置备份导入共用这一入口），并清理受影响的读数缓存、把快照与告警改到新账号键下。
 3. CORS 在 Electron 下不是问题（主进程 fetch）；浏览器由 `src/lib/query.ts` 自动回退
    corsproxy.io。不要接入其它第三方代理。
 4. 品牌图标优先用 `lobehub` slug；白底不可见时在 `types.ts` 设 `logoDarkInvert: true`；
    内联 SVG 放 `src/components/logos/`。
-5. UI 文案（名称 / tagline / 区域标签）走 `src/i18n/dict.*.ts` 的 provider 段，不在适配器里
-   硬编码中英文。
+5. UI 文案（tagline / 套餐筛选名）走 `src/i18n/dict.*.ts` 的 provider 段，不在适配器里硬编码
+   中英文；显示在下拉与卡片上的品牌名 `name` 不翻译，直接写在适配器里。词典的 `providers` 段
+   按 provider id 一一对应，新 provider 两份词典都要加。
 6. `npx tsc --noEmit` 通过后，用真实 Key 写入 `localStorage` 端到端验证再提交。
 
 ### 已评估不接入的供应商

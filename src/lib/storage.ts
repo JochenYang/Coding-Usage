@@ -1,6 +1,8 @@
 import type { ProviderConfig, Settings } from '../types'
-import { DEFAULT_ALERT_THRESHOLDS, resolveThresholds } from './alerts'
+import { DEFAULT_ALERT_THRESHOLDS, renameAlertAccountKeys, resolveThresholds } from './alerts'
 import { DEFAULT_ENABLED_SUBSCRIPTIONS, isKnownSubscriptionKey } from './subscription-cards'
+import { dropCachedResults } from './startup-cache'
+import { renameSnapshotKeys } from './snapshots'
 
 export const KEY_V3 = 'coding-usage.settings.v3'
 const KEY_V2 = 'coding-usage.settings.v2'
@@ -62,20 +64,165 @@ export const SECRET_INTEGRATION_FIELDS = [
   'weixinBotToken',
 ] as const
 
-function migrate(raw: unknown): Settings {
-  const obj = (raw ?? {}) as Partial<Settings> & { providers?: Record<string, unknown> }
+function isObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+/**
+ * Providers that used to cover two sites through a `regionId` on each account
+ * (the China site unless it was `intl`), mapped to the provider that took
+ * over their international accounts when they were split. The two sites are
+ * separate accounts with separate subscriptions, so each is its own entry in
+ * the add-account menu now. The domestic provider keeps its id, which is why
+ * the China accounts do not move.
+ */
+const SPLIT_SITE_PROVIDERS = {
+  zhipu: 'zai',
+  kimi: 'kimi-intl',
+  siliconflow: 'siliconflow-intl',
+  minimax: 'minimax-intl',
+} as const
+
+/**
+ * Which account-keyed stores the split has already been applied to, as a
+ * `+`-joined list (e.g. `results+snapshots+alerts`). The account move itself
+ * is recomputed on every load (it is idempotent), but what is done to the
+ * stores keyed by account must happen at most once per store: by a later
+ * launch an old key may belong to a newly added account, and moving or
+ * dropping it again would hit that account instead of the one the split was
+ * about. So each store is recorded the moment its step is on disk, and a
+ * store whose write failed is the only one retried.
+ */
+const SPLIT_APPLIED_KEY = 'coding-usage.split-site-accounts.v1'
+
+/** What the pre-split migration did to one providers record. */
+export interface ProviderSplit {
+  /**
+   * Providers an international account left. The readings cached under their
+   * old indexes are stale — shifted onto another account, or orphaned until
+   * a new account takes the index — so they have to be dropped.
+   */
+  reindexed: string[]
+  /** `oldKey → newKey` for every account whose key the split changed */
+  renamed: Record<string, string>
+}
+
+function withoutRegion(entry: ProviderConfig): ProviderConfig {
+  const next = { ...entry }
+  delete next.regionId
+  return next
+}
+
+/**
+ * Move accounts saved under the pre-split providers to the split ones: the
+ * international accounts (`regionId === 'intl'`) go to the provider named in
+ * {@link SPLIT_SITE_PROVIDERS}, behind any account already saved there; the
+ * rest stay put; and the region field — meaningless on a single-site
+ * provider — is dropped from both sides. Returns what the move changed.
+ *
+ * Idempotent: once no account carries a region there is nothing to move.
+ */
+function splitLegacyRegionAccounts(providers: Record<string, ProviderConfig[]>): ProviderSplit {
+  const reindexed: string[] = []
+  const renamed: Record<string, string> = {}
+  for (const [domestic, international] of Object.entries(SPLIT_SITE_PROVIDERS)) {
+    const legacy = providers[domestic] ?? []
+    if (!legacy.some((entry) => entry.regionId != null)) continue
+    const moved = legacy.filter((entry) => entry.regionId === 'intl')
+    const kept = legacy.filter((entry) => entry.regionId !== 'intl')
+    const settled = (providers[international] ?? []).map(withoutRegion)
+    providers[domestic] = kept.map(withoutRegion)
+    providers[international] = [...settled, ...moved.map(withoutRegion)]
+    // Nothing left the list, so no account's index changed: only the region
+    // field was dropped and no key needs renaming.
+    if (moved.length === 0) continue
+    let keptIndex = 0
+    let movedIndex = 0
+    legacy.forEach((entry, index) => {
+      const isMoved = entry.regionId === 'intl'
+      const next = isMoved ? `${international}-${settled.length + movedIndex++}` : `${domestic}-${keptIndex++}`
+      if (next !== `${domestic}-${index}`) renamed[`${domestic}-${index}`] = next
+    })
+    // Every key the moved accounts held under this provider is now stale: a
+    // kept account may have shifted onto one, and one left behind with no
+    // account behind it would surface the moment a new account takes its index.
+    reindexed.push(domestic)
+  }
+  return { reindexed, renamed }
+}
+
+/**
+ * Normalize a stored providers record into account lists and move any account
+ * saved before the split-site providers were split. Accounts arrive as a
+ * list, or as a single object in an older format; anything else — including
+ * a non-object entry — is not an account and is dropped. This is the one
+ * entry point both the startup load and the settings-backup import go through,
+ * so an imported document can never skip the move.
+ */
+export function normalizeProviders(raw: unknown): { providers: Record<string, ProviderConfig[]>; split: ProviderSplit } {
+  const isAccount = (entry: unknown): entry is ProviderConfig => isObject(entry)
   const providers: Record<string, ProviderConfig[]> = {}
-  for (const [id, value] of Object.entries(obj.providers ?? {})) {
-    if (Array.isArray(value)) {
-      providers[id] = value.filter((v): v is ProviderConfig => !!v && typeof v === 'object') as ProviderConfig[]
-    } else if (value && typeof value === 'object') {
-      providers[id] = [value as ProviderConfig]
-    } else {
-      providers[id] = []
+  if (isObject(raw)) {
+    for (const [id, value] of Object.entries(raw)) {
+      const entries = Array.isArray(value) ? value : isObject(value) ? [value] : []
+      providers[id] = entries.filter(isAccount)
     }
   }
+  return { providers, split: splitLegacyRegionAccounts(providers) }
+}
+
+/** Settings plus what loading them did to the accounts. */
+export interface LoadedSettings {
+  settings: Settings
+  split: ProviderSplit
+}
+
+/**
+ * Bring the data that is keyed by account along with a split. Cached readings
+ * of a re-indexed provider are dropped (they would paint one account's
+ * numbers on another's card); history and alert state are renamed to the new
+ * keys, so nothing is lost and nothing is attributed to the wrong account.
+ * Each of the three stores is handled once per machine — see
+ * {@link SPLIT_APPLIED_KEY}.
+ */
+function applySplitToStoredData(split: ProviderSplit): void {
+  // Nothing was renamed, so no account was moved and there is nothing to do
+  if (Object.keys(split.renamed).length === 0) return
+
+  const applied = new Set((localStorage.getItem(SPLIT_APPLIED_KEY) ?? '').split('+').filter(Boolean))
+  const steps: Array<[store: string, run: () => boolean]> = [
+    [
+      'results',
+      () => {
+        for (const id of split.reindexed) dropCachedResults(id)
+        // Dropping is keyed lookups and a rewrite of a cache: nothing to fail
+        return true
+      },
+    ],
+    ['snapshots', () => renameSnapshotKeys(split.renamed)],
+    ['alerts', () => renameAlertAccountKeys(split.renamed)],
+  ]
+  for (const [store, run] of steps) {
+    if (applied.has(store)) continue
+    // A failed write leaves this store unrecorded: the next launch retries it,
+    // and only it. Stop here so no later store gets ahead of an unrecorded one.
+    if (!run()) return
+    applied.add(store)
+    try {
+      localStorage.setItem(SPLIT_APPLIED_KEY, [...applied].join('+'))
+    } catch {
+      // The step is on disk but not recorded, so the next launch repeats it;
+      // that finds nothing to move unless an old key was reused by then.
+      return
+    }
+  }
+}
+
+function migrate(raw: unknown): LoadedSettings {
+  const obj = (raw ?? {}) as Partial<Settings> & { providers?: Record<string, unknown> }
+  const { providers, split } = normalizeProviders(obj.providers)
   const intg = obj.integrations
-  return {
+  const settings: Settings = {
     providers,
     autoRefreshMin: typeof obj.autoRefreshMin === 'number' ? obj.autoRefreshMin : 0,
     displayCurrency: typeof obj.displayCurrency === 'string' ? obj.displayCurrency : 'CNY',
@@ -118,10 +265,17 @@ function migrate(raw: unknown): Settings {
       weixinBotUserId: typeof intg?.weixinBotUserId === 'string' ? intg.weixinBotUserId : '',
     },
   }
+  return { settings, split }
 }
 
+/** Parse one stored settings document and bring account-keyed data along with any split. */
+function parseStored(rawText: string): LoadedSettings {
+  const loaded = migrate(JSON.parse(rawText))
+  applySplitToStoredData(loaded.split)
+  return loaded
+}
 
-export function loadSettings(): Settings {
+export function loadSettingsDetailed(): LoadedSettings {
   // Corruption-tolerant cascade: fresh v3 → legacy v2 → v1 → defaults.
   // A broken v3 must NOT fall through to empty settings — v2 may still hold
   // the plaintext copy and a file mirror (via IPC) may exist too.
@@ -129,25 +283,34 @@ export function loadSettings(): Settings {
     const rawV3 = localStorage.getItem(KEY_V3)
     if (rawV3 && window.desktopBridge) {
       try {
-        return migrate(JSON.parse(rawV3))
+        return parseStored(rawV3)
       } catch {
         // v3 is corrupt — fall through to v2 instead of losing accounts
       }
     }
     const rawV2 = localStorage.getItem(KEY_V2)
-    if (rawV2) return migrate(JSON.parse(rawV2))
+    if (rawV2) return parseStored(rawV2)
     const rawV1 = localStorage.getItem(KEY_V1)
     if (rawV1) {
-      const migrated = migrate(JSON.parse(rawV1))
+      const loaded = parseStored(rawV1)
       // After upgrade, clear the legacy key and persist under the new key
-      saveSettings(migrated)
+      saveSettings(loaded.settings)
       localStorage.removeItem(KEY_V1)
-      return migrated
+      return loaded
     }
   } catch {
     // ignore — file mirror (Electron) or defaults below
   }
-  return DEFAULT_SETTINGS
+  return { settings: DEFAULT_SETTINGS, split: { reindexed: [], renamed: {} } }
+}
+
+/**
+ * The settings on disk. A caller that has already read the results cache into
+ * memory — anything past the first render — wants {@link loadSettingsDetailed}
+ * instead, so it can drop what the split re-indexed from its own copy too.
+ */
+export function loadSettings(): Settings {
+  return loadSettingsDetailed().settings
 }
 
 export function saveSettings(s: Settings): void {

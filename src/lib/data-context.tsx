@@ -17,6 +17,7 @@ import {
   hasLegacyV2Store,
   isSameEntry,
   loadSettings,
+  loadSettingsDetailed,
   persistSettings,
   SECRET_INTEGRATION_FIELDS,
   KEY_V3,
@@ -25,10 +26,12 @@ import { fetchUsage } from './query'
 import { recordSnapshot } from './snapshots'
 import { summarizeScan, archiveDailyUsage, getDailyUsageSeries, type AgentUsageVM } from './agent-usage'
 import {
+  dropCachedResults,
   loadCachedAgentUsage,
   loadCachedResults,
   saveCachedAgentUsage,
   saveCachedResults,
+  withoutAccountResults,
 } from './startup-cache'
 import {
   deriveAlerts,
@@ -159,6 +162,13 @@ interface DataContextValue {
   refreshAll: (opts?: { silent?: boolean }) => Promise<void>
   addEntry: (providerId: string) => void
   deleteEntry: (providerId: string, index: number) => void
+  /**
+   * Forget every cached reading of the listed providers' accounts, in state
+   * and on disk. For a caller that replaces a provider's account list
+   * outside an edit session: the readings are keyed by account index, so the
+   * old ones would land on whichever account holds that index now.
+   */
+  dropAccountResults: (providerIds: string[]) => void
 }
 
 const DataContext = createContext<DataContextValue | null>(null)
@@ -172,15 +182,25 @@ export function DataProvider({
   background?: boolean
 }) {
   const { locale } = useLocale()
-  const [settings, setSettings] = useState<Settings>(loadSettings)
+  // The persisted stores are read in one go, in the order the split-site
+  // account migration needs: loading the settings drops stale readings and
+  // renames stored history, so the results cache and the alert store are
+  // read only after it has run. Doing it here instead of in three separate
+  // initializers keeps that order from depending on declaration order.
+  const [boot] = useState(() => ({
+    settings: loadSettings(),
+    results: loadCachedResults(),
+    alerts: loadAlerts(),
+  }))
+  const [settings, setSettings] = useState<Settings>(boot.settings)
   // Replaying the last persisted fetch results makes the first paint show
   // real numbers; the rows' stale derivation keeps the honesty (10 min mark).
-  const [results, setResults] = useState<Record<string, ProviderResult>>(loadCachedResults)
+  const [results, setResults] = useState<Record<string, ProviderResult>>(boot.results)
   const [refreshingAll, setRefreshingAll] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<number | null>(null)
   // Bumped once per finished cycle; see DataContextValue.refreshTick
   const [refreshTick, setRefreshTick] = useState(0)
-  const [alerts, setAlerts] = useState<AlertItem[]>(loadAlerts)
+  const [alerts, setAlerts] = useState<AlertItem[]>(boot.alerts)
   // Local agent (tokscale) usage view — replayed from the startup cache, then
   // corrected by the first scan (whose full run can take tens of seconds)
   const [agentUsage, setAgentUsage] = useState<AgentUsageVM>(
@@ -240,7 +260,13 @@ export function DataProvider({
       if (backup) {
         try {
           localStorage.setItem(KEY_V3, backup)
-          setSettings(loadSettings())
+          const loaded = loadSettingsDetailed()
+          setSettings(loaded.settings)
+          // By now the results cache is already in state, so the split's
+          // cleanup of stored readings cannot reach it: drop the re-indexed
+          // providers from the in-memory copy too, or the first paint shows
+          // one account's numbers on another's card.
+          dropAccountResults(loaded.split.reindexed)
         } catch {
           // ignore — user can re-enter accounts
         }
@@ -625,6 +651,12 @@ export function DataProvider({
     })
   }, [])
 
+  const dropAccountResults = useCallback((providerIds: string[]) => {
+    if (providerIds.length === 0) return
+    for (const id of providerIds) dropCachedResults(id)
+    setResults((current) => withoutAccountResults(current, providerIds))
+  }, [])
+
   const sections = useMemo(() => buildSections(settings), [settings])
 
   // Re-derive the alert set whenever fresh results arrive; persist the merge.
@@ -689,6 +721,7 @@ export function DataProvider({
       refreshAll,
       addEntry,
       deleteEntry,
+      dropAccountResults,
     }),
     [
       settings,
@@ -715,6 +748,7 @@ export function DataProvider({
       refreshAll,
       addEntry,
       deleteEntry,
+      dropAccountResults,
     ],
   )
 

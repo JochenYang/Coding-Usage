@@ -55,6 +55,50 @@ export function saveCachedResults(results: Record<string, ProviderResult>): void
 }
 
 /**
+ * Whether a cache key is one of `providerId`'s own account keys. Keys are
+ * `providerId-index`, and a plain prefix test would also match a provider
+ * whose id extends this one (`kimi-intl-0` starts with `kimi-`), so the part
+ * after the id has to be the index.
+ */
+function isAccountKey(key: string, providerId: string): boolean {
+  if (!key.startsWith(`${providerId}-`)) return false
+  return /^\d+$/.test(key.slice(providerId.length + 1))
+}
+
+/**
+ * The results minus every account of the listed providers. This is the
+ * in-memory counterpart of {@link dropCachedResults}: a caller that has
+ * already read the cache into state cannot be helped by rewriting storage.
+ */
+export function withoutAccountResults<T>(
+  results: Record<string, T>,
+  providerIds: readonly string[],
+): Record<string, T> {
+  if (providerIds.length === 0) return results
+  return Object.fromEntries(
+    Object.entries(results).filter(([key]) => !providerIds.some((id) => isAccountKey(key, id))),
+  )
+}
+
+/**
+ * Forget every cached reading of one provider's accounts. Keys are
+ * `providerId-index`, so moving accounts between providers re-indexes them: a
+ * reading left in place would paint one account's numbers on another's card
+ * until the next refresh replaced it. Accounts cached under another provider
+ * are untouched, including one whose id extends `providerId`.
+ */
+export function dropCachedResults(providerId: string): void {
+  try {
+    const raw = localStorage.getItem(RESULTS_KEY)
+    if (!raw) return
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    localStorage.setItem(RESULTS_KEY, JSON.stringify(withoutAccountResults(parsed, [providerId])))
+  } catch {
+    // An unreadable cache has nothing worth keeping; the next refresh rewrites it
+  }
+}
+
+/**
  * Minimal structural check for a persisted {@link AgentUsageVM}: the fields
  * the overview renders must at least be the right shapes. Numeric content is
  * re-validated downstream by the renderers, same as a fresh scan.

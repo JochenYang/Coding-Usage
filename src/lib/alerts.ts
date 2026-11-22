@@ -128,12 +128,51 @@ export function loadAlerts(): AlertItem[] {
   return loadStored()
 }
 
-export function saveAlerts(items: AlertItem[]): void {
+/** Persist the alerts; false when the list could not be written. */
+export function saveAlerts(items: AlertItem[]): boolean {
   try {
     localStorage.setItem(KEY, JSON.stringify(items))
+    return true
   } catch {
     // best-effort
+    return false
   }
+}
+
+/**
+ * Apply an account-key rename to the stored alerts. An alert's id starts with
+ * its account key and it repeats that key in `accountKey`, so an account that
+ * moved to another index would otherwise inherit the read state and
+ * first-seen time of whatever account held that key before, and keep pointing
+ * at the old key. A no-op when no stored alert belongs to a renamed account.
+ * False when the renamed list could not be written, so the caller knows the
+ * rename has not happened yet.
+ */
+export function renameAlertAccountKeys(renamed: Record<string, string>): boolean {
+  const froms = Object.keys(renamed)
+  if (froms.length === 0) return true
+  const items = loadStored()
+  // The `:` after the key keeps `kimi` from matching an alert of `kimi-intl`
+  const ownerOf = (id: string): string | undefined => froms.find((from) => id.startsWith(`${from}:`))
+  if (!items.some((item) => ownerOf(item.id) !== undefined)) return true
+  const seen = new Set<string>()
+  const unique: AlertItem[] = []
+  for (const item of items) {
+    const from = ownerOf(item.id)
+    const next =
+      from === undefined
+        ? item
+        : {
+            ...item,
+            id: `${renamed[from]}:${item.id.slice(from.length + 1)}`,
+            ...(item.accountKey === from ? { accountKey: renamed[from] } : {}),
+          }
+    // An alert already filed under the new id makes a duplicate; keep the first
+    if (seen.has(next.id)) continue
+    seen.add(next.id)
+    unique.push(next)
+  }
+  return saveAlerts(unique)
 }
 
 /**

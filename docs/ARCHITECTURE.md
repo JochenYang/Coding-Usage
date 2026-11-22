@@ -44,7 +44,7 @@ src/
     ProviderLogo.tsx      # 品牌图标（@lobehub/icons 离线打包 + 字母兜底）
     ThemeProvider.tsx     # 明暗主题
     LocaleSwitcher.tsx    # 语言切换
-  providers/              # Provider 适配器（registry.ts 汇总 14 家）
+  providers/              # Provider 适配器（registry.ts 汇总 19 家；双站账号独立的每站一个）
   lib/                    # 视图模型、存储、查询、告警、趋势、价格、快照等纯逻辑
   i18n/                   # zh-CN / en-US 词典 + LocaleProvider + useT
 ```
@@ -151,8 +151,13 @@ electron/
    client 时跳过），聚合在 `src/lib/agent-usage.ts`。
 4. **模型价格**：`electron/model-pricing.ts` 按 models.dev 官方厂商价为主、OpenRouter 兜底，
    内置快照 `builtin-pricing.ts`（生成脚本 `scripts/gen-builtin-pricing.ts`）标注生成日期。
-5. **持久化**：`settings`（v1→v2→v3 迁移，v3 为 safeStorage 加密）、`snapshots`（本地时序）、
-   `results`（启动缓存，读取时做字段归一化）、`quota-cache.json`（上次成功的套餐额度，按 provider
+5. **持久化**：`settings`（v1→v2→v3 迁移，v3 为 safeStorage 加密；智谱 / Kimi / SiliconFlow / MiniMax
+   各拆成国内、国际两个 provider 后，带 `regionId` 的旧账号在读取与备份导入时经 `normalizeProviders`
+   自动归位——启动加载与导入共用这一入口，国际站账号的 key 不会因此被发往国内站）、
+   `snapshots`（本地时序）、`results`（启动缓存，读取时做字段归一化）。后两者与告警都按账号键
+   `providerId-序号` 归档：账号迁移改变序号时，受影响 provider 的读数缓存被丢弃，快照与告警则按
+   「旧键→新键」改到新账号下（历史不丢也不归错账号），该整理每台机器只执行一次。其余：
+   `quota-cache.json`（上次成功的套餐额度，按 provider
    存、不含凭据或凭据指纹、30 天过期；卡片先显它再静默刷新）、`pasted-requests.json`
    （手动粘贴的控制台请求，safeStorage 加密；无 keystore 时拒绝保存而不是写明文）、
    `opendesign-cookie.json`（OpenDesign 卡的凭据槽：device 授权拿到的 vela_ctrl 控制面密钥

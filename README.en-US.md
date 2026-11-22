@@ -23,7 +23,7 @@
 ## What it does
 
 - **Real local agent usage**: [tokscale](https://github.com/junhoyeo/tokscale) scans local session logs, and the main process reads several stores tokscale cannot reach (Cindy's Pi sessions, the CodeBuddy IDE, the Qoder CLI, Trae CN's local database), covering 20-some mainstream tools — Codex, Claude Code, Kimi Code, OpenCode, Gemini CLI, Cursor, GitHub Copilot, Qwen Code, Trae, Cline, Roo Code, Cindy and more. Only tools with data are listed; today / month / all-time columns with an "as of" timestamp. Aggregate numbers only — message content never leaves your machine
-- **Provider plans & balances**: multi-account management for 15 providers (table below), each with its own official-endpoint adapter; balances aggregate into the display currency, with a hover breakdown when several pay-as-you-go providers coexist
+- **Provider plans & balances**: multi-account management for 19 providers (table below), each with its own official-endpoint adapter; a provider whose China and international sites are separate accounts gets one entry per site; balances aggregate into the display currency, with a hover breakdown when several pay-as-you-go providers coexist
 - **Official subscription quotas**: cards for Codex, Claude Code, Gemini CLI, Grok, Trae CN, Trae (international), Antigravity, Kimi Code, Cursor, GitHub Copilot, Qoder (global), Cline Pass, JetBrains AI, Windsurf, Kiro, Kilo, Factory Droid, Devin, Amp, OpenDesign, Alibaba Cloud Coding Plan, Qwen Cloud and Alibaba Token Plan read the local login or the IDE's own quota file (OpenDesign supports a one-click official device-code sign-in from its card, plus a manual Cookie fallback), showing 5-hour / weekly / per-model windows with reset countdowns — credentials are decrypted only inside the main process, anything written to disk is encrypted with the OS keystore, and saved credentials are never sent back to the UI. Windsurf reads the IDE's local cache, which updates the next time the app is opened
 - **Alerts**: window-reset, high-usage and low-balance rules with adjustable thresholds in the alerts center; hover the top-bar bell for a preview (opening marks them read), with a full alerts center; pushable to WeCom group robots, WeChat (iLink), Feishu / Lark, DingTalk, Discord, Slack, Bark, ntfy and Telegram
 - **Desktop experience**: tray-resident, close dialog (minimize to tray or quit), launch on login, light/dark/system themes, zh-CN/en-US locales, auto-update via GitHub Releases
@@ -33,12 +33,16 @@
 | Provider | Type | Description |
 |---|---|---|
 | **OpenCode Zen Go** | Plan quota | 5h rolling / weekly / monthly windows |
-| **Z.ai (Zhipu GLM)** | Plan quota | 5h / weekly windows + MCP monthly calls; China + International |
-| **MiniMax Token Plan** | Plan quota | 5h / weekly quota + video bonus; China + International |
+| **GLM Coding Plan** | Plan quota | Zhipu's China site (bigmodel.cn): 5h / weekly windows + MCP monthly calls |
+| **Z.ai Coding Plan** | Plan quota | Zhipu's international site (z.ai): 5h / weekly windows + MCP monthly calls |
+| **MiniMax Token Plan** | Plan quota | China site (minimax.cn): 5h / weekly quota + video bonus |
+| **MiniMax Token Plan Intl** | Plan quota | International site (minimax.io): 5h / weekly quota + video bonus |
 | **Volcengine Ark** | Plan quota | Coding Plan windows; AK/SK request signing |
-| **Kimi / Moonshot** | Account balance | Cash + vouchers; CNY (China) / USD (International) |
+| **Kimi / Moonshot** | Account balance | China site (moonshot.cn): cash + vouchers, CNY |
+| **Kimi / Moonshot Intl** | Account balance | International site (moonshot.ai): cash + vouchers, USD |
 | **DeepSeek** | Account balance | Multi-currency (CNY / USD), topped-up + granted |
-| **SiliconFlow** | Account balance | `.cn` CNY / `.com` USD |
+| **SiliconFlow** | Account balance | China site siliconflow.cn, CNY |
+| **SiliconFlow Intl** | Account balance | International site siliconflow.com, USD |
 | **OpenRouter** | Account balance | Remaining = total credits − usage (USD) |
 | **StepFun** | Account balance | Account balance (CNY) |
 | **Novita** | Account balance | Available balance (USD) |

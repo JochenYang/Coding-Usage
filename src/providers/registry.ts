@@ -1,11 +1,11 @@
 import type { ProviderDef } from '../types'
 import { opencode } from './opencode'
 import { deepseek } from './deepseek'
-import { kimi } from './kimi'
-import { zhipu } from './zhipu'
-import { siliconflow } from './siliconflow'
+import { kimi, kimiIntl } from './kimi'
+import { zai, zhipu } from './zhipu'
+import { siliconflow, siliconflowIntl } from './siliconflow'
 import { openrouter } from './openrouter'
-import { minimax } from './minimax'
+import { minimax, minimaxIntl } from './minimax'
 import { volcengine } from './volcengine'
 import { stepfun } from './stepfun'
 import { novita } from './novita'
@@ -19,11 +19,15 @@ import { warp } from './warp'
 export const PROVIDERS: ProviderDef[] = [
   opencode,
   zhipu,
+  zai,
   kimi,
+  kimiIntl,
   deepseek,
   siliconflow,
+  siliconflowIntl,
   openrouter,
   minimax,
+  minimaxIntl,
   volcengine,
   stepfun,
   novita,

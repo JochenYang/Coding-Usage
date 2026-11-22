@@ -20,6 +20,12 @@ interface BalanceBody {
  * Kimi / Moonshot adapter: account balance (Moonshot platform API) plus the
  * Kimi Code plan windows (api.kimi.com/coding/v1/usages).
  *
+ * The two sites are separate accounts, so each is its own provider pinned to
+ * its own balance host and currency; they used to be one provider with a
+ * region switch, and accounts saved before the split are moved by
+ * `normalizeProviders` (storage.ts). The plan endpoint is the same on
+ * both sites.
+ *
  * These are two SEPARATE billing surfaces with two SEPARATE credentials: a
  * Moonshot platform API key only ever yields a money balance, while the
  * 5-hour / weekly quota windows belong to a Kimi Code subscription — a Kimi
@@ -33,117 +39,122 @@ interface BalanceBody {
  * generic error *before* parseResponse runs, which is precisely the case that
  * has to be told apart from a genuinely unusable credential.
  */
-export const kimi: ProviderDef = {
-  id: 'kimi',
-  name: 'Kimi / Moonshot',
-  accent: 'from-cyan-500 to-blue-600',
-  logo: 'kimi-color',
-  // lobehub's kimi-color.svg is a white "K" on a white background and would be invisible in the light theme
-  logoDarkInvert: true,
-  tagline: (t) => t.providers.kimi.tagline,
-  regions: (t) => [
-    { id: 'cn', label: t.regions.kimiCN, baseUrl: 'https://api.moonshot.cn' },
-    { id: 'intl', label: t.regions.kimiIntl, baseUrl: 'https://api.moonshot.ai' },
-  ],
-  docsUrl: 'https://platform.kimi.com/docs/api/balance',
-  keyUrl: 'https://platform.kimi.com/console/api-keys',
-  buildRequest(key, regionId) {
-    const baseUrl = regionId === 'intl' ? 'https://api.moonshot.ai' : 'https://api.moonshot.cn'
-    return {
-      url: `${baseUrl}/v1/users/me/balance`,
-      headers: { Authorization: `Bearer ${key}` },
-    }
-  },
-  // parseResponse issues the balance request through this same builder; see
-  // the module docstring for why the transport preflight must be skipped.
-  skipPreflight: true,
-  async parseResponse(json, ctx) {
-    const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
-    const errs = t.providerErrors
-    const regionId = ctx?.regionId
-    const key = ctx?.key
-    const fetchFn = ctx?.fetch
-
-    let balance: BalanceBody | null = null
-    let httpStatus = 0
-    // A non-empty payload handed in by the caller is parsed in place, which
-    // keeps the adapter usable standalone and leaves the balance success path
-    // untouched; under the transport the payload is empty (skipPreflight), so
-    // the balance request is issued right here.
-    const handed = json as BalanceBody | null
-    if (handed && typeof handed === 'object' && Object.keys(handed).length > 0) {
-      balance = handed
-      httpStatus = 200
-    } else if (fetchFn) {
-      try {
-        const req = kimi.buildRequest(key ?? '', regionId)
-        const res = await fetchFn(req.url, req.headers)
-        httpStatus = res.status
-        if (res.ok) balance = (await res.json().catch(() => null)) as BalanceBody | null
-      } catch {
-        // Transport-level failure (offline / CORS): status stays 0, no body
+function kimiDef(site: 'cn' | 'intl'): ProviderDef {
+  const intl = site === 'intl'
+  const id = intl ? 'kimi-intl' : 'kimi'
+  // The China site settles in CNY, the international one in USD
+  const currency = intl ? 'USD' : 'CNY'
+  const def: ProviderDef = {
+    id,
+    name: intl ? 'Kimi / Moonshot Intl' : 'Kimi / Moonshot',
+    accent: 'from-cyan-500 to-blue-600',
+    logo: 'kimi-color',
+    // lobehub's kimi-color.svg is a white "K" on a white background and would be invisible in the light theme
+    logoDarkInvert: true,
+    tagline: (t) => t.providers[id].tagline,
+    // Both sites share one console: platform.moonshot.cn redirects here
+    docsUrl: 'https://platform.kimi.com/docs/api/balance',
+    keyUrl: 'https://platform.kimi.com/console/api-keys',
+    buildRequest(key) {
+      return {
+        url: `https://api.moonshot.${intl ? 'ai' : 'cn'}/v1/users/me/balance`,
+        headers: { Authorization: `Bearer ${key}` },
       }
-    } else {
-      // No request helper and no handed payload — nothing can be queried
-      return []
-    }
+    },
+    // parseResponse issues the balance request through this same builder; see
+    // the module docstring for why the transport preflight must be skipped.
+    skipPreflight: true,
+    async parseResponse(json, ctx) {
+      const t = DICTS[(ctx?.locale as Locale | undefined) ?? 'zh-CN']
+      const errs = t.providerErrors
+      const key = ctx?.key
+      const fetchFn = ctx?.fetch
 
-    const d = balance?.data
-    if (balance && balance.code === 0 && d) {
-      if (typeof d.available_balance !== 'number') {
-        throw new Error(errs.badResponse)
+      let balance: BalanceBody | null = null
+      let httpStatus = 0
+      // A non-empty payload handed in by the caller is parsed in place, which
+      // keeps the adapter usable standalone and leaves the balance success path
+      // untouched; under the transport the payload is empty (skipPreflight), so
+      // the balance request is issued right here.
+      const handed = json as BalanceBody | null
+      if (handed && typeof handed === 'object' && Object.keys(handed).length > 0) {
+        balance = handed
+        httpStatus = 200
+      } else if (fetchFn) {
+        try {
+          const req = def.buildRequest(key ?? '')
+          const res = await fetchFn(req.url, req.headers)
+          httpStatus = res.status
+          if (res.ok) balance = (await res.json().catch(() => null)) as BalanceBody | null
+        } catch {
+          // Transport-level failure (offline / CORS): status stays 0, no body
+        }
+      } else {
+        // No request helper and no handed payload — nothing can be queried
+        return []
       }
-      const metric: UsageMetric = {
-        id: 'kimi-available',
-        label: t.provider.availableBalance,
-        kind: 'balance',
-        remaining: d.available_balance,
-        unit: regionId === 'intl' ? 'USD' : 'CNY',
-        detail: [
-          { label: t.provider.cashBalance, value: d.cash_balance ?? 0 },
-          { label: t.provider.voucherBalance, value: d.voucher_balance ?? 0 },
-        ],
-      }
-      const metrics: UsageMetric[] = [metric]
 
-      // Kimi Code plan windows (optional: endpoint mirrors the same API key)
+      const d = balance?.data
+      if (balance && balance.code === 0 && d) {
+        if (typeof d.available_balance !== 'number') {
+          throw new Error(errs.badResponse)
+        }
+        const metric: UsageMetric = {
+          id: 'kimi-available',
+          label: t.provider.availableBalance,
+          kind: 'balance',
+          remaining: d.available_balance,
+          unit: currency,
+          detail: [
+            { label: t.provider.cashBalance, value: d.cash_balance ?? 0 },
+            { label: t.provider.voucherBalance, value: d.voucher_balance ?? 0 },
+          ],
+        }
+        const metrics: UsageMetric[] = [metric]
+
+        // Kimi Code plan windows (optional: endpoint mirrors the same API key)
+        if (fetchFn) {
+          try {
+            const planMetrics = await fetchKimiPlan(fetchFn, key, kimiPlanLabels(t))
+            metrics.push(...planMetrics)
+          } catch {
+            // plan endpoint unavailable/expired — balance above stays visible
+          }
+        }
+        return metrics
+      }
+
+      // No usable Moonshot platform balance. The same key may still be a Kimi
+      // Code subscription credential, whose quota is the useful thing to show —
+      // strictly best effort, and never at the cost of the error thrown below.
       if (fetchFn) {
         try {
           const planMetrics = await fetchKimiPlan(fetchFn, key, kimiPlanLabels(t))
-          metrics.push(...planMetrics)
+          if (planMetrics.length > 0) return planMetrics
         } catch {
-          // plan endpoint unavailable/expired — balance above stays visible
+          // fall through to the actionable diagnostic
         }
       }
-      return metrics
-    }
 
-    // No usable Moonshot platform balance. The same key may still be a Kimi
-    // Code subscription credential, whose quota is the useful thing to show —
-    // strictly best effort, and never at the cost of the error thrown below.
-    if (fetchFn) {
-      try {
-        const planMetrics = await fetchKimiPlan(fetchFn, key, kimiPlanLabels(t))
-        if (planMetrics.length > 0) return planMetrics
-      } catch {
-        // fall through to the actionable diagnostic
+      // HTTP 401/403, or a platform body whose non-zero `code` refuses the
+      // request: the credential does not belong to this billing surface.
+      if (
+        httpStatus === 401 ||
+        httpStatus === 403 ||
+        (balance != null && typeof balance.code === 'number' && balance.code !== 0)
+      ) {
+        throw new Error(errs.kimiWrongSurface)
       }
-    }
-
-    // HTTP 401/403, or a platform body whose non-zero `code` refuses the
-    // request: the credential does not belong to this billing surface.
-    if (
-      httpStatus === 401 ||
-      httpStatus === 403 ||
-      (balance != null && typeof balance.code === 'number' && balance.code !== 0)
-    ) {
-      throw new Error(errs.kimiWrongSurface)
-    }
-    if (httpStatus === 0) throw new Error(errs.networkFailed)
-    if (httpStatus !== 200) throw new Error(`HTTP ${httpStatus}`)
-    throw new Error(errs.badResponse)
-  },
+      if (httpStatus === 0) throw new Error(errs.networkFailed)
+      if (httpStatus !== 200) throw new Error(`HTTP ${httpStatus}`)
+      throw new Error(errs.badResponse)
+    },
+  }
+  return def
 }
+
+export const kimi = kimiDef('cn')
+export const kimiIntl = kimiDef('intl')
 
 /**
  * Window labels for the plan parser. Both the legacy count windows and the

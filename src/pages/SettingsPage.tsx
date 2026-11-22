@@ -17,11 +17,10 @@ import { cn } from '@/lib/cn'
 import { useT } from '@/i18n/useT'
 import { useData } from '@/lib/data-context'
 import { KNOWN_CURRENCIES } from '@/lib/rates'
-import { clearSnapshots, getSnapshots, type AccountSnapshot } from '@/lib/snapshots'
+import { clearSnapshots, getSnapshots, remapSnapshotStore, type AccountSnapshot } from '@/lib/snapshots'
+import { mergeImportedSettings, readImportedSettings } from '@/lib/settings-import'
 import { getUsageHistoryStats, purgeUsageHistory } from '@/lib/usage-store'
-import { resolveThresholds } from '@/lib/alerts'
-import { isKnownSubscriptionKey } from '@/lib/subscription-cards'
-import type { AlertThresholds, IntegrationsSettings, ProviderConfig } from '@/types'
+import type { IntegrationsSettings, ProviderConfig } from '@/types'
 
 export interface SettingsPageProps {
   className?: string
@@ -138,7 +137,7 @@ function useUsageHistory() {
 }
 
 // Storage key of the local time-series store; must stay in sync with the
-// private KEY constant in src/lib/snapshots.ts (snapshots.ts is not modified).
+// private KEY constant in src/lib/snapshots.ts.
 const SNAPSHOT_KEY = 'coding-usage.snapshots.v1'
 
 const THEME_MODES: ThemeMode[] = ['system', 'light', 'dark']
@@ -153,83 +152,18 @@ function SettingRow({ label, children }: { label: string; children: ReactNode })
   )
 }
 
-/**
- * Migrate a raw settings payload into the strict Settings field shape, the
- * same rules as storage.ts's private migrate(). Scalar fields are null when
- * absent so the caller can merge without clobbering current values.
- * Returns null when the providers record is missing or malformed.
- */
-function migrateSettings(
-  raw: unknown,
-): {
-  providers: Record<string, ProviderConfig[]>
-  autoRefreshMin: number | null
-  displayCurrency: string | null
-  integrations: IntegrationsSettings | null
-  alertThresholds: AlertThresholds | null
-  planOrder: string[] | null
-  subscriptionOrder: string[] | null
-  enabledSubscriptions: string[] | null
-} | null {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
-  const obj = raw as Record<string, unknown>
-  if (!obj.providers || typeof obj.providers !== 'object' || Array.isArray(obj.providers)) return null
-
-  const providers: Record<string, ProviderConfig[]> = {}
-  for (const [id, value] of Object.entries(obj.providers as Record<string, unknown>)) {
-    if (Array.isArray(value)) {
-      providers[id] = value.filter((v): v is ProviderConfig => !!v && typeof v === 'object')
-    } else if (value && typeof value === 'object') {
-      providers[id] = [value as ProviderConfig]
-    } else {
-      providers[id] = []
-    }
-  }
-  const rawIntg = obj.integrations as Partial<IntegrationsSettings> | undefined
-  const integrations: IntegrationsSettings | null =
-    rawIntg && typeof rawIntg === 'object' && typeof rawIntg.wecomWebhook === 'string'
-      ? {
-          alertPush: rawIntg.alertPush === true,
-          wecomWebhook: rawIntg.wecomWebhook,
-          feishuWebhook: typeof rawIntg.feishuWebhook === 'string' ? rawIntg.feishuWebhook : '',
-          feishuSecret: typeof rawIntg.feishuSecret === 'string' ? rawIntg.feishuSecret : '',
-          dingtalkWebhook: typeof rawIntg.dingtalkWebhook === 'string' ? rawIntg.dingtalkWebhook : '',
-          dingtalkSecret: typeof rawIntg.dingtalkSecret === 'string' ? rawIntg.dingtalkSecret : '',
-          discordWebhook: typeof rawIntg.discordWebhook === 'string' ? rawIntg.discordWebhook : '',
-          slackWebhook: typeof rawIntg.slackWebhook === 'string' ? rawIntg.slackWebhook : '',
-          barkServer: typeof rawIntg.barkServer === 'string' ? rawIntg.barkServer : '',
-          barkKey: typeof rawIntg.barkKey === 'string' ? rawIntg.barkKey : '',
-          ntfyServer: typeof rawIntg.ntfyServer === 'string' ? rawIntg.ntfyServer : '',
-          ntfyTopic: typeof rawIntg.ntfyTopic === 'string' ? rawIntg.ntfyTopic : '',
-          telegramBotToken: typeof rawIntg.telegramBotToken === 'string' ? rawIntg.telegramBotToken : '',
-          telegramChatId: typeof rawIntg.telegramChatId === 'string' ? rawIntg.telegramChatId : '',
-          weixinBotToken: typeof rawIntg.weixinBotToken === 'string' ? rawIntg.weixinBotToken : '',
-          weixinBotUserId: typeof rawIntg.weixinBotUserId === 'string' ? rawIntg.weixinBotUserId : '',
-        }
-      : null
-  return {
-    providers,
-    autoRefreshMin: typeof obj.autoRefreshMin === 'number' ? obj.autoRefreshMin : null,
-    displayCurrency: typeof obj.displayCurrency === 'string' ? obj.displayCurrency : null,
-    integrations,
-    alertThresholds: obj.alertThresholds != null ? resolveThresholds(obj.alertThresholds) : null,
-    // null (absent) rather than [] so an older export keeps the local order
-    planOrder: Array.isArray(obj.planOrder)
-      ? obj.planOrder.filter((key): key is string => typeof key === 'string')
-      : null,
-    subscriptionOrder: Array.isArray(obj.subscriptionOrder)
-      ? obj.subscriptionOrder.filter((key): key is string => typeof key === 'string')
-      : null,
-    enabledSubscriptions: Array.isArray(obj.enabledSubscriptions)
-      ? obj.enabledSubscriptions.filter(
-          (key): key is string => typeof key === 'string' && isKnownSubscriptionKey(key),
-        )
-      : null,
-  }
-}
-
 /** Per-account snapshot cap; mirrors MAX_PER_ACCOUNT in src/lib/snapshots.ts */
 const MERGE_CAP = 2_000
+
+/** The account → snapshot lists of an imported backup; anything else reads as empty. */
+function snapshotListsOf(raw: unknown): Record<string, AccountSnapshot[]> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const lists: Record<string, AccountSnapshot[]> = {}
+  for (const [key, value] of Object.entries(raw)) {
+    if (Array.isArray(value)) lists[key] = value as AccountSnapshot[]
+  }
+  return lists
+}
 
 /**
  * Merge imported snapshots into the localStorage store under the same key
@@ -277,7 +211,7 @@ function mergeSnapshots(raw: unknown): number {
 export function SettingsPage({ className }: SettingsPageProps) {
   const t = useT()
   const { theme, setTheme } = useTheme()
-  const { settings, updateSettings } = useData()
+  const { settings, updateSettings, refreshAll, dropAccountResults } = useData()
   const { update, updateText, setUpdate } = useUpdateState()
   const history = useUsageHistory()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -351,37 +285,24 @@ export function SettingsPage({ className }: SettingsPageProps) {
     }
 
     const wrapper = (parsed ?? {}) as Record<string, unknown>
-    const migrated = migrateSettings(wrapper.settings ?? parsed)
-    if (!migrated) {
+    const imported = readImportedSettings(wrapper.settings ?? parsed)
+    if (!imported) {
       setImportError(t.prefs.importBad)
       return
     }
 
-    // Merge imported fields over current settings; absent scalars keep theirs
-    updateSettings({
-      providers: { ...settings.providers, ...migrated.providers },
-      autoRefreshMin: migrated.autoRefreshMin ?? settings.autoRefreshMin,
-      displayCurrency: migrated.displayCurrency ?? settings.displayCurrency,
-      usageDisplayMode: settings.usageDisplayMode,
-      desktopIsland: settings.desktopIsland,
-      integrations: migrated.integrations ?? settings.integrations,
-      alertThresholds: migrated.alertThresholds ?? settings.alertThresholds,
-      // An export made before the order existed carries no list; keeping null
-      // distinct from [] is what lets it leave the local order alone.
-      planOrder: migrated.planOrder && migrated.planOrder.length > 0 ? migrated.planOrder : settings.planOrder,
-      subscriptionOrder:
-        migrated.subscriptionOrder && migrated.subscriptionOrder.length > 0
-          ? migrated.subscriptionOrder
-          : settings.subscriptionOrder,
-      // null (absent) keeps the local selection; an explicitly empty list is
-      // also treated as "keep" because every other list field behaves that way
-      // and a fresh install's export must not wipe a configured machine.
-      enabledSubscriptions:
-        migrated.enabledSubscriptions && migrated.enabledSubscriptions.length > 0
-          ? migrated.enabledSubscriptions
-          : settings.enabledSubscriptions,
-    })
-    mergeSnapshots(wrapper.snapshots)
+    updateSettings(mergeImportedSettings(settings, imported))
+
+    // The backup's history is keyed by the accounts as they were exported. A
+    // backup from before the split carries the old keys, so rename it to the
+    // accounts it was just imported as before merging it into local history.
+    mergeSnapshots(remapSnapshotStore(snapshotListsOf(wrapper.snapshots), imported.split.renamed))
+    // Accounts of a pre-split backup landed on other indexes, so every reading
+    // cached under this provider's old indexes belongs to a different account
+    // now — including ones with no card to refresh them away, such as a
+    // disabled account. Drop them from state and disk alike, then refresh.
+    dropAccountResults(imported.split.reindexed)
+    if (imported.split.reindexed.length > 0) void refreshAll()
   }
 
   const [confirmClear, setConfirmClear] = useState(false)
