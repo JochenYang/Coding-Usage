@@ -60,7 +60,10 @@ function ProviderCard({
   const accountCount = entries.length
 
   return (
-    <article className="rounded-2xl border border-border bg-card p-5">
+    // flex column + mt-auto action row: the grid stretches every card to the
+    // tallest sibling, so the action row pins to the card bottom and the
+    // three columns stay aligned even when a provider has no region chips
+    <article className="flex flex-col rounded-2xl border border-border bg-card p-5">
       <div className="flex items-center gap-3">
         <ProviderLogo def={def} className="h-10 w-10" />
         <div className="min-w-0 flex-1">
@@ -122,7 +125,7 @@ function ProviderCard({
         </div>
       )}
 
-      <div className="mt-4 flex items-center gap-4">
+      <div className="mt-auto flex items-center gap-4 pt-4">
         <button
           type="button"
           onClick={() => onAddAccount(def.id, accountCount)}

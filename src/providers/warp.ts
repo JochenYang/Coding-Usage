@@ -133,7 +133,8 @@ function bonusPool(
 export const warp: ProviderDef = {
   id: 'warp',
   name: 'Warp',
-  // No brand mark ships in @lobehub/icons; the letter fallback renders instead
+  // Official pixel icon bundled locally (warp.dev); @lobehub/icons ships none
+  logo: 'warp',
   accent: 'from-neutral-500 to-neutral-700',
   tagline: (t) => t.providers.warp.tagline,
   docsUrl: 'https://docs.warp.dev/reference/cli/api-keys',

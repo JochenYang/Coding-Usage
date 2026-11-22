@@ -18,6 +18,7 @@ import { cn } from '@/lib/cn'
 import { useTheme } from '@/components/ThemeProvider'
 import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
 import commandcodeLogo from '@/components/logos/commandcode.png'
+import warpLogo from '@/components/logos/warp.svg'
 
 /**
  * Brand icon registry: maps a ProviderDef.logo slug to a bundled
@@ -46,6 +47,9 @@ const ICON_MAP: Record<string, ReactNode> = {
   'copilot-color': <GithubCopilot.Avatar size={16} />,
   // Command Code's official app icon (from commandcode.ai), bundled locally
   'commandcode-avatar': <img src={commandcodeLogo} className="h-full w-full rounded" alt="" />,
+  // Warp's official pixel icon (from warp.dev), bundled locally; the black
+  // pixel W sits in a white frame that vanishes on the light cards
+  warp: <img src={warpLogo} className="h-full w-full" alt="" />,
 }
 
 /**
