@@ -10,6 +10,20 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.10.2] - 2026-11-22
+
+### 中文
+- 「添加套餐计划」里，国内站与国际站账号独立的服务商拆成两个条目，不再靠添加账号时「选区域」：GLM Coding Plan（智谱国内站）与 Z.ai Coding Plan（智谱国际站，两者各用各的图标）、Kimi / Moonshot 与 Kimi / Moonshot Intl、MiniMax Token Plan 与 MiniMax Token Plan Intl、SiliconFlow 与 SiliconFlow Intl；服务商管理页同步拆成对应的卡
+- 存量账号自动归位：原先合并在一条下的账号，按当时选的区域分别归到国内 / 国际条目，不用重新添加；90 天趋势历史与告警记录跟着账号一起迁到新位置。从旧版本导出的设置备份在导入时同样自动归位，国际站账号的 Key 不会因此被发往国内站
+- MiniMax 国内站跟随官方更换域名：接口改走 `api.minimax.cn`，「文档」与「获取 Key」改指 `platform.minimax.cn`（旧地址会自动跳转）；MiniMax 国际站条目的「文档」与「获取 Key」改指国际站控制台（此前指向国内站）
+- 修复 SiliconFlow 国际站的账户余额被标成 CNY，现按 USD 显示
+
+### English
+- In "Add plan", providers whose China and international sites are separate accounts are now two entries instead of one with a region pick: GLM Coding Plan (Zhipu's China site) and Z.ai Coding Plan (the international site, each with its own icon), Kimi / Moonshot and Kimi / Moonshot Intl, MiniMax Token Plan and MiniMax Token Plan Intl, SiliconFlow and SiliconFlow Intl; the providers page is split to match
+- Existing accounts move on their own: an account saved under the old single entry lands on the China or international entry it was set to at the time, with nothing to re-add; its 90-day trend history and alert records move with it. A settings backup exported by an older version is placed the same way on import, so an international account's key is never sent to the China site
+- MiniMax's China site follows the official domain change: requests go to `api.minimax.cn`, and "Docs" / "Get key" point at `platform.minimax.cn` (the old addresses redirect there); the MiniMax international entry's "Docs" / "Get key" now point at the international console (they pointed at the China one)
+- Fixed SiliconFlow's international balance being labelled CNY; it is shown in USD
+
 ## [v0.10.1] - 2026-11-22
 
 ### 中文
