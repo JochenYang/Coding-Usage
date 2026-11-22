@@ -10,6 +10,14 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.10.1] - 2026-11-22
+
+### 中文
+- 服务商管理：Warp 换上官方像素图标（此前显示字母占位块）；卡片操作行钉底等高对齐——没有区域标签的卡（如 Warp）不再把「添加账号」行顶得比同排其他卡高；卡头说明从单行截断改为最多两行完整显示，Warp 的短效 Key 安全提示可完整阅读
+
+### English
+- Providers page: Warp now carries its official pixel icon (previously a letter placeholder); card action rows pin to the card bottom, so columns without region chips (e.g. Warp) no longer sit higher than their siblings; the card header description now wraps up to two full lines instead of one truncated line, so Warp's short-lived-key safety note reads in full
+
 ## [v0.10.0] - 2026-11-22
 
 ### 中文
