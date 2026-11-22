@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatAgo, formatAgoShort } from './format'
+import { formatAgo, formatAgoShort, formatClock } from './format'
 import { zhCN } from '../i18n/dict.zh-CN'
 import { enUS } from '../i18n/dict.en-US'
 
@@ -41,5 +41,27 @@ describe('formatAgoShort', () => {
     expect(formatAgo(now - 5 * minute, now, zhCN)).toBe('5 分钟前更新')
     expect(formatAgo(now - (2 * hour + 5 * minute), now, zhCN)).toBe('2 小时 5 分钟前更新')
     expect(formatAgo(now - (3 * day + 7 * hour), now, zhCN)).toBe('3 天 7 小时前更新')
+  })
+})
+
+describe('formatClock', () => {
+  /** Local time on the day that is `dayOffset` days from "now", at hh:mm */
+  const at = (now: Date, dayOffset: number, hours: number, minutes: number): number => {
+    const d = new Date(now)
+    d.setDate(d.getDate() + dayOffset)
+    d.setHours(hours, minutes, 0, 0)
+    return d.getTime()
+  }
+
+  it('shows the zero-padded 24-hour clock for something that happened today', () => {
+    const now = new Date(2026, 10, 22, 23, 30)
+    expect(formatClock(at(now, 0, 23, 14), now.getTime())).toBe('23:14')
+    expect(formatClock(at(now, 0, 9, 5), now.getTime())).toBe('09:05')
+  })
+
+  it('shows the calendar day for anything older, in both directions', () => {
+    const now = new Date(2026, 10, 22, 23, 30)
+    expect(formatClock(at(now, -1, 23, 14), now.getTime())).toBe('11-21')
+    expect(formatClock(at(now, 1, 8, 0), now.getTime())).toBe('11-23')
   })
 })

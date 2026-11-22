@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Briefcase, CircleDollarSign, TrendingUp, Users } from 'lucide-react'
+import { BarChart3, CircleDollarSign, TrendingUp, Users } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { currencySymbol, formatAmount, formatCompactValue } from '@/lib/format'
 import type { BalanceProviderInfo, KpisVM } from '@/lib/overview'
@@ -8,6 +8,12 @@ import { Tooltip } from '@/components/beui/tooltip'
 import { useLocale } from '@/i18n/LocaleProvider'
 import { StatCard } from '@/components/common/StatCard'
 import { useT } from '@/i18n/useT'
+// Cut from the design sheet (assets: dashborad.png), transparent background,
+// shown well under their native size
+import tokenStack from '@/assets/dashboard/token-stack.png'
+import wallet from '@/assets/dashboard/wallet.png'
+import onlineUsers from '@/assets/dashboard/online-users.png'
+import growth from '@/assets/dashboard/growth.png'
 
 export interface KpiRowProps {
   kpis: KpisVM
@@ -22,6 +28,19 @@ export interface KpiRowProps {
 function Dash() {
   return <span className="text-xs text-subtle">&mdash;</span>
 }
+
+/**
+ * Brand illustration in a KPI card's free bottom-right corner. The cards are
+ * as tall as the trend chart beside them, which leaves a band under the
+ * footer line; the illustration is sized to sit entirely inside that band, so
+ * it can never reach the figures above it.
+ */
+function KpiIllustration({ src }: { src: string }) {
+  return <img src={src} alt="" className="h-17 w-auto max-w-[64%] select-none" />
+}
+
+const QUOTA_ILLUSTRATION = <KpiIllustration src={tokenStack} />
+const WALLET_ILLUSTRATION = <KpiIllustration src={wallet} />
 
 /** Top row of overview KPI cards: quota / balance / online / today's usage */
 export function KpiRow({ kpis, displayCurrency, balanceItems, className }: KpiRowProps) {
@@ -47,6 +66,7 @@ export function KpiRow({ kpis, displayCurrency, balanceItems, className }: KpiRo
       iconClassName="text-warning"
       value={balanceValue}
       footer={<Dash />}
+      illustration={WALLET_ILLUSTRATION}
     />
   )
   if (balanceInfos.length === 1) {
@@ -63,6 +83,7 @@ export function KpiRow({ kpis, displayCurrency, balanceItems, className }: KpiRo
         }
         value={balanceValue}
         footer={<Dash />}
+        illustration={WALLET_ILLUSTRATION}
       />
     )
   } else if (balanceInfos.length > 1) {
@@ -135,6 +156,7 @@ export function KpiRow({ kpis, displayCurrency, balanceItems, className }: KpiRo
           </Tooltip>
         }
         footer={<Dash />}
+        illustration={WALLET_ILLUSTRATION}
       />
     )
   }
@@ -145,27 +167,28 @@ export function KpiRow({ kpis, displayCurrency, balanceItems, className }: KpiRo
   // Card 1 footer repeats today's usage as context for the quota figure
   const quotaFooter =
     kpis.todayUsed != null ? (
-      <span className="text-xs text-muted-foreground">
+      <span className="text-xs text-accent-text">
         {`+${formatCompactValue(kpis.todayUsed)} ${t.overview.kpiToday}`}
       </span>
     ) : (
       <Dash />
     )
 
-  // Online-rate tone escalates as availability drops
+  // Online-rate tone escalates as availability drops (text-grade colours: the
+  // plain status tokens are too light to read as small text)
   const rateTone =
     kpis.onlineRatePct >= 60
-      ? 'text-online'
+      ? 'text-online-text'
       : kpis.onlineRatePct >= 30
-        ? 'text-warning'
-        : 'text-danger'
+        ? 'text-warning-text'
+        : 'text-danger-text'
 
-  // Day-over-day delta; higher consumption than yesterday reads red
+  // Day-over-day delta; higher consumption than yesterday reads as a warning
   let todayFooter: ReactNode = <Dash />
   if (kpis.todayUsed != null && kpis.yesterdayUsed != null && kpis.yesterdayUsed > 0) {
     const delta = ((kpis.todayUsed - kpis.yesterdayUsed) / kpis.yesterdayUsed) * 100
     todayFooter = (
-      <span className={cn('text-xs', delta >= 0 ? 'text-danger' : 'text-online')}>
+      <span className={cn('text-xs', delta >= 0 ? 'text-danger-text' : 'text-online-text')}>
         {`${delta >= 0 ? '+' : ''}${delta.toFixed(1)}% ${t.overview.vsYesterday}`}
       </span>
     )
@@ -173,7 +196,13 @@ export function KpiRow({ kpis, displayCurrency, balanceItems, className }: KpiRo
 
   return (
     <div className={cn('grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4', className)}>
-      <StatCard title={t.overview.kpiTotalQuota} icon={Briefcase} value={quotaValue} footer={quotaFooter} />
+      <StatCard
+        title={t.overview.kpiTotalQuota}
+        icon={BarChart3}
+        value={quotaValue}
+        footer={quotaFooter}
+        illustration={QUOTA_ILLUSTRATION}
+      />
       {balanceCard}
       <StatCard
         title={t.overview.kpiOnline}
@@ -184,12 +213,14 @@ export function KpiRow({ kpis, displayCurrency, balanceItems, className }: KpiRo
             {`${kpis.onlineRatePct}% ${t.overview.onlineRate}`}
           </span>
         }
+        illustration={<KpiIllustration src={onlineUsers} />}
       />
       <StatCard
         title={t.overview.kpiToday}
         icon={TrendingUp}
         value={kpis.todayUsed != null ? formatCompactValue(kpis.todayUsed) : '—'}
         footer={todayFooter}
+        illustration={<KpiIllustration src={growth} />}
       />
     </div>
   )

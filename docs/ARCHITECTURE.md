@@ -37,7 +37,7 @@ src/
     layout/               # AppShell / Sidebar / TopBar
     common/               # ProgressBar / Badge / PageHeader / EmptyState / SortableGrid ...
     charts/               # 自绘 SVG 图表（Line / Donut / StackedBarLine / MultiSeries ...）
-    overview/             # KPI、趋势、分布、告警与各订阅额度卡
+    overview/             # KPI、趋势、本地用量、分布、近期活动、账号使用情况与各订阅额度卡
     account/              # AccountDrawer（单账号编辑）
     agent-config/         # Agent 配置台（AgentConfigSection / ProviderCard / ProviderDrawer / ModelEditor）
     beui/                 # 自建交互组件（drawer / switch / select / popover / confirm-dialog）

@@ -362,11 +362,20 @@ export interface Dict {
     shownAgents: (n: number) => string
     distTitle: string
     distTotal: string
-    distMonthUsage: string
+    /** Caption in the ring's centre: the period total the shares are taken of */
+    distConsumed: string
+    /** Range chip on the distribution card: the rolling seven days */
+    distRecent7: string
     distOther: string
     distUnavailable: string
     attentionTitle: string
     attentionEmpty: string
+    /** Link after the last recent-activity entry */
+    viewMore: string
+    /** Account usage card: the heaviest local agents and whether they ran today */
+    accountStatusTitle: string
+    agentInUse: string
+    agentIdleToday: string
     alertsTitle: string
     viewAll: string
     alertWindowReset: (name: string) => string
@@ -392,6 +401,8 @@ export interface Dict {
     localUsagePartial: (names: string) => string
     asOfPrefix: string
     todayCol: string
+    /** Calendar week so far (Monday through today) */
+    weekCol: string
     monthCol: string
     allTimeCol: string
     /** Expanded agent row: how many models that agent called */

@@ -23,7 +23,7 @@
 
 - 定位一句话：为个人开发者在桌面端专注场景下提供多供应商用量监控，气质上要冷静、精确、可信。
 - 方向关键词：冷静（低饱和冷灰底 + 单一 indigo 强调色）／精确（等宽数字、高密度数据卡）／克制
-  （无装饰插画、无营销动效；阴影只用于浮层分层）。
+  （无营销动效；阴影只用于浮层分层；装饰插画只在 §1.2 列明的两处）。
 - Design Principles：
   1. 层级靠字重与留白，不靠颜色——单视图内彩色强调不超过两处（主强调 + 状态色）；因此标题不加彩色底块。
   2. 状态色只表达状态——`accent` 表品牌/主操作，`success/warning/danger` 表状态语义；因此破坏性操作不用品牌主色。
@@ -50,6 +50,23 @@
 新增卡片沿用 `src/components/common/CardWatermark.tsx`，传裸品牌组件（如 `<Codex />`）；供应商卡用
 `providerWatermarkIcon()`（见 `ProviderLogo.tsx`）取同一套字形。
 
+### 1.2 例外：概览页的品牌插画与页脚波浪（2026-11 按设计稿引入）
+
+全站只有两处彩色装饰，都是纯视觉层（`aria-hidden` + `pointer-events-none`）：
+
+- **指标卡插画**：概览顶部四张 KPI 卡的右下空白带（卡片与趋势卡等高而留出的那一块）各放一张
+  （`StatCard` 的 `illustration` 槽）。裁切边框属于插画自己的 `overflow-hidden rounded-2xl` 层，卡片
+  本身保持 overflow visible（同 §1.1）。插画高度 68px，完全落在 footer 行之下——不与任何数字相交，
+  这一点在预览里按盒子坐标断言。< `sm` 不显示（渐进增强），卡片也不留那块高度。
+- **页脚波浪 + 吉祥物**：波浪是每一页内容的最后一段（不是固定在窗口上的装饰），滚到页尾才出现，
+  横贯窗口全宽、从透明的侧栏下方穿过；暗色主题降到 30% 不透明度。熊猫吉祥物贴在概览页的右下角
+  （右 0、下 0）。
+
+素材都在 `src/assets/dashboard/`：波浪是矢量 `bottom-wave.svg`；其余（四张指标卡插画、告警中心的空状态
+铃铛、概览「近期活动」的空状态铃铛、熊猫）是从设计稿素材表 `assets/images/dashborad.png` 上裁下的
+透明背景 PNG，像素约为显示尺寸的两倍（高分屏不糊）；素材表原图随仓库保留作备份。空状态插画走
+`EmptyState` 的 `illustration` 槽（替代线性图标框），仅用于「没有告警」这一类本来就有空白的场景。
+
 ## 2. Token 规范
 
 命名沿用项目既有小写 kebab（Tailwind `@theme` 原生形态：`--color-*`），不另起第二套。
@@ -70,7 +87,8 @@
 | `ring` | `#6366f1` | （同左，不参与主题） | 焦点环 |
 | `primary` / `primary-foreground` | `#16161f` / `#f6f6f9` | `#f4f4f8` / `#0b0b12` | 主按钮（随主题反转） |
 | `popover` / `popover-foreground` | `#ffffff` / `#16161f` | `#171724` / `#f4f4f8` | 浮层 |
-| `accent` / `accent-strong` / `accent-soft` | `#6366f1` / `#4f52e0` / `#eef0fe` | 同左 / 同左 / `rgba(99,102,241,.16)` | 品牌强调/悬停/柔底（主题恒定 indigo，暗色只调柔底透明度） |
+| `accent` / `accent-strong` / `accent-soft` | `#6366f1` / `#4f52e0` / `#eef0fe` | 同左 / 同左 / `rgba(99,102,241,.16)` | 品牌强调/悬停/柔底（主题恒定 indigo，暗色只调柔底透明度）；三者都是**面色**（白字可以压在上面） |
+| `accent-text` / `online-text` / `warning-text` / `danger-text` | `#4f52e0` / `#15803d` / `#b45309` / `#b91c1c` | `#a5b4fc` / `#4ade80` / `#fbbf24` / `#f87171` | 同四个色相的**文字级**变体：在 `card` 上两套主题都 ≥ 4.5:1。原令牌作小字时为 4.5 / 2.3 / 2.2 / 3.8，不达 AA——凡是「读」的颜色（百分比、链接、状态标签）用 `-text`，「看」的颜色（圆点、轨道、按钮底）仍用原令牌 |
 | `success` / `online` | `#22c55e` | 同左 | 成功 / 在线（同值不同语义） |
 | `warning` | `#f59e0b` | 同左 | 预警 |
 | `danger` / `destructive` | `#ef4444` | 同左 | 危险/错误；`destructive-foreground`恒 `#ffffff` |
@@ -123,8 +141,17 @@
 
 ## 5. 布局与页面组合
 
-- 壳：`AppShell` = 左固定 Sidebar + 右 TopBar + 内容列（`max-w-[1280px]` 居中）。
-  背景全站唯一 `bg-background`；页面只写布局（栅格/间距/排列），不写视觉。
+- 壳：`AppShell` = 滚动区 + 盖在它上面的侧栏与 TopBar + 页脚波浪。滚动区从 TopBar 下方开始
+  （滚动条位置不变）但横跨窗口全宽；侧栏（无底色、无边线）和 TopBar（不透明）是固定层，页面滚动时
+  不动；页面列按侧栏宽度让位（64 / 展开 232，随侧栏同一 200ms 过渡），内容列 `max-w-[1280px]` 居中。
+  波浪是每页内容的最后一段（页尾才出现），高度 `--footer-wave-h = clamp(6rem,12vw,12rem)`，页面列在
+  其上方留 `波高 − 24px`。侧栏宽度、顶栏高度、波浪高度各只定义一次（外壳根上的 `--rail-w` /
+  `--topbar-h` / `--footer-wave-h`）。背景全站唯一 `bg-background`；页面只写布局（栅格/间距/排列），
+  不写视觉。
+  **层叠约束**：外壳根是唯一的层叠上下文，侧栏/顶栏是带 z-index（仅侧栏）或不带的定位层——这样
+  页面里弹出的 Drawer / ConfirmDialog（z-40 / 50 / 999）才能盖住它们。因此**页面不得把 Drawer /
+  ConfirmDialog 渲染在自身是层叠上下文的卡片里**（`relative z-0`、`isolate`），否则其 fixed 遮罩会被
+  困住、落到侧栏与顶栏之下。
 - Sidebar 可收缩：logo 即切换按钮（ZCode 式）——展开/收起两态都是常态显示 logo、
   悬停时 logo 淡出而收缩/展开图标淡入（150ms）；收起后为 64px 图标态（即窄屏形态：
   只留图标，导航项由右侧浮动 tooltip 补标签）。选择存 localStorage，
@@ -145,7 +172,7 @@
 
 | 组件 | Variants / Sizes | States（●必需） | 关键规则 |
 |---|---|---|---|
-| StatCard | 图标槽或 `iconSlot`（品牌 logo） | Default · Loading（上层骨架） · Empty（`—` 占位，图表同理） | 标题 `xs muted`、值 `28px semibold tabular`、footer `xs`；容器 `rounded-2xl border bg-card p-5` |
+| StatCard | 图标槽或 `iconSlot`（品牌 logo）；可选 `illustration`（§1.2） | Default · Loading（上层骨架） · Empty（`—` 占位，图表同理） | 标题 `xs muted`、值 `28px semibold tabular`、footer `xs`；容器 `rounded-2xl border bg-card p-5`；带插画时 `sm:pb-[74px]` 给右下插画留高 |
 | Badge | `success/warning/danger/neutral` | Default（静态展示） | `rounded-full px-2 py-0.5 11px medium`；文案由调用方传入（i18n 在外） |
 | ProgressBar | `sm(h-1.5)/md(h-2)` | Default · Empty（零值只留轨道） | 水位梯见 §3；`role=progressbar` + `aria-valuenow`；值钳制 0–100 |
 | EmptyState | — | Empty-首次/无结果/权限不足（三类文案区分） | 不用 Error 视觉渲染正常空态；action 槽调用方决定按钮/链接 |
@@ -156,7 +183,7 @@
 | Select | Trigger/Content/Item 组合 | Default · Hover · Focus-visible · Open（果冻圆角 morph）· Disabled · Selected（√标记） | 面板绝对定位于 field 内；多 Select 叠放时由布局层控单开；`inert` 关闭态 |
 | Popover | `click/hover` · `top/bottom` · 对齐三档 | Default · Open（gooey 形变）· Esc/外部关闭（焦点回触发器） | 面板 `max-w-[min(92vw,20rem)] p-4`；hover 模式 120ms 关闭延迟；触屏上 tap 同样可开 |
 | ConfirmDialog | — | Default · Focus（危险确认） | 危险操作二次确认；按钮层级按主/次排布 |
-| LineChart / DonutChart | 自研 SVG（无图表库依赖） | Default · Hover（十字线 + HTML tooltip）· Empty（`<2` 点显示 `—`） | 网格 `border` 虚线、刻度 `subtle 10px`、线/面 `accent`；tooltip 固定字号 HTML 渲染；x 标签 thinning ≤7 |
+| LineChart / DonutChart | 自研 SVG（无图表库依赖）；DonutChart 图例可 `legendValue={false}` 只留百分比 | Default · Hover（十字线 + HTML tooltip）· Empty（`<2` 点显示 `—`） | 网格 `border` 虚线、刻度 `subtle 10px`、线/面 `accent`；tooltip 固定字号 HTML 渲染；x 标签 thinning ≤7 |
 | ProviderLogo | lobehub slug / 内联 SVG / 字母兜底 | Default · 加载失败（字母兜底） | `rounded-md` 槽；`logoDarkInvert` 处理白底白 logo |
 | CardWatermark | — | Default（纯装饰） | 拉伸卡片的空白填充：品牌单色字形 6% 前景色水印，`-z-10` 在正文之下；卡片需 `z-0`，见 §1.1 |
 | 表单输入（各页内联） | — | Default · Focus-visible | 边框 `border`，聚焦 `focus:border-accent`；数字类配 `font-mono tabular-nums`；placeholder 用 `subtle` |

@@ -121,7 +121,7 @@ export function TopBar({ onNavigate }: { onNavigate: (v: View) => void }) {
   return (
     <>
       <header
-        className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background pl-6 [app-region:drag]"
+        className="flex h-(--topbar-h) shrink-0 items-center gap-3 border-b border-border bg-background pl-6 [app-region:drag]"
       // Double-clicking the drag region toggles maximize, matching native
       // title-bar behavior (buttons opt out via the closest('button') guard)
       onDoubleClick={(e) => {

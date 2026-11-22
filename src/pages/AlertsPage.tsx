@@ -4,6 +4,9 @@ import { Switch } from '@/components/beui/switch'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { Tooltip } from '@/components/common/Tooltip'
+// The bell from the design sheet: the page's one blank spot — no alerts at
+// all — is where it belongs
+import bellArt from '@/assets/dashboard/bell.png'
 import {
   Select,
   SelectContent,
@@ -128,7 +131,8 @@ export function AlertsPage({ className }: AlertsPageProps) {
   return (
     // Full-height column: min-height is viewport-based (the shell's inner
     // wrapper is height:auto, so min-h-full would resolve to auto and never
-    // stretch). 100vh minus the h-14 top bar and the shell's vertical py-6.
+    // stretch). 100vh minus the top bar (--topbar-h, 3.5rem), the shell's
+    // pt-6 and this page's own pb-6.
     // The rules card pins to the bottom with ~48px off the window edge even
     // when the alert list is empty; the empty state centers in the freed space.
     <div className={cn('flex min-h-[calc(100vh-6.5rem)] flex-col gap-4 pb-6', className)}>
@@ -159,7 +163,10 @@ export function AlertsPage({ className }: AlertsPageProps) {
 
       {visible.length === 0 ? (
         <div className="flex flex-1 items-center justify-center py-10">
-          <EmptyState icon={<Bell className="h-6 w-6" />} title={t.manage.noAlerts} />
+          <EmptyState
+            illustration={<img src={bellArt} alt="" aria-hidden className="h-24 w-auto select-none" />}
+            title={t.manage.noAlerts}
+          />
         </div>
       ) : (
         <>

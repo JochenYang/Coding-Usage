@@ -84,6 +84,20 @@ export function formatAsOf(epochMs: number, now: number = Date.now()): string {
   return `${month}-${day} ${time}`
 }
 
+/**
+ * Short when-it-happened label for a timeline column: the clock time for
+ * something that happened today, the calendar day for anything older. Always
+ * 24-hour and zero-padded, so the column keeps one width in every locale.
+ */
+export function formatClock(epochMs: number, now: number = Date.now()): string {
+  const at = new Date(epochMs)
+  const pad = (n: number): string => `${n}`.padStart(2, '0')
+  if (at.toDateString() === new Date(now).toDateString()) {
+    return `${pad(at.getHours())}:${pad(at.getMinutes())}`
+  }
+  return `${pad(at.getMonth() + 1)}-${pad(at.getDate())}`
+}
+
 /** Generic relative day offset: "今天到期" / "in N days" / "已过期 N 天". */
 export function formatDaysFromNow(
   expiresAt: number,

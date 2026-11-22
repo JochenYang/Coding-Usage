@@ -43,6 +43,16 @@
   --color-online: #22c55e;
   --color-offline: #a3a3b8;
 
+  /* The same four hues as TEXT. The plain tokens are surface colours — dots,
+     tracks, button fills that white sits on — and as small text on a card they
+     fall under 4.5:1 (`accent` 4.5, `warning` 2.2, `danger` 3.8, `online` 2.3
+     on white). These clear 4.5:1 on `card` in both themes; use them wherever
+     one of those hues is read, not looked at. */
+  --color-accent-text: #4f52e0;
+  --color-online-text: #15803d;
+  --color-warning-text: #b45309;
+  --color-danger-text: #b91c1c;
+
   --color-destructive: #ef4444;
   --color-destructive-foreground: #ffffff;
 
@@ -101,6 +111,10 @@ body {
   --color-popover: #171724;
   --color-popover-foreground: #f4f4f8;
   --color-accent-soft: rgba(99, 102, 241, 0.16);
+  --color-accent-text: #a5b4fc;
+  --color-online-text: #4ade80;
+  --color-warning-text: #fbbf24;
+  --color-danger-text: #f87171;
   --color-offline: #4b4b63;
   /* Categorical chart series, brightened for the dark card background so the
      same index stays legible without per-component theme branching. */

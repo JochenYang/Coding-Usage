@@ -1,30 +1,7 @@
 import { ChevronRight, RefreshCw } from 'lucide-react'
-import type { ReactNode } from 'react'
 import { useState } from 'react'
-import {
-  Amp,
-  Antigravity,
-  Claude,
-  CodeBuddy,
-  Codex,
-  Copilot,
-  DeepSeek,
-  Gemini,
-  Kiro,
-  Kimi,
-  Minimax,
-  OpenCode,
-  Pi,
-  Qoder,
-  Qwen,
-  Trae,
-  XiaomiMiMo,
-} from '@lobehub/icons'
-import type { AgentClientId, AgentPeriodVM, AgentUsageVM } from '@/lib/agent-usage'
+import type { AgentPeriodVM, AgentUsageVM } from '@/lib/agent-usage'
 import { formatAmount, formatAsOf, formatCompactValue } from '@/lib/format'
-import workbuddyLogo from '@/components/logos/workbuddy.png'
-import zcodeLogo from '@/components/logos/zcode.png'
-import cindyLogo from '@/components/logos/cindy.png'
 import { useT } from '@/i18n/useT'
 import { useTheme } from '@/components/ThemeProvider'
 import { useData } from '@/lib/data-context'
@@ -32,6 +9,8 @@ import { EMPTY_SCAN_REASON, displayTokens } from '@/lib/agent-usage'
 import { Tooltip } from '@/components/common/Tooltip'
 import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
 import { cn } from '@/lib/cn'
+import { agentMark } from './agent-brand'
+import { AGENT_LABELS } from '@/lib/agent-labels'
 
 export interface LocalUsageCardProps {
   usage: AgentUsageVM
@@ -40,97 +19,28 @@ export interface LocalUsageCardProps {
   className?: string
 }
 
-/**
- * Bundled brand marks from @lobehub/icons (same icon set as the provider
- * logos). Partial on purpose: brands without a recognizable mark (Cline,
- * RooCode, Zed, …) degrade to the letter tile at render time. OpenCode ships
- * no .Color variant — its .Avatar tile fills the slot.
- */
-const AGENT_ICONS: Partial<Record<AgentClientId, ReactNode>> = {
-  codex: <Codex.Color />,
-  claude: <Claude.Color />,
-  kimi: <Kimi.Color />,
-  opencode: <OpenCode.Avatar size={16} />,
-  gemini: <Gemini.Color />,
-  qwen: <Qwen.Color />,
-  copilot: <Copilot.Color />,
-  trae: <Trae.Color />,
-  codebuddy: <CodeBuddy.Color />,
-  qoder: <Qoder.Color />,
-  // Both Qoder builds share the brand mark; the row label tells them apart
-  'qoder-global': <Qoder.Color />,
-  kiro: <Kiro.Color />,
-  amp: <Amp.Color />,
-  dsh: <DeepSeek.Color />,
-  // WorkBuddy has no bundled brand mark; use the app's own icon (from its
-  // install dir, committed at 1024px)
-  workbuddy: <img src={workbuddyLogo} className="h-5 w-5 rounded" alt="" />,
-  // Same story for ZCode: lobehub carries no mark, bundle the install-dir icon
-  zcode: <img src={zcodeLogo} className="h-5 w-5 rounded" alt="" />,
-  // Cindy's app icon (from its install dir, committed at 512px): lobehub has
-  // no mark for it either. Both builds share the product mark — they are one
-  // application, told apart by the row label.
-  cindy: <img src={cindyLogo} className="h-5 w-5 rounded" alt="" />,
-  'cindy-global': <img src={cindyLogo} className="h-5 w-5 rounded" alt="" />,
-  // XiaomiMiMo ships no Color variant — its Avatar tile fills the slot
-  micode: <XiaomiMiMo.Avatar size={16} />,
-  // Pi Agent's mark is a black glyph with no Color variant either
-  pi: <Pi.Avatar size={16} />,
-  mcode: <Minimax.Color />,
-  antigravity: <Antigravity.Color />,
-}
-
-/** Proper nouns — brand names, not translated. Ids = tokscale client ids. */
-const AGENT_LABELS: Record<AgentClientId, string> = {
-  codex: 'Codex',
-  claude: 'Claude Code',
-  kimi: 'Kimi Code',
-  opencode: 'OpenCode',
-  gemini: 'Gemini CLI',
-  cursor: 'Cursor',
-  copilot: 'GitHub Copilot',
-  qwen: 'Qwen Code',
-  trae: 'Trae',
-  codebuddy: 'CodeBuddy',
-  qoder: 'Qoder',
-  'qoder-global': 'Qoder Global',
-  workbuddy: 'WorkBuddy',
-  cline: 'Cline',
-  roocode: 'Roo Code',
-  kilocode: 'Kilo Code',
-  goose: 'Goose',
-  zed: 'Zed',
-  kiro: 'Kiro',
-  augment: 'Augment',
-  droid: 'Droid',
-  amp: 'Amp',
-  grok: 'Grok Build',
-  dsh: 'DSH',
-  zcode: 'ZCode',
-  micode: 'MiMo',
-  pi: 'Pi',
-  mcode: 'MiniMax Code',
-  antigravity: 'Antigravity',
-  cindy: 'Cindy',
-  'cindy-global': 'Cindy Global',
-}
-
 interface PeriodColumnProps {
-  period: AgentPeriodVM
-  exists: boolean
+  /** The period to show; absent when a cached summary predates the period */
+  period: AgentPeriodVM | undefined
   /** Accounting mode: 'all' counts cache reads, 'no-cache' input+output only */
   mode: 'all' | 'no-cache'
 }
 
-/** One right-aligned stat value; the column headers live on the list header row */
-function PeriodColumn({ period, exists, mode }: PeriodColumnProps) {
+/**
+ * One right-aligned stat value; the column headers live on the list header
+ * row.
+ */
+function PeriodColumn({ period, mode }: PeriodColumnProps) {
   // A credits-billed agent reports no tokens at all (Qoder's global build), so
   // showing 0 would read as "nothing happened" next to a real spend number. The
   // dash says "no token figure exists" and the row's own line carries the credits.
+  // The same dash stands for a period this launch has no figure for at all (a
+  // summary cached before the week column existed): unknown is not zero.
+  if (!period) return <div className="text-right text-xs font-medium text-subtle sm:text-sm">&mdash;</div>
   const creditsOnly = period.tokens === 0 && period.credits > 0
   return (
     <div className="text-right text-xs font-medium tabular-nums text-foreground sm:text-sm">
-      {!exists ? '—' : creditsOnly ? '—' : formatCompactValue(displayTokens(period, mode))}
+      {creditsOnly ? '—' : formatCompactValue(displayTokens(period, mode))}
     </div>
   )
 }
@@ -174,8 +84,8 @@ function breakdownText(
 }
 
 /**
- * Local agent usage (tokscale) card: per-client today / month / all-time token
- * and cost columns plus a manual refresh. Each agent expands to the models it
+ * Local agent usage (tokscale) card: per-client today / this week / all-time
+ * token and cost columns plus a manual refresh. Each agent expands to the models it
  * actually called, which is the only place the agent → model attribution is
  * visible: the flat per-model views merge entries from every agent, so the same
  * model id arriving from OpenCode and from Kimi Code is indistinguishable
@@ -216,7 +126,7 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
               failed scan falls back to stored history, so say explicitly how
               fresh the figures are — including the date once it is not today's */}
           {!loading && usage.scannedAt != null && (
-            <span className="text-[11px] text-subtle tabular-nums">
+            <span className="text-[11px] text-muted-foreground tabular-nums">
               {`${t.overview.asOfPrefix} ${formatAsOf(usage.scannedAt)}`}
             </span>
           )}
@@ -265,9 +175,9 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
             <span className="w-8 shrink-0" aria-hidden />
             <span className="min-w-0 flex-1" aria-hidden />
             <div className={PERIOD_GRID}>
-              <span className="text-right text-[11px] text-subtle">{t.overview.todayCol}</span>
-              <span className="text-right text-[11px] text-subtle">{t.overview.monthCol}</span>
-              <span className="text-right text-[11px] text-subtle">{t.overview.allTimeCol}</span>
+              <span className="text-right text-[11px] text-muted-foreground">{t.overview.todayCol}</span>
+              <span className="text-right text-[11px] text-muted-foreground">{t.overview.weekCol}</span>
+              <span className="text-right text-[11px] text-muted-foreground">{t.overview.allTimeCol}</span>
             </div>
           </div>
           {usage.clients
@@ -286,7 +196,7 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
                       onClick={() => toggle(client.client)}
                       aria-expanded={isOpen}
                       aria-label={`${AGENT_LABELS[client.client]} — ${t.overview.agentModelsLabel(models.length)}`}
-                      className="flex min-w-0 grow shrink basis-full items-center gap-2 rounded-lg text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent sm:basis-auto"
+                      className="flex min-w-0 grow shrink basis-full items-center gap-2 rounded-lg text-left transition-colors hover:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent sm:basis-auto"
                     >
                       <ChevronRight
                         className={cn(
@@ -295,15 +205,7 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
                         )}
                         aria-hidden
                       />
-                      <span
-                        className={cn(
-                          'flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted text-[11px] font-semibold text-muted-foreground [&>svg]:h-5 [&>svg]:w-5',
-                          client.client === 'kimi' && invertOnLight && '[&>svg]:invert',
-                        )}
-                        aria-hidden
-                      >
-                        {AGENT_ICONS[client.client] ?? AGENT_LABELS[client.client][0]}
-                      </span>
+                      {agentMark(client.client, invertOnLight, 'h-8 w-8')}
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium text-foreground">
                           {AGENT_LABELS[client.client]}
@@ -317,15 +219,10 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
                     <div className={cn(PERIOD_GRID, 'ml-auto')}>
                       {[
                         { period: client.today },
-                        { period: client.month },
+                        { period: client.week },
                         { period: client.allTime },
                       ].map((col, ci) => (
-                        <PeriodColumn
-                          key={ci}
-                          period={col.period}
-                          exists={client.exists}
-                          mode={mode}
-                        />
+                        <PeriodColumn key={ci} period={col.period} mode={mode} />
                       ))}
                     </div>
                   </div>
@@ -360,18 +257,19 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
                                 )}
                               </span>
                               <div className={PERIOD_GRID}>
-                                {[row.today, row.month, row.allTime].map((period, ci) => {
-                                  const value = displayTokens(period, mode)
+                                {[row.today, row.week, row.allTime].map((period, ci) => {
+                                  const value = period ? displayTokens(period, mode) : 0
                                   // A credits-billed or aborted turn records calls
                                   // but no tokens (opencode reports 0/0 for some
-                                  // models). Showing "0" reads like a measurement;
-                                  // a dash says "no tokens recorded", which is true.
+                                  // models), and a period this launch has no
+                                  // figure for is unknown: either way a dash —
+                                  // "0" would read like a measurement.
                                   return (
                                     <div
                                       key={ci}
                                       className="text-right text-xs tabular-nums text-muted-foreground"
                                     >
-                                      {value > 0 ? formatCompactValue(value) : '—'}
+                                      {period && value > 0 ? formatCompactValue(value) : '—'}
                                     </div>
                                   )
                                 })}
@@ -400,9 +298,9 @@ export function LocalUsageCard({ usage, loading, onRefresh, className }: LocalUs
                 </span>
               </span>
               <div className={PERIOD_GRID}>
-                <PeriodColumn period={usage.other.today} exists mode={mode} />
-                <PeriodColumn period={usage.other.month} exists mode={mode} />
-                <PeriodColumn period={usage.other.all} exists mode={mode} />
+                <PeriodColumn period={usage.other.today} mode={mode} />
+                <PeriodColumn period={usage.other.week} mode={mode} />
+                <PeriodColumn period={usage.other.all} mode={mode} />
               </div>
             </div>
           )}

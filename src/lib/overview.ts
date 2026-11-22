@@ -219,6 +219,35 @@ export const DIST_COLORS = [
  */
 export const DIST_OTHER_COLOR = 'var(--color-subtle)'
 
+/**
+ * Fold a token ranking into donut slices: the biggest entries keep a slice of
+ * their own while they are at least `minShare` of the total and the list is
+ * under `maxSlices`; everything else becomes one muted "other" slice. Enough
+ * to read the structure at a glance, few enough that every arc clears the
+ * donut's rounded-cap inset (a slice under ~3% draws as an invisible dot).
+ */
+export function foldSlices(
+  entries: readonly { label: string; tokens: number }[],
+  otherLabel: string,
+  { maxSlices = 6, minShare = 0.03 }: { maxSlices?: number; minShare?: number } = {},
+): DistSliceVM[] {
+  const sorted = [...entries].sort((a, b) => b.tokens - a.tokens || a.label.localeCompare(b.label))
+  const total = sorted.reduce((sum, entry) => sum + entry.tokens, 0) || 1
+  const slices: DistSliceVM[] = []
+  let rest = 0
+  for (const entry of sorted) {
+    // Always keep the biggest slice even when it alone is below the floor,
+    // so a flat distribution still shows something other than "other"
+    if (slices.length < maxSlices && (entry.tokens / total >= minShare || slices.length === 0)) {
+      slices.push({ label: entry.label, value: entry.tokens, color: DIST_COLORS[slices.length % DIST_COLORS.length] })
+    } else {
+      rest += entry.tokens
+    }
+  }
+  if (rest > 0) slices.push({ label: otherLabel, value: rest, color: DIST_OTHER_COLOR })
+  return slices
+}
+
 /** Provider-share slices of token quota totals; small shares fold into `otherLabel` */
 export function buildDistribution(
   sections: Section[],

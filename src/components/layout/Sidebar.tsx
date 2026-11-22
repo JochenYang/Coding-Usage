@@ -52,10 +52,11 @@ function readCollapsed(): boolean {
   }
 }
 
-export function Sidebar({ view, onNavigate }: { view: View; onNavigate: (v: View) => void }) {
-  const t = useT()
-  const { lastUpdated, refreshAll, refreshingAll } = useData()
-  useTick()
+/**
+ * The rail's collapse state, owned by the shell: the shell offsets the page
+ * and the top bar by the rail's width, so it has to know the state too.
+ */
+export function useSidebarCollapsed(): [boolean, () => void] {
   const [collapsed, setCollapsed] = useState(readCollapsed)
 
   // Persist on toggle (same pattern as ThemeProvider): a failed write keeps the
@@ -71,6 +72,24 @@ export function Sidebar({ view, onNavigate }: { view: View; onNavigate: (v: View
       return next
     })
   }, [])
+
+  return [collapsed, toggleCollapsed]
+}
+
+export function Sidebar({
+  view,
+  onNavigate,
+  collapsed,
+  onToggleCollapsed,
+}: {
+  view: View
+  onNavigate: (v: View) => void
+  collapsed: boolean
+  onToggleCollapsed: () => void
+}) {
+  const t = useT()
+  const { lastUpdated, refreshAll, refreshingAll } = useData()
+  useTick()
 
   const groups: NavGroup[] = [
     { label: null, items: [{ view: 'overview', icon: Home, label: t.nav.overview }] },
@@ -113,10 +132,13 @@ export function Sidebar({ view, onNavigate }: { view: View; onNavigate: (v: View
   })()
 
   return (
+    // No background and no dividing border of its own: the shell's background
+    // shows through, so the footer wave runs under the rail on every page
     <aside
       className={cn(
-        'flex h-full w-[64px] shrink-0 flex-col border-r border-border bg-background transition-[width] duration-200',
-        collapsed ? 'md:w-[64px]' : 'md:w-[232px]',
+        // md width comes from the shell's --rail-w: the page and the top bar
+        // give way to the same value
+        'flex h-full w-[64px] shrink-0 flex-col transition-[width] duration-200 md:w-(--rail-w)',
       )}
     >
       <div
@@ -139,7 +161,7 @@ export function Sidebar({ view, onNavigate }: { view: View; onNavigate: (v: View
         >
           <button
             type="button"
-            onClick={toggleCollapsed}
+            onClick={onToggleCollapsed}
             aria-label={collapsed ? t.nav.expandSidebar : t.nav.collapseSidebar}
             className="group relative h-9 w-9 shrink-0 overflow-hidden rounded-lg transition-colors hover:bg-muted"
           >

@@ -23,6 +23,11 @@ export interface DonutChartProps {
   formatValue?: (n: number) => string
   /** Render the legend list next to the ring (default true) */
   showLegend?: boolean
+  /**
+   * Print each legend share as "42% (28.6B)" (default) or as the percentage
+   * alone, for a narrow card where label and figure would not both fit.
+   */
+  legendValue?: boolean
   /** Ring above and legend below (vertical), or side by side (default) */
   orientation?: 'horizontal' | 'vertical'
   /** Extra classes appended to the outer wrapper */
@@ -41,6 +46,7 @@ export function DonutChart({
   centerLabel,
   formatValue,
   showLegend = true,
+  legendValue = true,
   orientation = 'horizontal',
   className,
 }: DonutChartProps) {
@@ -125,7 +131,7 @@ export function DonutChart({
                 <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: s.color }} />
                 <span className="truncate text-foreground">{s.label}</span>
                 <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
-                  {percent}% ({fmt(s.value)})
+                  {legendValue ? `${percent}% (${fmt(s.value)})` : `${percent}%`}
                 </span>
               </li>
             )

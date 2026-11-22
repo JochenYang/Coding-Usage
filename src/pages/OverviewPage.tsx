@@ -2,41 +2,40 @@ import { useEffect, useMemo, useState } from 'react'
 import { useData } from '@/lib/data-context'
 import { useT } from '@/i18n/useT'
 import {
-  DIST_COLORS,
   DIST_OTHER_COLOR,
   buildAgentRows,
   buildBalanceProviders,
   buildDistribution,
   buildKpis,
   buildTrendPoints,
+  foldSlices,
 } from '@/lib/overview'
 import { displayDayTokens, displayTokens } from '@/lib/agent-usage'
 import { alertDetail, alertTitle } from '@/lib/alert-text'
+import { formatClock } from '@/lib/format'
 import { KpiRow } from '@/components/overview/KpiRow'
 import { TrendCard } from '@/components/overview/TrendCard'
 import { DistributionCard } from '@/components/overview/DistributionCard'
-import { AttentionList, type AttentionItem } from '@/components/overview/AttentionList'
+import { RecentActivity, type ActivityItem } from '@/components/overview/RecentActivity'
+import { AccountStatusCard, type AccountStatusItem } from '@/components/overview/AccountStatusCard'
 import { LocalUsageCard } from '@/components/overview/LocalUsageCard'
 
-/**
- * Distribution legend shows the top slices plus one folded "other" bucket:
- * enough to read the spend structure at a glance, few enough that every arc
- * clears the donut's rounded-cap inset (~6% share minimum draws visibly).
- * The threshold is lower than the inset so the donut still shows a couple of
- * small-but-real providers, mirroring the cost analysis page's provider list.
- */
-const MAX_DIST_SLICES = 6
-const MIN_SLICE_SHARE = 0.03
+/** Recent-activity entries on the canvas; the rest stay on the alerts page */
+const MAX_ACTIVITY_ITEMS = 4
+/** Agent tiles in the account usage card */
+const MAX_ACCOUNT_STATUS_ITEMS = 3
 
 /**
- * Overview page: KPI row + trend (top), local usage, then attention list +
- * distribution (bottom). All models come from lib/overview builders; this
- * component only wires data to presentational pieces. Recent alerts live in
- * the top bar's hover popover and the alerts page, not on this canvas.
+ * Overview page: KPI row + trend (top), local usage, then distribution +
+ * recent activity + account usage (bottom). All models come from lib/overview
+ * builders and the agent-usage view model; this component only wires data to
+ * presentational pieces.
  *
  * The full agents table and plan cards used to repeat here — both detail
  * views keep living on their own pages, so the overview only surfaces what
- * needs attention (error accounts + unread alerts).
+ * happened lately and what needs attention (error accounts + live alerts).
+ * No early return when nothing is configured/fetched yet: the framework always
+ * renders, and each card degrades to its own honest empty state.
  */
 export function OverviewPage({
   onEditAccount,
@@ -77,41 +76,47 @@ export function OverviewPage({
     return k
   }, [sections, results, settings.displayCurrency, settings.usageDisplayMode, now, agentUsage])
   const dist = useMemo(() => {
-    // Provider distribution prefers real measured spend (local agents, by
-    // provider); the API-quota share is the fallback when no local data
-    // exists. Slices are ordered by the value the ring actually encodes
-    // (tokens), so the largest arc comes first — ordering by cost instead left
-    // every unpriced provider (cost 0: tokscale-native and catalog-unknown
-    // models) tied in scan order, which reads as a random legend. Long tails
-    // fold into "other" so the card renders fully without scrolling.
-    if (agentUsage.monthCostByProvider.length > 0) {
-      const sorted = [...agentUsage.monthCostByProvider].sort(
-        (a, b) => b.tokens - a.tokens || a.label.localeCompare(b.label),
-      )
-      const monthTotal = agentUsage.monthTotal.tokens || 1
-      const slices: { label: string; value: number; color: string }[] = []
-      let rest = 0
-      for (const r of sorted) {
-        // Always keep the biggest slice even when it alone is below the floor,
-        // so a flat distribution still shows something other than "other"
-        if (
-          slices.length < MAX_DIST_SLICES &&
-          (r.tokens / monthTotal >= MIN_SLICE_SHARE || slices.length === 0)
-        ) {
-          slices.push({
-            label: r.label,
-            value: r.tokens,
-            color: DIST_COLORS[slices.length % DIST_COLORS.length],
-          })
-        } else {
-          rest += r.tokens
-        }
+    // Shares are measured local-agent usage by agent, over the rolling seven
+    // days — the same agents the usage table above lists, so a slice and a row
+    // are the same thing. A summary cached before that window existed still
+    // carries the month (by model router); with no local data at all, the
+    // provider-reported quota totals stand in. The range chip says which.
+    const recent = agentUsage.last7ByAgent
+    if (recent && recent.length > 0) {
+      // Usage that names no agent is in the period total but in no agent's
+      // slice. It belongs in the folded "other" slice, so the ring's slices
+      // add up to the figure in its centre.
+      const slices = foldSlices(recent, t.overview.distOther)
+      const unclassified =
+        (agentUsage.last7Total?.tokens ?? 0) - recent.reduce((sum, r) => sum + r.tokens, 0)
+      if (unclassified > 0) {
+        const rest = slices.find((s) => s.label === t.overview.distOther)
+        if (rest) rest.value += unclassified
+        else slices.push({ label: t.overview.distOther, value: unclassified, color: DIST_OTHER_COLOR })
       }
-      // Same muted tone lib/overview's threshold fold uses
-      if (rest > 0) slices.push({ label: t.overview.distOther, value: rest, color: DIST_OTHER_COLOR })
-      return { slices, total: agentUsage.monthTotal.tokens, asOf: agentUsage.scannedAt }
+      return {
+        slices,
+        total: agentUsage.last7Total?.tokens ?? recent.reduce((sum, r) => sum + r.tokens, 0),
+        rangeLabel: t.overview.distRecent7,
+        centerLabel: t.overview.distConsumed,
+        asOf: agentUsage.scannedAt,
+      }
     }
-    return { ...buildDistribution(sections, results, t.overview.distOther), asOf: null }
+    if (agentUsage.monthCostByProvider.length > 0) {
+      return {
+        slices: foldSlices(agentUsage.monthCostByProvider, t.overview.distOther),
+        total: agentUsage.monthTotal.tokens,
+        rangeLabel: t.overview.monthCol,
+        centerLabel: t.overview.distConsumed,
+        asOf: agentUsage.scannedAt,
+      }
+    }
+    return {
+      ...buildDistribution(sections, results, t.overview.distOther),
+      rangeLabel: t.overview.distTotal,
+      centerLabel: t.overview.distTotal,
+      asOf: null,
+    }
   }, [agentUsage, sections, results, t])
   // Trend prefers the graph-derived daily series; daily archive is the fallback
   const trend = useMemo(() => {
@@ -120,38 +125,64 @@ export function OverviewPage({
     const archived = agentDailySeries(7)
     return archived.length >= 2 ? archived : buildTrendPoints(sections)
   }, [agentUsage, agentDailySeries, sections, settings.usageDisplayMode])
-  // Attention items: unread alerts first (they carry the actionable state),
-  // then error accounts (a failed fetch is often stale rather than fatal —
-  // the next refresh fixes it). Dedup by account: an alert for an errored
-  // account is dropped, the account row (with its live error text) wins.
+  // Recent activity: error accounts first (they are the ones to act on — a
+  // failed fetch is often stale rather than fatal, and the next refresh fixes
+  // it), then the alerts still live, newest first. An alert for an errored
+  // account is dropped: the account row, with its live error text, says it.
   // Capped — the overview is a dashboard, not the log.
-  const attention = useMemo<AttentionItem[]>(() => {
-    const items: AttentionItem[] = []
-    const erroredKeys = new Set(rows.filter((r) => r.status === 'error').map((r) => r.key))
-    for (const a of alerts) {
-      if (a.read || a.resolved) continue
-      // Alerts embed the account key in their id ("key:kind:metric")
-      if (erroredKeys.has(a.accountKey)) continue
-      items.push({ key: a.id, title: alertTitle(a, t), detail: alertDetail(a, t), level: a.level })
-    }
+  const activity = useMemo<ActivityItem[]>(() => {
+    const failed: ActivityItem[] = []
+    const erroredKeys = new Set<string>()
     for (const r of rows) {
       if (r.status !== 'error') continue
-      items.push({ key: r.key, title: r.name, detail: r.errorText, level: 'danger', editKey: r.key })
+      erroredKeys.add(r.key)
+      const fetchedAt = results[r.key]?.fetchedAt
+      failed.push({
+        key: r.key,
+        title: r.name,
+        detail: r.errorText,
+        level: 'danger',
+        time: fetchedAt != null ? formatClock(fetchedAt, now) : undefined,
+        editKey: r.key,
+      })
     }
-    return items.slice(0, 6)
-  }, [rows, alerts, t])
+    const live = alerts
+      .filter((a) => !a.resolved && !erroredKeys.has(a.accountKey))
+      .sort((a, b) => b.firstSeenAt - a.firstSeenAt)
+      .map(
+        (a): ActivityItem => ({
+          key: a.id,
+          title: alertTitle(a, t),
+          detail: alertDetail(a, t),
+          level: a.level,
+          time: formatClock(a.firstSeenAt, now),
+        }),
+      )
+    return failed.concat(live).slice(0, MAX_ACTIVITY_ITEMS)
+  }, [rows, alerts, results, t, now])
+  // The heaviest local agents by all-time usage, with whether they ran today
+  const accountStatus = useMemo<AccountStatusItem[]>(
+    () =>
+      agentUsage.clients
+        .filter((c) => c.exists && c.allTime.tokens > 0)
+        .sort((a, b) => b.allTime.tokens - a.allTime.tokens)
+        .slice(0, MAX_ACCOUNT_STATUS_ITEMS)
+        .map((c) => ({
+          client: c.client,
+          allTimeTokens: c.allTime.tokens,
+          usedToday: c.today.tokens > 0 || c.today.credits > 0 || c.today.messages > 0,
+        })),
+    [agentUsage],
+  )
   // Richest-first providers behind the balance KPI (brand chips on the card)
   const balanceProviders = useMemo(
     () => buildBalanceProviders(sections, results, settings.displayCurrency, fxRates),
     [sections, results, settings.displayCurrency, fxRates],
   )
 
-  // No early return when nothing is configured/fetched yet: the full overview
-  // framework always renders, and each card degrades to its own honest empty
-  // state (dash KPIs, hint lists, grey donut). A bare "add account" screen hid
-  // where numbers WOULD appear and read like a broken dashboard.
-
   return (
+    // The mascot in the page's bottom-right corner is the shell's (it sits on
+    // the shell's footer wave); this page only lays out its cards
     <div className="space-y-4">
       <div className="flex flex-col gap-4 xl:flex-row">
         <div className="min-w-0 flex-1">
@@ -169,10 +200,20 @@ export function OverviewPage({
 
       <LocalUsageCard usage={agentUsage} loading={agentUsageLoading} onRefresh={refreshAgentUsage} />
 
-      <div className="flex flex-col gap-4 xl:flex-row">
-        <div className="min-w-0 flex-1">
-          <AttentionList
-            items={attention}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+        <div className="min-w-0 xl:col-span-4">
+          <DistributionCard
+            slices={dist.slices}
+            total={dist.total}
+            centerLabel={dist.centerLabel}
+            rangeLabel={dist.rangeLabel}
+            asOf={dist.asOf}
+            className="h-full"
+          />
+        </div>
+        <div className="min-w-0 xl:col-span-4">
+          <RecentActivity
+            items={activity}
             onEdit={(rowKey) => {
               const split = rowKey.lastIndexOf('-')
               onEditAccount(rowKey.slice(0, split), Number(rowKey.slice(split + 1)))
@@ -181,15 +222,8 @@ export function OverviewPage({
             className="h-full"
           />
         </div>
-        {/* Stretch to the list's height so the two columns read as one band */}
-        <div className="w-full shrink-0 xl:w-[360px]">
-          <DistributionCard
-            slices={dist.slices}
-            total={dist.total}
-            centerLabel={dist.asOf != null ? t.overview.distMonthUsage : t.overview.distTotal}
-            asOf={dist.asOf}
-            className="h-full"
-          />
+        <div className="min-w-0 xl:col-span-4">
+          <AccountStatusCard items={accountStatus} className="h-full" />
         </div>
       </div>
     </div>
