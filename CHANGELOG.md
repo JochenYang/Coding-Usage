@@ -10,6 +10,18 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.10.3] - 2026-11-22
+
+### 中文
+- 修复从备份文件恢复设置不可用：应用的本地数据丢失后，启动时本应从备份文件找回账号，但此前会先把一份空设置写进备份文件再去读，读回的几乎总是空的——账号找不回来，备份也被清掉。现在先读回备份再保存，恢复出的账号随后正常解密并刷新
+- 备份文件读不出来、内容损坏或放不回本地存储时，应用照常启动，并且在你修改设置之前不保存任何设置——不会拿空设置把这份备份覆盖掉，在此之前重启会再试一次；修改设置后一切照常保存，备份也从那时起反映当前内容
+- 备份文件改为整体替换，应用内的读写依次进行：写入中途退出不会留下空文件或残缺文件，应用自己一边读一边写时，读到的始终是完整的一份，写也不会丢
+
+### English
+- Fixed restoring settings from the backup file: after the app's local data was lost, a launch was meant to bring the accounts back from the backup file, but it first wrote an empty settings document over that file and then read it back, so what it got was almost always empty — the accounts did not come back and the backup was gone. The backup is now read back before anything is saved, and the restored accounts are decrypted and refreshed as usual
+- When the backup file cannot be read, is damaged or cannot be put back into local storage, the app still starts normally and saves no settings until you change a setting — an empty settings document no longer overwrites that backup, and restarting before then tries again. Once you change a setting everything is saved as usual, and the backup reflects the current contents from then on
+- The backup file is now replaced in one step, and the app's own reads and writes take turns: quitting mid-write can no longer leave an empty or truncated file, and while the app is reading and writing at the same time a read always gets a complete copy and no save is lost
+
 ## [v0.10.2] - 2026-11-22
 
 ### 中文
