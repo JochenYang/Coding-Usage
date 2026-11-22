@@ -10,6 +10,22 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.10.0] - 2026-11-22
+
+### 中文
+- 托盘右键菜单本地化并跟随应用主题：菜单文案随界面语言（显示主窗口 / 退出 ↔ Show / Quit），原生菜单深浅色跟随应用主题（「跟随系统」原样透传不干扰界面判断），首帧按系统语言兜底
+- 侧边栏可收起：logo 即切换按钮——悬停时 logo 淡出、收缩/展开图标淡入（ZCode 式双视觉互换），收起后为 64px 图标列且导航项由右侧浮动气泡补标签；选择持久化，宽度 200ms 过渡
+- 集成管理新增五个告警推送通道：钉钉（安全设置选「加签」时填密钥，签名在主进程计算、不入日志）、Discord、Slack（Slack App webhook）、Bark（iOS 推送，默认公共服务器）、ntfy（默认 ntfy.sh）；飞书机器人开了「签名校验」现在会自动签名——此前这类机器人会推送失败且难以定位
+- 修复长页面双滚动条：集成管理页此前会出现窗口级 + 内容区两条滚动条（表单的屏幕阅读器专用标签逃出内容区裁剪、把文档撑高约 500px）；现在所有页面恢复单滚动条
+- 顶栏主题切换与「全部刷新」按钮补上悬停提示；悬停气泡在鼠标点击后不再残留（改为键盘焦点语义才显示），收起态侧栏的气泡改为浮动层渲染不再被裁剪
+
+### English
+- The tray context menu is localized and follows the app theme: labels follow the interface language (Show / Quit ↔ 显示主窗口 / 退出), the native menu's dark-light mode follows the app theme ("system" passes through untouched so the renderer keeps reading the real OS preference), and the first paint guesses from the OS locale
+- The sidebar is collapsible: the logo doubles as the toggle — hovering fades the logo out while the collapse/expand icon fades in (ZCode-style two-layer swap); collapsed it becomes a 64px icon rail where nav items get floating tooltips; the choice persists and the width animates over 200 ms
+- Five new alert-push channels on the integrations page: DingTalk (paste the secret when the robot uses the recommended "signed" security setting — signatures are computed in the main process and never logged), Discord, Slack (Slack App webhook), Bark (iOS push, public server by default) and ntfy (ntfy.sh by default); Feishu robots with signature verification now sign their bodies automatically — those robots previously failed to deliver with a hard-to-diagnose error
+- Fixed the double scrollbar on long pages: the integrations page used to show a window-level scrollbar next to the content scrollbar (screen-reader-only form labels escaped the content clipping and stretched the document by ~500 px); every page is back to a single scrollbar
+- The top-bar theme and refresh-all buttons gained hover tooltips; hover bubbles no longer stick open after a mouse click (keyboard focus semantics only), and collapsed-sidebar tooltips render as floating layers so they are never clipped
+
 ## [v0.9.9] - 2026-11-21
 
 ### 中文
