@@ -68,7 +68,10 @@ function ProviderCard({
         <ProviderLogo def={def} className="h-10 w-10" />
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-foreground">{def.name}</div>
-          <div className="truncate text-xs text-muted-foreground">{def.tagline(t)}</div>
+          {/* line-clamp-2 instead of truncate: the safety note in Warp's
+              tagline must stay readable; taller name rows are absorbed by
+              the pinned action row below */}
+          <div className="line-clamp-2 text-xs text-muted-foreground">{def.tagline(t)}</div>
         </div>
       </div>
 
