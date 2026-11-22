@@ -162,25 +162,29 @@ export function TopBar({ onNavigate }: { onNavigate: (v: View) => void }) {
 
         {/* Interim compact theme + locale controls; they move into the full
             settings page when the management phase lands */}
-        <button
-          type="button"
-          onClick={() => runTransition(() => setTheme(nextTheme(theme)))}
-          aria-label={t.header.theme[theme]}
-          className={GHOST_BTN}
-        >
-          <ThemeIcon className="h-4 w-4" />
-        </button>
+        <Tooltip text={t.header.theme[theme]} side="bottom">
+          <button
+            type="button"
+            onClick={() => runTransition(() => setTheme(nextTheme(theme)))}
+            aria-label={t.header.theme[theme]}
+            className={GHOST_BTN}
+          >
+            <ThemeIcon className="h-4 w-4" />
+          </button>
+        </Tooltip>
         <LocaleSwitcher />
 
-        <button
-          type="button"
-          onClick={() => void refreshAll()}
-          disabled={refreshingAll}
-          aria-label={t.header.refreshAll}
-          className={GHOST_BTN}
-        >
-          <RefreshCw className={cn('h-4 w-4', refreshingAll && 'animate-spin')} />
-        </button>
+        <Tooltip text={t.header.refreshAll} side="bottom">
+          <button
+            type="button"
+            onClick={() => void refreshAll()}
+            disabled={refreshingAll}
+            aria-label={t.header.refreshAll}
+            className={GHOST_BTN}
+          >
+            <RefreshCw className={cn('h-4 w-4', refreshingAll && 'animate-spin')} />
+          </button>
+        </Tooltip>
 
         {/* Bell: hover previews recent notifications (Notification-Stack
             style); a click still jumps to the full alerts center */}

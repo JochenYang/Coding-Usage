@@ -201,6 +201,8 @@ export const zhCN: Dict = {
     groupManage: '管理',
     groupAnalytics: '分析',
     groupSettings: '设置',
+    collapseSidebar: '收起侧栏',
+    expandSidebar: '展开侧栏',
   },
   topbar: {
     notifications: '通知',  },

@@ -4,6 +4,8 @@ import {
   DollarSign,
   Home,
   Package,
+  PanelLeftClose,
+  PanelLeftOpen,
   RefreshCw,
   Settings,
   Share2,
@@ -12,10 +14,11 @@ import {
   Users,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { cn } from '@/lib/cn'
 import { useT } from '@/i18n/useT'
 import { useData } from '@/lib/data-context'
+import { Tooltip } from '../common/Tooltip'
 import type { View } from '@/lib/router'
 
 interface NavItem {
@@ -38,10 +41,36 @@ function useTick(ms = 30_000) {
   }, [ms])
 }
 
+const SIDEBAR_COLLAPSED_KEY = 'coding-usage.sidebar-collapsed'
+
+/** Persisted collapse choice; unreadable storage (private mode / quota) falls back to expanded */
+function readCollapsed(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 export function Sidebar({ view, onNavigate }: { view: View; onNavigate: (v: View) => void }) {
   const t = useT()
   const { lastUpdated, refreshAll, refreshingAll } = useData()
   useTick()
+  const [collapsed, setCollapsed] = useState(readCollapsed)
+
+  // Persist on toggle (same pattern as ThemeProvider): a failed write keeps the
+  // in-memory state for this run instead of losing the toggle
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed((c) => {
+      const next = !c
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0')
+      } catch {
+        // ignore
+      }
+      return next
+    })
+  }, [])
 
   const groups: NavGroup[] = [
     { label: null, items: [{ view: 'overview', icon: Home, label: t.nav.overview }] },
@@ -84,12 +113,50 @@ export function Sidebar({ view, onNavigate }: { view: View; onNavigate: (v: View
   })()
 
   return (
-    <aside className="flex h-full w-[64px] shrink-0 flex-col border-r border-border bg-background md:w-[232px]">
-      <div className="flex items-center gap-2.5 px-[14px] pb-4 pt-5 md:px-5">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft">
+    <aside
+      className={cn(
+        'flex h-full w-[64px] shrink-0 flex-col border-r border-border bg-background transition-[width] duration-200',
+        collapsed ? 'md:w-[64px]' : 'md:w-[232px]',
+      )}
+    >
+      <div
+        className={cn(
+          'flex items-center gap-2.5 px-[14px] pb-4 pt-5',
+          collapsed ? 'md:justify-center' : 'md:px-5',
+        )}
+      >
+        {/* Narrow screens keep the plain logo; the md+ button holds both
+            visuals (ZCode-style): the logo rests in place and fades out on
+            hover while the toggle icon fades in, collapsed or not. */}
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft md:hidden">
           <BarChart3 className="h-5 w-5 text-accent" />
         </div>
-        <div className="hidden min-w-0 leading-tight md:block">
+        <Tooltip
+          text={collapsed ? t.nav.expandSidebar : t.nav.collapseSidebar}
+          side="right"
+          floating
+          className="hidden md:inline-flex"
+        >
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            aria-label={collapsed ? t.nav.expandSidebar : t.nav.collapseSidebar}
+            className="group relative h-9 w-9 shrink-0 overflow-hidden rounded-lg transition-colors hover:bg-muted"
+          >
+            <span
+              aria-hidden
+              className="absolute inset-0 flex items-center justify-center rounded-lg bg-accent-soft transition-opacity duration-150 group-hover:opacity-0 group-focus-visible:opacity-0"
+            >
+              <BarChart3 className="h-5 w-5 text-accent" />
+            </span>
+            {collapsed ? (
+              <PanelLeftOpen className="absolute inset-0 m-auto h-4 w-4 text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
+            ) : (
+              <PanelLeftClose className="absolute inset-0 m-auto h-4 w-4 text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
+            )}
+          </button>
+        </Tooltip>
+        <div className={cn('hidden min-w-0 leading-tight md:block', collapsed && 'md:hidden')}>
           <div className="truncate text-[15px] font-bold tracking-tight text-foreground">
             Coding Usage
           </div>
@@ -101,7 +168,12 @@ export function Sidebar({ view, onNavigate }: { view: View; onNavigate: (v: View
         {groups.map((group, gi) => (
           <div key={gi}>
             {group.label && (
-              <div className="hidden px-2.5 pb-1.5 text-[11px] font-medium text-subtle md:block">
+              <div
+                className={cn(
+                  'px-2.5 pb-1.5 text-[11px] font-medium text-subtle',
+                  collapsed ? 'hidden' : 'hidden md:block',
+                )}
+              >
                 {group.label}
               </div>
             )}
@@ -110,23 +182,39 @@ export function Sidebar({ view, onNavigate }: { view: View; onNavigate: (v: View
                 const active = view === item.view
                 const Icon = item.icon
                 return (
-                  // No tooltip here by design: the label is visible next to
-                  // the icon, so a hover bubble would only repeat it.
-                  <button
+                  // Collapsed: the label is hidden, so a floating right-side
+                  // tooltip takes over — floating because the nav's
+                  // overflow-y-auto would clip a CSS bubble (and the content
+                  // column would bury it). The empty-text branch renders no
+                  // wrapper when expanded — the label sits next to the icon.
+                  <Tooltip
                     key={item.view}
-                    type="button"
-                    onClick={() => onNavigate(item.view)}
-                    aria-current={active ? 'page' : undefined}
-                    className={cn(
-                      'flex w-full items-center justify-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors md:justify-start',
-                      active
-                        ? 'bg-accent font-medium text-white'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                    )}
+                    text={collapsed ? item.label : ''}
+                    side="right"
+                    floating
+                    className={collapsed ? 'w-full' : undefined}
                   >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span className="hidden truncate md:block">{item.label}</span>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => onNavigate(item.view)}
+                      aria-label={item.label}
+                      aria-current={active ? 'page' : undefined}
+                      className={cn(
+                        'flex w-full items-center justify-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors',
+                        collapsed ? '' : 'md:justify-start',
+                        active
+                          ? 'bg-accent font-medium text-white'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                      )}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      <span
+                        className={cn('truncate text-sm', collapsed ? 'hidden' : 'hidden md:block')}
+                      >
+                        {item.label}
+                      </span>
+                    </button>
+                  </Tooltip>
                 )
               })}
             </div>
@@ -134,7 +222,7 @@ export function Sidebar({ view, onNavigate }: { view: View; onNavigate: (v: View
         ))}
       </nav>
 
-      <div className="hidden p-3 md:block">
+      <div className={cn(collapsed ? 'hidden' : 'hidden p-3 md:block')}>
         <div className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-2.5">
           <span className="relative flex h-2 w-2 shrink-0">
             <span className="absolute inline-flex h-full w-full rounded-full bg-online opacity-60" />

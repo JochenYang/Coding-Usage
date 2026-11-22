@@ -204,6 +204,8 @@ export const enUS: Dict = {
     groupManage: 'Manage',
     groupAnalytics: 'Analytics',
     groupSettings: 'Settings',
+    collapseSidebar: 'Collapse sidebar',
+    expandSidebar: 'Expand sidebar',
   },
   topbar: {
     notifications: 'Notifications',

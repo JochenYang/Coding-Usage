@@ -205,6 +205,8 @@ export interface Dict {
     groupManage: string
     groupAnalytics: string
     groupSettings: string
+    collapseSidebar: string
+    expandSidebar: string
   }
   topbar: {
     notifications: string

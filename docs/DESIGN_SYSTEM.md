@@ -125,6 +125,10 @@
 
 - 壳：`AppShell` = 左固定 Sidebar + 右 TopBar + 内容列（`max-w-[1280px]` 居中）。
   背景全站唯一 `bg-background`；页面只写布局（栅格/间距/排列），不写视觉。
+- Sidebar 可收缩：logo 即切换按钮（ZCode 式）——展开/收起两态都是常态显示 logo、
+  悬停时 logo 淡出而收缩/展开图标淡入（150ms）；收起后为 64px 图标态（即窄屏形态：
+  只留图标，导航项由右侧浮动 tooltip 补标签）。选择存 localStorage，
+  `transition-[width]` 200ms 过渡（`Sidebar.tsx`）。
 - Header 模式：`PageHeader`（`text-lg` 标题 + `sm` 描述 + 右侧 actions 槽）；全页 primary ≤1 个，
   次要操作降档 `secondary/ghost`。
 - 本项目的 archetype 映射：Overview/Trends/CostAnalysis = Dashboard（指标卡 → 主图表 → 明细）；
