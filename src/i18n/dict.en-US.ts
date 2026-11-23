@@ -394,6 +394,7 @@ export const enUS: Dict = {
     alertResetSoon: (m: number) => `resets in ${m} min`,
     alertUsedDetail: (used: string, total: string) => `${used} / ${total} tokens used`,
     alertBalanceDetail: (s: string) => `Balance: ${s}`,
+    alertSince: (date: string) => `since ${date}`,
     agoJust: 'just now',
     agoShort: (m: number) => `${m} min ago`,
     agoHoursMinutes: (h: number, m: number) => `${h} h ${m} min ago`,

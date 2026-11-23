@@ -379,6 +379,7 @@ export const zhCN: Dict = {
     alertResetSoon: (m: number) => `将在 ${m} 分钟后重置`,
     alertUsedDetail: (used: string, total: string) => `${used} / ${total} tokens 已使用`,
     alertBalanceDetail: (s: string) => `账户余额：${s}`,
+    alertSince: (date: string) => `自 ${date} 起`,
     agoJust: '刚刚',
     agoShort: (m: number) => `${m} 分钟前`,
     agoHoursMinutes: (h: number, m: number) => `${h} 小时 ${m} 分钟前`,

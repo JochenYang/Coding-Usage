@@ -127,8 +127,13 @@ export function OverviewPage({
   }, [agentUsage, agentDailySeries, sections, settings.usageDisplayMode])
   // Recent activity: error accounts first (they are the ones to act on — a
   // failed fetch is often stale rather than fatal, and the next refresh fixes
-  // it), then the alerts still live, newest first. An alert for an errored
-  // account is dropped: the account row, with its live error text, says it.
+  // it), then the alerts still live. An alert for an errored account is
+  // dropped: the account row, with its live error text, says it.
+  //
+  // An alert is shown at the time it was last seen, not when it began: a
+  // low balance that has held since September is re-derived on every refresh,
+  // and under "recent" its date would read as stale data. When it has held
+  // for more than a day, the detail says since when.
   // Capped — the overview is a dashboard, not the log.
   const activity = useMemo<ActivityItem[]>(() => {
     const failed: ActivityItem[] = []
@@ -146,30 +151,39 @@ export function OverviewPage({
         editKey: r.key,
       })
     }
+    const DAY_MS = 24 * 60 * 60 * 1000
     const live = alerts
       .filter((a) => !a.resolved && !erroredKeys.has(a.accountKey))
-      .sort((a, b) => b.firstSeenAt - a.firstSeenAt)
+      .sort((a, b) => b.lastSeenAt - a.lastSeenAt)
       .map(
         (a): ActivityItem => ({
           key: a.id,
           title: alertTitle(a, t),
-          detail: alertDetail(a, t),
+          detail:
+            a.lastSeenAt - a.firstSeenAt > DAY_MS
+              ? [alertDetail(a, t), t.overview.alertSince(formatClock(a.firstSeenAt, now))]
+                  .filter(Boolean)
+                  .join(' · ')
+              : alertDetail(a, t),
           level: a.level,
-          time: formatClock(a.firstSeenAt, now),
+          time: formatClock(a.lastSeenAt, now),
         }),
       )
     return failed.concat(live).slice(0, MAX_ACTIVITY_ITEMS)
   }, [rows, alerts, results, t, now])
-  // The heaviest local agents by all-time usage, with whether they ran today
+  // The agents with the most usage over the last seven days, with whether they
+  // ran today. Ranked by the same window as the distribution card beside it:
+  // by all-time usage the two cards disagreed (the week's heaviest agent could
+  // be missing here while a long-idle one stayed on top).
   const accountStatus = useMemo<AccountStatusItem[]>(
     () =>
       agentUsage.clients
-        .filter((c) => c.exists && c.allTime.tokens > 0)
-        .sort((a, b) => b.allTime.tokens - a.allTime.tokens)
+        .filter((c) => (c.last7?.tokens ?? 0) > 0)
+        .sort((a, b) => (b.last7?.tokens ?? 0) - (a.last7?.tokens ?? 0))
         .slice(0, MAX_ACCOUNT_STATUS_ITEMS)
         .map((c) => ({
           client: c.client,
-          allTimeTokens: c.allTime.tokens,
+          tokens: c.last7?.tokens ?? 0,
           usedToday: c.today.tokens > 0 || c.today.credits > 0 || c.today.messages > 0,
         })),
     [agentUsage],

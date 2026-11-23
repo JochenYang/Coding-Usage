@@ -161,15 +161,16 @@ function normalizeClientRows(value: unknown): AgentUsageVM['clients'] {
     const row = entry as AgentUsageVM['clients'][number]
     if (typeof row.client !== 'string' || !known.has(row.client)) continue
     out.push(
-      dropMissingWeek({
+      dropMissingWindows({
         ...row,
         today: withPeriodDefaults(row.today),
         month: withPeriodDefaults(row.month),
         week: isPeriod(row.week) ? withPeriodDefaults(row.week) : undefined,
+        last7: isPeriod(row.last7) ? withPeriodDefaults(row.last7) : undefined,
         allTime: withPeriodDefaults(row.allTime),
         models: Array.isArray(row.models)
           ? row.models.map((m) =>
-              dropMissingWeek({
+              dropMissingWindows({
                 ...m,
                 today: withPeriodDefaults(m.today),
                 month: withPeriodDefaults(m.month),
@@ -190,13 +191,15 @@ function isPeriod(value: unknown): value is AgentPeriodVM {
 }
 
 /**
- * Remove a `week` the cache does not really carry. A summary written before
- * the week column existed deserializes without it (or with null), and a zero
- * put in its place would read like a measurement; absent, the card shows a
- * dash until the next scan fills the column in.
+ * Remove the week windows (`week`, `last7`) a cache does not really carry. A
+ * summary written before a window existed deserializes without it (or with
+ * null), and a zero put in its place would read like a measurement; absent,
+ * the card shows a dash (or leaves the agent out of a ranking) until the next
+ * scan fills it in.
  */
-function dropMissingWeek<T extends { week?: unknown }>(value: T): T {
+function dropMissingWindows<T extends { week?: unknown; last7?: unknown }>(value: T): T {
   if (!isPeriod(value.week)) delete value.week
+  if (!isPeriod(value.last7)) delete value.last7
   return value
 }
 
@@ -253,7 +256,7 @@ export function loadCachedAgentUsage(): AgentUsageVM | null {
       allTimeTotal: withPeriodDefaults(parsed.allTimeTotal),
       other:
         parsed.other && typeof parsed.other === 'object'
-          ? dropMissingWeek({
+          ? dropMissingWindows({
               today: withPeriodDefaults(parsed.other.today),
               month: withPeriodDefaults(parsed.other.month),
               week: isPeriod(parsed.other.week) ? withPeriodDefaults(parsed.other.week) : undefined,

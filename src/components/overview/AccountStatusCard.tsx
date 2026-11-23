@@ -9,8 +9,8 @@ import { AGENT_LABELS } from '@/lib/agent-labels'
 
 export interface AccountStatusItem {
   client: AgentClientId
-  /** All-time tokens this agent consumed — the figure the card ranks by */
-  allTimeTokens: number
+  /** Tokens this agent consumed over the last seven days — the figure the card ranks by */
+  tokens: number
   /** True when the agent recorded usage today (tokens, credits or calls) */
   usedToday: boolean
 }
@@ -21,11 +21,13 @@ export interface AccountStatusCardProps {
 }
 
 /**
- * "Account usage" card: the three heaviest local agents, each with its
- * all-time figure and whether it ran today. Deliberately plain about what it
- * knows — the overview holds no subscription-quota state (those live inside
- * the plan cards on the plans page), so the status says "in use today" or
- * "not used today" and nothing it would have to guess at.
+ * "Account usage" card: the three local agents that used the most over the
+ * last seven days — the same window as the usage distribution beside it, so
+ * the two cards never contradict each other — each with its figure and
+ * whether it ran today. Deliberately plain about what it knows: the overview
+ * holds no subscription-quota state (those live inside the plan cards on the
+ * plans page), so the status says "in use today" or "not used today" and
+ * nothing it would have to guess at.
  */
 export function AccountStatusCard({ items, className }: AccountStatusCardProps) {
   const t = useT()
@@ -40,11 +42,12 @@ export function AccountStatusCard({ items, className }: AccountStatusCardProps) 
           <ShieldCheck className="h-4 w-4 shrink-0 text-accent" aria-hidden />
           <span className="truncate">{t.overview.accountStatusTitle}</span>
         </h2>
-        {/* The figures are all-time totals: said once for the row of three
-            instead of being repeated in every tile */}
+        {/* The window of the figures: said once for the row of three instead
+            of being repeated in every tile. Same window, same chip, as the
+            usage distribution beside it */}
         {items.length > 0 && (
           <span className="shrink-0 rounded-md bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent-text">
-            {t.overview.allTimeCol}
+            {t.overview.distRecent7}
           </span>
         )}
       </div>
@@ -59,7 +62,7 @@ export function AccountStatusCard({ items, className }: AccountStatusCardProps) 
                 {AGENT_LABELS[item.client]}
               </div>
               <div className="mt-0.5 text-lg font-semibold leading-tight tabular-nums text-foreground">
-                {formatCompactValue(item.allTimeTokens)}
+                {formatCompactValue(item.tokens)}
               </div>
               <div
                 className={cn(

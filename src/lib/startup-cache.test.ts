@@ -71,6 +71,7 @@ describe('cached agent usage summary', () => {
             today: period(1),
             month: period(2),
             week: period(10),
+            last7: period(15),
             allTime: period(3),
             models: [{ model: 'm', today: period(1), month: period(1), week: period(10), allTime: period(3) }],
           },
@@ -84,6 +85,7 @@ describe('cached agent usage summary', () => {
     expect(vm?.last7Total?.tokens).toBe(20)
     expect(vm?.last7ByAgent?.[0]?.label).toBe('Kimi Code')
     expect(vm?.clients[0]?.week?.tokens).toBe(10)
+    expect(vm?.clients[0]?.last7?.tokens).toBe(15)
     expect(vm?.clients[0]?.models[0]?.week?.tokens).toBe(10)
   })
 
@@ -100,6 +102,7 @@ describe('cached agent usage summary', () => {
             today: period(1),
             month: period(2),
             week: null,
+            last7: null,
             allTime: period(3),
             models: [{ model: 'm', today: period(1), month: period(1), allTime: period(3) }],
           },
@@ -112,6 +115,7 @@ describe('cached agent usage summary', () => {
 
     expect(vm).not.toBeNull()
     expect('week' in (vm?.clients[0] ?? {})).toBe(false)
+    expect('last7' in (vm?.clients[0] ?? {})).toBe(false)
     expect('week' in (vm?.clients[0]?.models[0] ?? {})).toBe(false)
     expect('week' in (vm?.other ?? {})).toBe(false)
     expect(vm?.weekTotal).toBeUndefined()

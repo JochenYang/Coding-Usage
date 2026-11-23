@@ -10,6 +10,18 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- 用量分布的图例同时显示数值和占比（如「5.72B 31%」），两列对齐
+- 近期活动按告警最近一次确认的时间显示；持续超过一天的告警在详情里注明起始日期（一直成立的低余额不再显示成几个月前的旧数据）
+- 「账号使用情况」改为按最近 7 天的用量取前三，与旁边的用量分布同一口径（原来按累计取，两张卡会互相矛盾）
+
+### English
+- The usage distribution legend shows each slice's value next to its share (as "5.72B 31%"), in two aligned columns
+- Recent activity shows alerts at the time they were last confirmed, and notes since when an alert has held for more than a day (a low balance that never cleared no longer reads as months-old data)
+- "Account usage" now ranks agents by their last 7 days of usage, the same window as the usage distribution beside it (it ranked by all-time usage, and the two cards could contradict each other)
+
 ## [v0.10.5] - 2026-11-23
 
 ### 中文

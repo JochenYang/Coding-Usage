@@ -264,6 +264,13 @@ describe('week windows', () => {
       expect.objectContaining({ label: 'OpenCode', tokens: 10 }),
     ])
     expect(vm.last7ByAgent?.reduce((sum, s) => sum + s.tokens, 0)).toBe(75)
+    // Each agent carries its own figure for the window, which is what the
+    // overview ranks by
+    const kimi = vm.clients.find((c) => c.client === 'kimi')
+    expect(kimi?.last7?.tokens).toBe(65)
+    expect(vm.clients.find((c) => c.client === 'opencode')?.last7?.tokens).toBe(10)
+    // The day a week ago counts toward the cumulative figure only
+    expect(kimi?.allTime.tokens).toBe(765)
   })
 
   it('leaves a key from the future out of both week windows', () => {

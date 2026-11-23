@@ -128,6 +128,11 @@ export interface AgentClientVM {
   month: AgentPeriodVM
   /** Calendar week so far; absent on an old cache, see AgentModelVM.week */
   week?: AgentPeriodVM
+  /**
+   * The rolling last seven days (today included) — the window the overview
+   * ranks agents by. Absent on an old cache, like `week`.
+   */
+  last7?: AgentPeriodVM
   allTime: AgentPeriodVM
   /**
    * Models this agent called, sorted by all-time tokens descending.
@@ -716,6 +721,9 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
       today,
       month,
       week,
+      // The agent slices of the distribution are accumulated by client id and
+      // only labelled at the end, so each agent's own last seven days is here
+      last7: last7ByAgent.get(c) ?? zero(),
       allTime: all,
       models,
     }

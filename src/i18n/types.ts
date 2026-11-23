@@ -384,6 +384,8 @@ export interface Dict {
     alertResetSoon: (m: number) => string
     alertUsedDetail: (used: string, total: string) => string
     alertBalanceDetail: (s: string) => string
+    /** An alert that has held for over a day: when it began */
+    alertSince: (date: string) => string
     agoJust: string
     agoShort: (m: number) => string
     agoHoursMinutes: (h: number, m: number) => string

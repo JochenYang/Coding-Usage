@@ -58,7 +58,6 @@ export function DistributionCard({ slices, total, centerLabel, rangeLabel, asOf,
           centerLabel={centerLabel}
           size={124}
           thickness={16}
-          legendValue={false}
           orientation="horizontal"
           className="gap-4"
         />

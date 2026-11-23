@@ -188,7 +188,7 @@
 | Select | Trigger/Content/Item 组合 | Default · Hover · Focus-visible · Open（果冻圆角 morph）· Disabled · Selected（√标记） | 面板绝对定位于 field 内；多 Select 叠放时由布局层控单开；`inert` 关闭态 |
 | Popover | `click/hover` · `top/bottom` · 对齐三档 | Default · Open（gooey 形变）· Esc/外部关闭（焦点回触发器） | 面板 `max-w-[min(92vw,20rem)] p-4`；hover 模式 120ms 关闭延迟；触屏上 tap 同样可开 |
 | ConfirmDialog | — | Default · Focus（危险确认） | 危险操作二次确认；按钮层级按主/次排布 |
-| LineChart / DonutChart | 自研 SVG（无图表库依赖）；DonutChart 图例可 `legendValue={false}` 只留百分比 | Default · Hover（十字线 + HTML tooltip）· Empty（`<2` 点显示 `—`） | 网格 `border` 虚线、刻度 `subtle 10px`、线/面 `accent`；tooltip 固定字号 HTML 渲染；x 标签 thinning ≤7 |
+| LineChart / DonutChart | 自研 SVG（无图表库依赖）；DonutChart 图例默认「数值 占比」两列对齐，`legendValue={false}` 只留百分比 | Default · Hover（十字线 + HTML tooltip）· Empty（`<2` 点显示 `—`） | 网格 `border` 虚线、刻度 `subtle 10px`、线/面 `accent`；tooltip 固定字号 HTML 渲染；x 标签 thinning ≤7 |
 | ProviderLogo | lobehub slug / 内联 SVG / 字母兜底 | Default · 加载失败（字母兜底） | `rounded-md` 槽；`logoDarkInvert` 处理白底白 logo |
 | CardWatermark | — | Default（纯装饰） | 拉伸卡片的空白填充：品牌单色字形 6% 前景色水印，`-z-10` 在正文之下；卡片需 `z-0`，见 §1.1 |
 | 表单输入（各页内联） | — | Default · Focus-visible | 边框 `border`，聚焦 `focus:border-accent`；数字类配 `font-mono tabular-nums`；placeholder 用 `subtle` |

@@ -24,8 +24,8 @@ export interface DonutChartProps {
   /** Render the legend list next to the ring (default true) */
   showLegend?: boolean
   /**
-   * Print each legend share as "42% (28.6B)" (default) or as the percentage
-   * alone, for a narrow card where label and figure would not both fit.
+   * Print the slice's value before its share, as "3B 63%" (default), or the
+   * percentage alone for a card too narrow for both.
    */
   legendValue?: boolean
   /** Ring above and legend below (vertical), or side by side (default) */
@@ -129,10 +129,17 @@ export function DonutChart({
             return (
               <li key={`${s.label}-${i}`} className="flex items-center gap-2 text-xs">
                 <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: s.color }} />
-                <span className="truncate text-foreground">{s.label}</span>
-                <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
-                  {legendValue ? `${percent}% (${fmt(s.value)})` : `${percent}%`}
-                </span>
+                <span className="min-w-0 flex-1 truncate text-foreground">{s.label}</span>
+                {legendValue ? (
+                  // The value, then the share it stands for: "3B 63%". Both
+                  // columns are fixed-width so the figures line up down the list
+                  <span className="flex shrink-0 items-baseline gap-2 tabular-nums">
+                    <span className="min-w-[3.25rem] text-right text-muted-foreground">{fmt(s.value)}</span>
+                    <span className="w-8 text-right font-medium text-foreground">{percent}%</span>
+                  </span>
+                ) : (
+                  <span className="shrink-0 tabular-nums text-muted-foreground">{percent}%</span>
+                )}
               </li>
             )
           })}
