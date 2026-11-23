@@ -424,7 +424,7 @@ export interface Dict {
     kpiTokens: string
     kpiCalls: string
     kpiHitRate: string
-    /** Cache split is only reported per day, never per model */
+    /** A fallback source (archive, snapshots) carries a daily total only */
     hitRateUnavailable: string
     hitRateUnavailableShort: string
     kpiSpeed: string
@@ -445,10 +445,17 @@ export interface Dict {
     chartTrend: string
     chartSplit: string
     chartSplitHint: string
+    /**
+     * The split view draws a capped number of curves; says the cap applied.
+     * `filtered` narrows the claim to the picked models.
+     */
+    chartSplitTruncated: (n: number, filtered: boolean) => string
     chartCompare: string
     chartCompareHint: string
     /** Series / axis labels */
     seriesCacheRead: string
+    /** Named in the tooltip and the KPI footer only when the window has any */
+    seriesCacheWrite: string
     seriesInput: string
     seriesOutput: string
     seriesCalls: string
@@ -458,14 +465,16 @@ export interface Dict {
     /** The single reset button: clearing the pick list IS "show all models" */
     filterAll: string
     filterSelected: (n: number) => string
+    /** Chips are capped; `where` is the title of the chart the rest can be picked in */
+    filterMore: (n: number, where: string) => string
     /** States */
     emptyTitle: string
     emptyDesc: string
     gathering: string
+    /** The scan has history, but none of it falls in the selected range */
+    emptyRange: string
     /** Bucketing note for long ranges */
     weeklyNote: string
-    /** Filtered view cannot split input from cache */
-    filteredSplitNote: string
     /** All-time block, independent of the range selector */
     cumulativeTitle: string
     cumulativeDesc: string

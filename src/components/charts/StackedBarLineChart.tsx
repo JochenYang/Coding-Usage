@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react'
 import { cn } from '@/lib/cn'
 import { formatCompactValue } from '@/lib/format'
-import { CHART_W, barPath, labelIndexes, niceTicks, r2, smoothPath } from '@/lib/chart-math'
+import { CHART_W, barPath, contiguousRuns, labelIndexes, niceTicks, r2, smoothPath } from '@/lib/chart-math'
 import { useChartKeyboard } from '@/lib/hooks/use-chart-keyboard'
 import { ChartLegend, type LegendItem } from './ChartLegend'
 import { ChartTooltip, tooltipAnchor, type TooltipRow } from './ChartTooltip'
@@ -10,8 +10,10 @@ import type { TrendBucket } from '@/lib/trend-analysis'
 /**
  * Stacked-bar + dual-axis line chart for the aggregate usage trend.
  *
- * Left axis: token volume, split into cache-read / input / output segments.
- * Right axis: weighted output speed (tok/s) as a smoothed curve.
+ * Left axis: token volume, split into cache-read / input / output segments
+ * (cache writes ride in the cache-read segment — see `segmentsOf`). Right axis:
+ * weighted output speed (tok/s) as a smoothed curve, broken wherever a bucket
+ * has no usable clock (see {@link contiguousRuns}).
  *
  * The stack is drawn as a single-hue ramp so the column reads as one quantity
  * with a breakdown rather than three competing categories, and the speed curve
@@ -31,15 +33,15 @@ export interface StackedBarLineChartProps {
   /** viewBox height; drives the aspect ratio */
   height?: number
   /**
-   * Leave the cache-read segment out of the stack (the no-cache accounting
-   * mode). The axis follows suit, so the bars stay proportionate to the
-   * headline figure the KPI row reports.
+   * Leave the cache segment (reads and writes) out of the stack (the no-cache
+   * accounting mode). The axis follows suit, so the bars stay proportionate
+   * to the headline figure the KPI row reports.
    */
   dropCache?: boolean
   /** Formatter for the token axis */
   formatTokens?: (n: number) => string
-  /** Legend / tooltip labels for the three stack segments */
-  labels: { cacheRead: string; input: string; output: string; speed: string }
+  /** Legend / tooltip labels for the stack segments and the speed curve */
+  labels: { cacheRead: string; cacheWrite: string; input: string; output: string; speed: string }
   ariaLabel?: string
   /** Appended to the accessible name; see MultiSeriesChart for why it exists */
   keyboardHint?: string
@@ -84,8 +86,11 @@ export function StackedBarLineChart({
     setHover(null)
   }, [buckets])
 
-  const speeds = buckets.map((b) => b.tokPerSec ?? 0)
-  const hasSpeed = speeds.some((s) => s > 0)
+  // A bucket with no usable clock has NO speed — `tokPerSec` is null there.
+  // Plotting it as 0 put the curve on the floor under the tallest bar of the
+  // month and read as a stop; the line breaks instead (see `contiguousRuns`).
+  const speeds = buckets.map((b) => b.tokPerSec)
+  const hasSpeed = speeds.some((s) => s != null && s > 0)
 
   if (buckets.length === 0) {
     return (
@@ -100,22 +105,29 @@ export function StackedBarLineChart({
   const innerH = H - PAD.top - PAD.bottom
   const baselineY = PAD.top + innerH
 
-  /** Stack segments for a column, top-down order fixed so a colour never moves */
+  /**
+   * Stack segments for a column, top-down order fixed so a colour never moves.
+   *
+   * Reads and writes share the cache colour: writes are a fraction of a percent
+   * of the reads on every real scan, far too thin for a lightness step of their
+   * own, and leaving them out made each bar shorter than the headline above
+   * it. The tooltip lists the two apart.
+   */
   const segmentsOf = (b: TrendBucket) =>
     [
-      ...(dropCache ? [] : [{ v: b.cacheRead, color: CACHE_COLOR }]),
+      ...(dropCache ? [] : [{ v: b.cacheRead + b.cacheWrite, color: CACHE_COLOR }]),
       { v: b.input, color: INPUT_COLOR },
       { v: b.output, color: OUTPUT_COLOR },
     ].filter((s) => s.v > 0)
 
-  // The axis follows the COUNTED total, never the drawn stack: in "all" mode the
-  // headline total carries cache writes the stack does not draw, and in no-cache
-  // mode the stack drops the cache segment entirely. Deriving the axis from the
-  // stack instead would let the bars grow past the top of the plot.
+  // The axis follows the COUNTED total, never the drawn stack: in no-cache mode
+  // the stack drops the cache segment (reads and writes) that the headline of
+  // the other mode carries. Deriving the axis from the stack instead would let
+  // the bars grow past the top of the plot.
   const axisValue = buckets.reduce((m, b) => Math.max(m, dropCache ? b.input + b.output : b.total), 0)
   const tokenTicks = niceTicks(axisValue)
   const maxTokenTick = tokenTicks[tokenTicks.length - 1] || 1
-  const speedTicks = hasSpeed ? niceTicks(Math.max(...speeds, 0)) : []
+  const speedTicks = hasSpeed ? niceTicks(Math.max(...speeds.filter((s): s is number => s != null), 0)) : []
   const maxSpeedTick = speedTicks.length > 0 ? speedTicks[speedTicks.length - 1]! : 1
 
   const step = innerW / buckets.length
@@ -126,8 +138,10 @@ export function StackedBarLineChart({
   const yToken = (v: number) => baselineY - (v / maxTokenTick) * innerH
   const ySpeed = (v: number) => baselineY - (v / maxSpeedTick) * innerH
 
-  const speedCoords = buckets.map((_, i) => ({ x: centerAt(i), y: ySpeed(speeds[i]!) }))
-  const speedPath = hasSpeed ? smoothPath(speedCoords) : ''
+  // One run of known speeds per path; the gaps between runs stay empty
+  const speedRuns = contiguousRuns(speeds).map((run) =>
+    run.map(({ index, value }) => ({ x: centerAt(index), y: ySpeed(value) })),
+  )
 
   const legendItems: LegendItem[] = [
     ...(dropCache ? [] : [{ id: 'cacheRead', label: labels.cacheRead, color: CACHE_COLOR, shape: 'square' as const }]),
@@ -148,11 +162,20 @@ export function StackedBarLineChart({
   // dataset would otherwise match no bar and dim every one of them.
   const dimmed = hover != null && hover < buckets.length ? hover : null
   const activeX = hover != null ? centerAt(hover) : 0
-  const activeSpeed = hover != null ? speedCoords[hover] : undefined
+  const hoveredSpeed = hover != null && hasSpeed && speeds[hover] != null ? ySpeed(speeds[hover]!) : undefined
 
   const tooltipRows: TooltipRow[] = active
     ? [
-        ...(dropCache ? [] : [{ label: labels.cacheRead, value: fmt(active.cacheRead), color: CACHE_COLOR, shape: 'square' as const }]),
+        ...(dropCache
+          ? []
+          : [
+              { label: labels.cacheRead, value: fmt(active.cacheRead), color: CACHE_COLOR, shape: 'square' as const },
+              // Itemised only when there is something to itemise: on most days
+              // the writes round to nothing
+              ...(active.cacheWrite > 0
+                ? [{ label: labels.cacheWrite, value: fmt(active.cacheWrite), color: CACHE_COLOR, shape: 'square' as const }]
+                : []),
+            ]),
         { label: labels.input, value: fmt(active.input), color: INPUT_COLOR, shape: 'square' as const },
         { label: labels.output, value: fmt(active.output), color: OUTPUT_COLOR, shape: 'square' as const },
         ...(active.tokPerSec != null
@@ -240,13 +263,18 @@ export function StackedBarLineChart({
 
           {/* Weighted-speed wash, drawn BEFORE the bars so the columns keep
               their exact token colour — a translucent area over them tinted the
-              cache slab differently in every column and broke the ramp. */}
-          {hasSpeed && (
-            <path
-              d={`${speedPath} L${r2(speedCoords[speedCoords.length - 1]!.x)} ${r2(baselineY)} L${r2(speedCoords[0]!.x)} ${r2(baselineY)} Z`}
-              fill={`url(#${speedGradient})`}
-            />
-          )}
+              cache slab differently in every column and broke the ramp. An
+              isolated point has no area under it. */}
+          {hasSpeed &&
+            speedRuns
+              .filter((run) => run.length > 1)
+              .map((run, i) => (
+                <path
+                  key={`wash-${i}`}
+                  d={`${smoothPath(run)} L${r2(run[run.length - 1]!.x)} ${r2(baselineY)} L${r2(run[0]!.x)} ${r2(baselineY)} Z`}
+                  fill={`url(#${speedGradient})`}
+                />
+              ))}
 
           {/* Stacked bars. Segments butt directly against each other — the
               lightness steps already separate them, and a gap would break the
@@ -279,28 +307,41 @@ export function StackedBarLineChart({
           })}
 
           {/* Speed curve over the bars so it stays readable across a tall
-              column. No per-point markers: at this density they read as beads
-              strung along the line and bury the shape. */}
-          {hasSpeed && (
-            <>
-              <path
-                d={speedPath}
-                fill="none"
-                stroke={SPEED_COLOR}
-                strokeWidth={2}
-                strokeLinejoin="round"
-              />
-              {activeSpeed && (
+              column. No per-point markers along a run: at this density they
+              read as beads strung along the line and bury the shape. One path
+              per run of known speeds — a bucket without a usable clock is a
+              gap — and a dot for a run of one, which has no segment to draw:
+              on a daily chart of alternate-day usage that is every point. */}
+          {hasSpeed &&
+            speedRuns.map((run, i) =>
+              run.length === 1 ? (
                 <circle
-                  cx={r2(activeSpeed.x)}
-                  cy={r2(activeSpeed.y)}
-                  r={3.5}
+                  key={`speed-dot-${i}`}
+                  cx={r2(run[0]!.x)}
+                  cy={r2(run[0]!.y)}
+                  r={2.5}
                   fill={SPEED_COLOR}
-                  stroke="var(--color-card)"
-                  strokeWidth={2}
                 />
-              )}
-            </>
+              ) : (
+                <path
+                  key={`speed-${i}`}
+                  d={smoothPath(run)}
+                  fill="none"
+                  stroke={SPEED_COLOR}
+                  strokeWidth={2}
+                  strokeLinejoin="round"
+                />
+              ),
+            )}
+          {hoveredSpeed != null && (
+            <circle
+              cx={r2(activeX)}
+              cy={r2(hoveredSpeed)}
+              r={3.5}
+              fill={SPEED_COLOR}
+              stroke="var(--color-card)"
+              strokeWidth={2}
+            />
           )}
 
           {/* Hover crosshair */}

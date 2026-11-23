@@ -61,6 +61,32 @@ export function labelIndexes(count: number, max = MAX_X_LABELS): number[] {
 }
 
 /**
+ * Split a series into its contiguous known runs, each point keeping the index
+ * it had in the series.
+ *
+ * A line chart must not draw across a missing value: a speed of "not
+ * measured" plotted as 0 puts the curve on the floor and reads as a stop. The
+ * caller draws one path per run and leaves the gaps empty.
+ */
+export function contiguousRuns<T>(items: readonly (T | null | undefined)[]): Array<Array<{ index: number; value: T }>> {
+  const runs: Array<Array<{ index: number; value: T }>> = []
+  let current: Array<{ index: number; value: T }> | null = null
+  for (let i = 0; i < items.length; i++) {
+    const value = items[i]
+    if (value == null) {
+      current = null
+      continue
+    }
+    if (current === null) {
+      current = []
+      runs.push(current)
+    }
+    current.push({ index: i, value })
+  }
+  return runs
+}
+
+/**
  * Monotone cubic interpolation through the points, emitted as cubic Bezier
  * segments.
  *

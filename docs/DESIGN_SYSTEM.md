@@ -189,6 +189,7 @@
 | Popover | `click/hover` · `top/bottom` · 对齐三档 | Default · Open（gooey 形变）· Esc/外部关闭（焦点回触发器） | 面板 `max-w-[min(92vw,20rem)] p-4`；hover 模式 120ms 关闭延迟；触屏上 tap 同样可开 |
 | ConfirmDialog | — | Default · Focus（危险确认） | 危险操作二次确认；按钮层级按主/次排布 |
 | LineChart / DonutChart | 自研 SVG（无图表库依赖）；DonutChart 图例默认「数值 占比」两列对齐，`legendValue={false}` 只留百分比 | Default · Hover（十字线 + HTML tooltip）· Empty（`<2` 点显示 `—`） | 网格 `border` 虚线、刻度 `subtle 10px`、线/面 `accent`；tooltip 固定字号 HTML 渲染；x 标签 thinning ≤7 |
+| StackedBarLineChart / MultiSeriesChart / ModelCompareChart | 趋势页三图（自研 SVG）：堆叠柱 缓存读取（含写入）→ 输入 → 输出 + 右轴速度线；分模型多线；横向条形排名 | Default · Hover（十字线 + HTML tooltip，含今天或未满周期的末列带「部分周期」）· Empty（`—`） | 轴按计数总量取最大，不从柱高推；速度线在没有可用时长的列**断开**（不画 0），每段一条 path、孤立点画圆点；分模型图例的点击是筛选模型，提示里写明；chip 超过 24 个时在筛选卡片里说明、曲线超过 8 条时在图下说明截断 |
 | ProviderLogo | lobehub slug / 内联 SVG / 字母兜底 | Default · 加载失败（字母兜底） | `rounded-md` 槽；`logoDarkInvert` 处理白底白 logo |
 | CardWatermark | — | Default（纯装饰） | 拉伸卡片的空白填充：品牌单色字形 6% 前景色水印，`-z-10` 在正文之下；卡片需 `z-0`，见 §1.1 |
 | 表单输入（各页内联） | — | Default · Focus-visible | 边框 `border`，聚焦 `focus:border-accent`；数字类配 `font-mono tabular-nums`；placeholder 用 `subtle` |
@@ -248,7 +249,10 @@ Accessibility 五条（组件评审 + 实现后各走查一次）：焦点可见
 - **组件类名合并**：用 `cn()`（`src/lib/cn.ts`，clsx + tailwind-merge）合并与消解冲突，条件类名走 clsx 语法。
 - **图表色板**：`--color-chart-1..8` 是系列色板；`--color-stack-cache` / `-input` / `-output` 是
   堆叠柱的同一色相三级。槽位由 `src/lib/trend-analysis.ts` 的 `modelSlots()` 分配（一模型一槽），
-  保证筛选 chip、拆分图例与对比行颜色一致，且一屏最多八条曲线不撞色。Overview 的 donut 分类色板
+  保证筛选 chip、拆分图例与对比行颜色一致，未筛选时一屏最多八条曲线不撞色；槽位按**未筛选**的输出前 8 名
+  计算，筛选不重排——按筛选后的名单重算，单独选中的模型会跳到 0 号槽而变色。取舍：筛选里同时包含前 8 名
+  以外的模型时，两条曲线可能同色（8 色色板下「颜色稳定」「一模型一色」「同屏不同色」只能取二）。
+  Overview 的 donut 分类色板
   （`src/lib/overview.ts` 的 `DIST_COLORS`）按同一序位消费这组令牌；折叠的「其他」切片用 `subtle`。
 - **动效实现**：统一用 `motion/react`；自建组件在 `src/components/beui/`。缓动只从
   `@/lib/ease` 取（`EASE_OUT` / `EASE_IN_OUT`），弹簧写在使用它的手势组件里；所有动效必须读

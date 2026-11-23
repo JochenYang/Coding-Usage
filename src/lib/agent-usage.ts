@@ -193,9 +193,19 @@ export interface ModelDailySeriesVM {
    * Input tokens per day, aligned with `dailySeries`.
    *
    * Kept so a per-model figure can honour the "no cache" display mode
-   * (`input + output`); the cache split itself stays day-level.
+   * (`input + output`).
    */
   input: number[]
+  /**
+   * Cache-read tokens per day, aligned with `dailySeries`.
+   *
+   * Cache writes are not stored: a row's `total` is the sum of all four kinds,
+   * so writes are exactly `total - input - output - cacheRead`. With these
+   * three a model filter keeps the day-level split — and the hit rate —
+   * instead of lumping the cache into the input. Absent on a cache written
+   * before it existed; the loader derives it there.
+   */
+  cacheRead: number[]
   /** Output tokens per day, aligned index-by-index with `dailySeries` */
   output: number[]
   /** Message count per day, aligned with `dailySeries` */
@@ -280,8 +290,7 @@ interface GraphContribution {
   /**
    * Session-active milliseconds for the day. tokscale reports this per
    * contribution (day), never per client, so it cannot be attributed to a
-   * single model exactly; `buildModelRows` splits it pro-rata by call count
-   * when a model filter is active.
+   * single model exactly; `buildModelRows` splits it pro-rata by call count.
    */
   activeTimeMs?: number
   clients?: {
@@ -733,7 +742,7 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
   // second pass) so both stay index-aligned with `contribs` by construction.
   const modelDays = new Map<
     string,
-    { input: number[]; output: number[]; messages: number[]; total: number[] }
+    { input: number[]; cacheRead: number[]; output: number[]; messages: number[]; total: number[] }
   >()
 
   const dailySeries = contribs.map((c) => {
@@ -762,6 +771,7 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
       if (!row) {
         row = {
           input: new Array(contribs.length).fill(0),
+          cacheRead: new Array(contribs.length).fill(0),
           output: new Array(contribs.length).fill(0),
           messages: new Array(contribs.length).fill(0),
           total: new Array(contribs.length).fill(0),
@@ -774,6 +784,7 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
         numberOr(e.tokens?.cacheRead) +
         numberOr(e.tokens?.cacheWrite)
       row.input[i] += numberOr(e.tokens?.input)
+      row.cacheRead[i] += numberOr(e.tokens?.cacheRead)
       row.output[i] += numberOr(e.tokens?.output)
       row.messages[i] += numberOr(e.messages)
       row.total[i] += t
@@ -785,6 +796,7 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
       model,
       tokens: row.total.reduce((s, v) => s + v, 0),
       input: row.input,
+      cacheRead: row.cacheRead,
       output: row.output,
       messages: row.messages,
       total: row.total,
@@ -878,7 +890,11 @@ export function displayDayTokens(
 const DAILY_KEY = 'coding-usage.agentUsage.daily'
 const DAILY_RETENTION_DAYS = 90
 
-function todayKey(): string {
+/**
+ * Local calendar day as `YYYY-MM-DD` — the key the scan's `date` field uses.
+ * Exported for the trends grid, which is carried up to this day.
+ */
+export function todayKey(): string {
   const d = new Date()
   return `${d.getFullYear()}-${`${d.getMonth() + 1}`.padStart(2, '0')}-${`${d.getDate()}`.padStart(2, '0')}`
 }

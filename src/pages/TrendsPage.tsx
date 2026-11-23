@@ -1,5 +1,5 @@
 import { Activity, Coins, Database, Gauge, Hash, TrendingUp } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useData } from '@/lib/data-context'
 import { useT } from '@/i18n/useT'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -12,7 +12,7 @@ import { ModelCompareChart } from '@/components/charts/ModelCompareChart'
 import { formatCompactValue } from '@/lib/format'
 import { buildTrendPoints } from '@/lib/overview'
 import { cn } from '@/lib/cn'
-import { displayTokens } from '@/lib/agent-usage'
+import { displayTokens, todayKey } from '@/lib/agent-usage'
 import {
   RANGE_DAYS,
   bucketize,
@@ -33,6 +33,9 @@ import {
 
 /** How many models the split view draws before it stops being readable */
 const SPLIT_SERIES_LIMIT = 8
+
+/** Filter chips listed before the rest are left to the comparison chart */
+const FILTER_CHIP_LIMIT = 24
 
 /**
  * The credits series wears one hue of its own. Teal keeps it away from the
@@ -60,6 +63,14 @@ export function TrendsPage() {
   const t = useT()
   const { agentUsage, agentDailySeries, sections, settings } = useData()
   const mode = settings.usageDisplayMode
+  // The grid ends today and the column holding today is marked partial. A
+  // low-frequency clock keeps both true across midnight when auto-refresh is
+  // off and no new scan would recompute them (the overview's cadence).
+  const [today, setToday] = useState(todayKey)
+  useEffect(() => {
+    const timer = setInterval(() => setToday(todayKey()), 60_000)
+    return () => clearInterval(timer)
+  }, [])
 
   // Grouped before anything reads it: the scan keys a model by the endpoint that
   // served it, and every view on this page is per model.
@@ -106,8 +117,9 @@ export function TrendsPage() {
         models: modelDaily,
         archive: archived,
         snapshots: apiFallback,
+        today,
       }),
-    [agentUsage.dailySeries, modelDaily, archived, apiFallback],
+    [agentUsage.dailySeries, modelDaily, archived, apiFallback, today],
   )
 
   /**
@@ -154,22 +166,16 @@ export function TrendsPage() {
   const cumulativeShown = cumulative.rows.slice(0, CUMULATIVE_ROWS)
   const cumulativeRest = cumulative.rows.slice(CUMULATIVE_ROWS)
   const cumulativeRestTokens = cumulativeRest.reduce((s, r) => s + r.tokens, 0)
-  /**
-   * Model-filtered view. `modelDaily` carries no input/cache split (tokscale
-   * reports the breakdown per day, not per model), so a filtered selection
-   * cannot report a cache hit rate — the flag below tells the UI to say
-   * "unavailable" instead of rendering a misleading 0%.
-   */
+  /** A model filter is active: the figures that cannot be split by model say so */
   const isFiltered = modelUiEnabled && picked.length > 0
 
   /**
-   * The cache hit rate needs a per-day input/cache split, which only the scan
-   * series carries: a model filter collapses it (the scan breaks the split down
-   * per day, never per model) and a fallback source never had it at all.
+   * The cache hit rate needs an input/cache split. The scan carries it per
+   * model, so a filter keeps it; a fallback source only ever had a total.
    * Rendering "0.0%" there reads as "cache never hit" rather than "not
-   * measured", so this — not `isFiltered` alone — drives the unavailable state.
+   * measured", so this drives the unavailable state.
    */
-  const hitRateUnavailable = isFiltered || source.kind !== 'scan'
+  const hitRateUnavailable = source.kind !== 'scan'
 
   /**
    * Credits-billed usage exists at all (Qoder global's own billing unit — the
@@ -187,14 +193,22 @@ export function TrendsPage() {
   )
 
   const windowed = useMemo(() => sliceRange(filtered, range), [filtered, range])
-  const buckets = useMemo(() => bucketize(windowed), [windowed])
+  // Today's column is still filling in; the bucket holding it is marked partial
+  const buckets = useMemo(() => bucketize(windowed, today), [windowed, today])
   const totals = useMemo(() => computeTotals(buckets, mode), [buckets, mode])
 
-  // Split view: the largest models by output over the window, in a stable
-  // order so the ranking does not reshuffle as the range changes. Computed
-  // before the comparison rows because the palette slots depend on which models
-  // are actually drawn (see `modelSlots`).
-  const topModels = useMemo(() => {
+  /**
+   * The grid runs to today, so a range can be entirely idle while the scan has
+   * plenty of history. "Gathering data" would then say the opposite of what
+   * the all-time block below shows.
+   */
+  const rangeEmpty =
+    totals.tokens === 0 && source.points.some((p) => p.input + p.output + p.cacheRead + p.cacheWrite > 0)
+
+  // Split view: every model's output over the window, ranked once WITHOUT the
+  // filter. The ranking decides two things that must not move when the filter
+  // changes — which curves are drawn and which colour each wears.
+  const rankedByOutput = useMemo(() => {
     if (!modelUiEnabled) return []
     const windowSize = windowed.length
     const sumOverWindow = (values: number[]): number => {
@@ -204,34 +218,66 @@ export function TrendsPage() {
       return s
     }
     return modelSeries
-      .filter((m) => picked.length === 0 || picked.includes(m.model))
       .map((m) => ({ m, output: sumOverWindow(m.output) }))
       .sort((a, b) => b.output - a.output)
-      .slice(0, SPLIT_SERIES_LIMIT)
-      .map((x) => x.m)
-  }, [modelSeries, modelUiEnabled, picked, windowed.length])
+  }, [modelSeries, modelUiEnabled, windowed.length])
+
+  /**
+   * The curves drawn: the ranking narrowed by the filter, then capped. Without
+   * a filter a model with no output in the window is left out — as a flat zero
+   * line it only crowded the legend — while a picked one stays, so picking it
+   * does not empty the chart.
+   */
+  const split = useMemo(() => {
+    const candidates =
+      picked.length === 0
+        ? rankedByOutput.filter((x) => x.output > 0)
+        : rankedByOutput.filter((x) => picked.includes(x.m.model))
+    return {
+      models: candidates.slice(0, SPLIT_SERIES_LIMIT).map((x) => x.m),
+      truncated: candidates.length > SPLIT_SERIES_LIMIT,
+    }
+  }, [rankedByOutput, picked])
+  const topModels = split.models
 
   // One slot per model, shared by the chips, the split legend and the comparison
-  // rows, so a model wears one colour everywhere. The drawn models are placed
-  // first and therefore never share a colour with each other — see `modelSlots`
-  // for why that ordering is load-bearing.
-  const slots = useMemo(() => modelSlots(modelSeries, topModels), [modelSeries, topModels])
+  // rows, so a model wears one colour everywhere. The slots come from the
+  // UNFILTERED ranking: recomputed from the filtered one, whichever model was
+  // picked alone moved to slot 0 and changed colour between two clicks — see
+  // `modelSlots` for why the drawn models are placed first.
+  const drawnByOutput = useMemo(
+    () =>
+      rankedByOutput
+        .filter((x) => x.output > 0)
+        .slice(0, SPLIT_SERIES_LIMIT)
+        .map((x) => x.m),
+    [rankedByOutput],
+  )
+  const slots = useMemo(() => modelSlots(modelSeries, drawnByOutput), [modelSeries, drawnByOutput])
+
+  /**
+   * The window BEFORE the filter, for the one input a filtered series gets
+   * wrong: each model's share of a day's calls. Counted over the picked models
+   * alone, a model picked alone owns all of a day's calls and absorbs its whole
+   * session time — its estimated speed fell tenfold against the unfiltered row.
+   */
+  const windowedAll = useMemo(() => sliceRange(source.points, range), [source.points, range])
 
   const modelRows = useMemo(
     () =>
       buildModelRows(
         modelSeries.filter((m) => picked.length === 0 || picked.includes(m.model)),
         windowed.length,
-        windowed.map((d) => d.activeTimeMs),
-        windowed.map((d) => d.messages),
+        windowedAll.map((d) => d.activeTimeMs),
+        windowedAll.map((d) => d.messages),
         slots,
+        mode,
       ),
-    [modelSeries, picked, windowed, slots],
+    [modelSeries, picked, windowed.length, windowedAll, slots, mode],
   )
 
   const splitSeries = useMemo(() => {
     const offset = Math.max(0, source.points.length - windowed.length)
-    const pickedSet = new Set(picked)
     return topModels.map((m) => ({
       // Identity stays the raw id (unique); the label is display-only and can
       // collide after truncation, so it must never key a React list.
@@ -239,11 +285,8 @@ export function TrendsPage() {
       name: shortModelName(m.model),
       color: modelColor(slots.get(m.model) ?? 0),
       values: m.output.slice(offset, offset + windowed.length),
-      // An empty filter means "everything shown"; the chart's legend uses this
-      // to dim the curves a filter has switched off.
-      active: picked.length === 0 || pickedSet.has(m.model),
     }))
-  }, [topModels, slots, source.points.length, windowed.length, picked])
+  }, [topModels, slots, source.points.length, windowed.length])
 
   const hasLocal = agentUsage.allTimeTotal.tokens > 0 || source.points.length > 0
   const apiFallbackOnly = !hasLocal && sections.length > 0
@@ -270,13 +313,9 @@ export function TrendsPage() {
    * it. Each note is therefore gated on the view whose chart it describes:
    * weekly bucketing and the output-speed series exist only in the aggregate
    * stack, and the per-model chart plots daily points, so neither is true of it.
-   *
-   * A model filter is the exception — it collapses input and cache for the whole
-   * page, the KPI row included, so that note holds in either view.
    */
-  const chartNote = isFiltered
-    ? t.trends.filteredSplitNote
-    : activeView !== 'aggregate'
+  const chartNote =
+    activeView !== 'aggregate'
       ? t.trends.splitKpiNote
       : bucketWidthDays(windowed.length) > 1
         ? t.trends.weeklyNote
@@ -285,9 +324,10 @@ export function TrendsPage() {
           : ''
 
   /**
-   * The trailing column often covers a partial period, so its bar is naturally
-   * shorter. Saying so is the difference between "quiet week" and "the tool
-   * lost data" — the height alone cannot carry that.
+   * The trailing column often covers a partial period — or today, which is
+   * still filling in — so its bar is naturally shorter. Saying so is the
+   * difference between "quiet week" and "the tool lost data"; the height alone
+   * cannot carry that.
    */
   const lastBucketPartial =
     activeView === 'aggregate' && totals.tokens > 0 && buckets[buckets.length - 1]?.partial === true
@@ -326,9 +366,19 @@ export function TrendsPage() {
           icon={Database}
           value={formatCompactValue(totals.tokens)}
           footer={
+            // The full breakdown — in the "all" mode its parts add up to the
+            // figure above them. Cache writes are named only when the window
+            // has any.
             <span className="tabular-nums text-muted-foreground">
-              {t.trends.seriesCacheRead} {formatCompactValue(totals.cacheRead)} · {t.trends.seriesInput}{' '}
-              {formatCompactValue(totals.input)} · {t.trends.seriesOutput} {formatCompactValue(totals.output)}
+              {t.trends.seriesCacheRead} {formatCompactValue(totals.cacheRead)}
+              {totals.cacheWrite > 0 && (
+                <>
+                  {' · '}
+                  {t.trends.seriesCacheWrite} {formatCompactValue(totals.cacheWrite)}
+                </>
+              )}{' '}
+              · {t.trends.seriesInput} {formatCompactValue(totals.input)} · {t.trends.seriesOutput}{' '}
+              {formatCompactValue(totals.output)}
             </span>
           }
         />
@@ -403,7 +453,7 @@ export function TrendsPage() {
             </div>
           </div>
           <div className="mt-2.5 flex flex-wrap gap-1.5">
-            {modelSeries.slice(0, 24).map((m) => {
+            {modelSeries.slice(0, FILTER_CHIP_LIMIT).map((m) => {
               const on = picked.includes(m.model)
               return (
                 <button
@@ -425,6 +475,13 @@ export function TrendsPage() {
               )
             })}
           </div>
+          {modelSeries.length > FILTER_CHIP_LIMIT && (
+            // The list is cut, not complete: say so instead of letting the rest
+            // look absent
+            <p className="mt-2 text-[11px] text-subtle">
+              {t.trends.filterMore(modelSeries.length - FILTER_CHIP_LIMIT, t.trends.chartCompare)}
+            </p>
+          )}
         </section>
       )}
 
@@ -476,6 +533,7 @@ export function TrendsPage() {
                 dropCache={mode === 'no-cache'}
                 labels={{
                   cacheRead: t.trends.seriesCacheRead,
+                  cacheWrite: t.trends.seriesCacheWrite,
                   input: t.trends.seriesInput,
                   output: t.trends.seriesOutput,
                   speed: t.trends.seriesSpeed,
@@ -485,7 +543,9 @@ export function TrendsPage() {
                 partialSuffix={t.trends.partialBucketShort}
               />
             ) : (
-              <p className="py-10 text-center text-xs text-subtle">{t.trends.gathering}</p>
+              <p className="py-10 text-center text-xs text-subtle">
+                {rangeEmpty ? t.trends.emptyRange : t.trends.gathering}
+              </p>
             )
           ) : splitSeries.length > 0 ? (
             <MultiSeriesChart
@@ -497,10 +557,20 @@ export function TrendsPage() {
               keyboardHint={t.common.chartKeyboardHint}
             />
           ) : (
-            <p className="py-10 text-center text-xs text-subtle">{t.trends.gathering}</p>
+            <p className="py-10 text-center text-xs text-subtle">
+              {rangeEmpty ? t.trends.emptyRange : t.trends.gathering}
+            </p>
           )}
         </div>
         {chartNote !== '' && <p className="mt-2 text-[11px] text-subtle">{chartNote}</p>}
+        {activeView === 'byModel' && split.truncated && (
+          // Curves beyond the cap are not drawn; the hint above the chart
+          // names the rule, this says it applied — and narrows it to the picked
+          // models when a filter is what the ranking was taken over
+          <p className="mt-2 text-[11px] text-subtle">
+            {t.trends.chartSplitTruncated(SPLIT_SERIES_LIMIT, isFiltered)}
+          </p>
+        )}
         {lastBucketPartial && (
           <p className="mt-2 text-[11px] text-subtle">{t.trends.partialBucketNote}</p>
         )}

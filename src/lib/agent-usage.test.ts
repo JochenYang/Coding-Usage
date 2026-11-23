@@ -179,6 +179,33 @@ describe('agent × model cross-cut', () => {
     expect(row.today.cacheWrite).toBe(0)
     expect(Number.isNaN(row.today.cacheWrite)).toBe(false)
   })
+
+  it('keeps the cache split per model, so a model filter can be read in either mode', () => {
+    // Writes are not stored: a row's total minus input, output and reads.
+    const vm = scan([
+      day(localDay(0), [
+        { client: 'pi', modelId: 'm', tokens: { input: 10, output: 4, cacheRead: 6, cacheWrite: 3 }, messages: 1 },
+        { client: 'pi', modelId: 'n', tokens: { input: 1, output: 1, cacheRead: 8 }, messages: 1 },
+      ]),
+    ])
+    const m = vm.modelDaily.find((r) => r.model === 'm')!
+    const n = vm.modelDaily.find((r) => r.model === 'n')!
+
+    expect(m.input).toEqual([10])
+    expect(m.cacheRead).toEqual([6])
+    expect(m.output).toEqual([4])
+    expect(m.total).toEqual([23])
+    expect(n.total).toEqual([10])
+
+    // Across the models the parts add up to the day's own breakdown
+    const sum = (pick: 'input' | 'cacheRead' | 'output' | 'total') =>
+      vm.modelDaily.reduce((s, r) => s + r[pick][0]!, 0)
+    const first = vm.dailySeries[0]!
+    expect(sum('input')).toBe(first.input)
+    expect(sum('cacheRead')).toBe(first.cacheRead)
+    expect(sum('output')).toBe(first.output)
+    expect(sum('total')).toBe(first.input + first.output + first.cacheRead + first.cacheWrite)
+  })
 })
 
 describe('price coverage', () => {

@@ -80,7 +80,7 @@
 - **读出链路**：趋势聚合在渲染层（`src/lib/summarizeScan` 的 dailySeries 与 `src/lib/trend-analysis`）。electron 侧 credits 已全程保留（`qoder-usage.ts` 的天级 `totals.credits` → `tokscale-merge.ts` 的通用数值合并 → `usage-store.ts` 的 merge 保留 `totals.credits`），渲染层 `dayPeriod` 也已读入；缺口只有 `dailySeries` 没把每天 credits 带出。改动限于 `DayPointVM.credits`、dailySeries 映射、趋势桶累加与趋势页展示。
 - **展示**：趋势页新增「Credits 消耗」KPI 卡与「Credits 时序」独立序列区，仅在扫描结果里有 credits 数据时出现；单位始终标注 Credits，双语键一致。
 - **明确不做**：
-  - 不按模型归属拆分 credits——扫描的模型别名（`lmodel` / `qfmodel`）对不上价格表，且天级 `totals.credits` 是存储层的权威口径；模型筛选激活时 credits 指标显示「不可用」（与缓存命中率同款处理），不显示会误导的数字。
+  - 不按模型归属拆分 credits——扫描的模型别名（`lmodel` / `qfmodel`）对不上价格表，且天级 `totals.credits` 是存储层的权威口径；模型筛选激活时 credits 指标显示「不可用」，不显示会误导的数字。（缓存命中率 2026-11 起按模型保留输入 / 缓存拆分，筛选后仍可用；credits 仍只有天级口径，口径全文见 `docs/ARCHITECTURE.md` §3「趋势页口径」。）
   - 回退序列（localStorage 日归档、供应商快照）不含 credits，credits 序列仅扫描来源可用。
 - **已知边界**：`archiveDailyUsage` 的 localStorage 日归档仍只记 token（它是无图回退路径，不在趋势主读出链路上）。
 

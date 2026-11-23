@@ -151,6 +151,18 @@ electron/
    TOKSCALE_CLIENTS 里）、CodeBuddy CN IDE、Cindy、Trae CN（mergeAlways，与 tokscale 的来源
    不相交）、MiniMax Code、Antigravity、Qoder CN、Qoder global（这四路在 tokscale 已覆盖该
    client 时跳过），聚合在 `src/lib/agent-usage.ts`。
+   **趋势页口径**（`src/lib/trend-analysis.ts`，全部是纯函数）：数据源按 扫描日序列 → localStorage 日归档 →
+   服务商快照 依次取用、互不拼接；只有扫描序列带按模型拆分（归档与快照只有总量，所以命中率在那两种来源下
+   显示不可用）。日序列先补成连续日历网格并**延伸到今天**——最后一条记录之后的空档日也计 0，「最近 N 天」
+   是截至今天的 N 个日历日；列宽只由跨度决定（30 天内按天，更长按 7 / 14 / 30… 天，最多 30 列），含今天的
+   末列标「部分周期」。用量口径（含缓存读取 / 仅输入+输出）贯穿 KPI、堆叠柱、模型筛选与模型对比：按模型行
+   保存 `input` 与 `cacheRead` 两条日序列（写入不单独存，`cacheWrite = total − input − output − cacheRead`），
+   筛选因此保留拆分和命中率；旧缓存缺这两条数组时由加载器按余量回填。缓存写入画进缓存读取段、在悬浮提示
+   里单列，底栏四项之和等于总量。加权输出速度 = 输出 ÷ 会话活跃时长。活跃时长是会话跨度的合计，并行会话
+   会叠加：24 小时以内按原值计入；超过 24 小时的只在调用足够密集时计入（平均每次调用不超过 5 分钟会话
+   时长），否则视为上游把跨天会话的跨度记到当天，不参与计算。速度线在没有可用时长的列断开而不画 0，
+   孤立的速度点画成圆点。所选范围内没有用量时图表区说明这一点（不再是「正在累积数据」）。credits 是
+   独立单位，不并入 token、不按模型拆分。
 4. **模型价格**：`electron/model-pricing.ts` 按 models.dev 官方厂商价为主、OpenRouter 兜底，
    内置快照 `builtin-pricing.ts`（生成脚本 `scripts/gen-builtin-pricing.ts`）标注生成日期。
 5. **持久化**：`settings`（v1→v2→v3 迁移，v3 为 safeStorage 加密；智谱 / Kimi / SiliconFlow / MiniMax

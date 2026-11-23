@@ -117,15 +117,21 @@ function isValidUsageVM(value: unknown): value is AgentUsageVM {
 }
 
 /**
- * Repair the per-model rows read from a cache written before `input` existed.
+ * Repair the per-model rows read from a cache written before a field existed.
  *
  * The trends page reads `input` per index to honour the no-cache display mode,
  * so an absent array would turn that arithmetic into `undefined`. The best an
  * old row can offer is `total - output` — input plus cache — and the next scan
  * replaces it; leaving the array empty would understate every row instead.
+ *
+ * `cacheRead` arrived later still. What a row's total has left once input and
+ * output are taken out is cache read plus cache write, so that remainder
+ * stands in for the reads: a model filter then keeps a split that is off by
+ * the writes alone, and only until the next scan.
  */
 function normalizeModelRows(value: unknown): AgentUsageVM['modelDaily'] {
   if (!Array.isArray(value)) return []
+  const num = (v: unknown): number => (typeof v === 'number' ? v : 0)
   return value.map((entry) => {
     const row = (entry ?? {}) as AgentUsageVM['modelDaily'][number]
     const total = Array.isArray(row.total) ? row.total : []
@@ -135,7 +141,10 @@ function normalizeModelRows(value: unknown): AgentUsageVM['modelDaily'] {
       : total.map((v, i) =>
           Math.max(0, (typeof v === 'number' ? v : 0) - (typeof output[i] === 'number' ? output[i]! : 0)),
         )
-    return { ...row, input }
+    const cacheRead = Array.isArray(row.cacheRead)
+      ? row.cacheRead
+      : total.map((v, i) => Math.max(0, num(v) - num(input[i]) - num(output[i])))
+    return { ...row, input, cacheRead }
   })
 }
 

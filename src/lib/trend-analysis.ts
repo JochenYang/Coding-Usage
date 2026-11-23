@@ -7,12 +7,17 @@
  * calendar day (`date: "YYYY-MM-DD"`) with a day-level `activeTimeMs`, and
  * days without usage are simply absent from the payload — a real 388-day span
  * arrived as 213 rows. The series is therefore sparse, and `densifySeries`
- * restores the calendar grid before anything windows or buckets it. There are
- * no per-call timestamps, so sub-day buckets cannot be built without inventing
- * data — the range selector only ever narrows the day window, it never
- * subdivides it.
+ * restores the calendar grid (up to today) before anything windows or buckets
+ * it. There are no per-call timestamps, so sub-day buckets cannot be built
+ * without inventing data — the range selector only ever narrows the day
+ * window, it never subdivides it.
+ *
+ * The token display mode (`'all'` counts cache reads, `'no-cache'` counts
+ * input + output) reaches every token figure on the page: `filterByModels`
+ * keeps the per-model split, so a filtered series can still be read in either
+ * mode, and `buildModelRows` / `computeTotals` take the mode as a parameter.
  */
-import type { DayPointVM, ModelDailySeriesVM } from './agent-usage'
+import { todayKey, type DayPointVM, type ModelDailySeriesVM } from './agent-usage'
 
 /** Selectable look-back windows, in days (null = the entire scanned span) */
 export const RANGE_DAYS = [7, 14, 30, 90, null] as const
@@ -21,10 +26,12 @@ export type TrendRange = (typeof RANGE_DAYS)[number]
 /**
  * Narrow a daily series to its trailing `days` entries (null = unchanged).
  *
- * Expects the contiguous calendar grid from {@link densifySeries}: on a sparse
- * series "the last 30 entries" is not "the last 30 days". A series that could
- * not be densified (legacy points without dates) keeps the row-count behaviour,
- * which is the coarse window it already had.
+ * Expects the contiguous calendar grid from {@link densifySeries}, which runs
+ * up to today: on a sparse series "the last 30 entries" is not "the last 30
+ * days", and on a grid that stopped at the last record it was the 30 days
+ * before that. A series that could not be densified (legacy points without
+ * dates) keeps the row-count behaviour, which is the coarse window it already
+ * had.
  */
 export function sliceRange(points: DayPointVM[], range: TrendRange): DayPointVM[] {
   if (range === null || points.length <= range) return points
@@ -35,25 +42,42 @@ export function sliceRange(points: DayPointVM[], range: TrendRange): DayPointVM[
 const DAY_MS = 86_400_000
 
 /**
- * Session-active milliseconds that may be used as a duration.
+ * Longest session time one call can plausibly account for on a day whose
+ * total runs past 24 hours.
  *
- * `activeTimeMs` is a sum of session spans, and some upstream readers report a
- * span that outlives the day it is filed under — on a real scan 30 of 211 days
- * exceeded 24 h, the worst by two orders of magnitude (2471 h on a day holding
- * 6 calls from a single client). A calendar day cannot contain more than a day
- * of elapsed time, so such a value is not a duration and must not be used as
- * one: counting those days took 97% of the denominator and dragged the
- * headline speed from ~35 tok/s down to 1.06.
+ * `activeTimeMs` is a SUM of session spans. Up to a day it is taken as
+ * recorded. Past a day it can only be overlapping sessions, and overlapping
+ * interactive sessions call often — so a day that reports more than this
+ * much time per call is not a duration but a stuck session filed under it.
+ *
+ * The cut is empirical, from one real scan, and sits where that data is wide
+ * apart: its four heavy days over 24 h ran 19–43 s of session time per call
+ * (26–32 h over 2 200–5 200 calls), its 26 stuck-session days ran 1 431 s or
+ * more (31.5 h over 61 calls, up to 2 471 h over 6). A cut in hours alone
+ * could not separate them — the first stuck day (31.5 h) sits below the
+ * heaviest real one (32.3 h).
+ */
+const MAX_ACTIVE_MS_PER_CALL_PAST_DAY = 5 * 60_000
+
+/**
+ * Session-active milliseconds that may be used as a duration, given the
+ * day's call count.
+ *
+ * A stuck session's span is not elapsed time and must not be used as one:
+ * counting those days took 97% of the denominator and dragged the headline
+ * speed from ~35 tok/s down to 1.06.
  *
  * Token and call totals keep every day; only the rates drop these.
  */
-function measurableActiveMs(ms: number): number {
-  return ms > 0 && ms <= DAY_MS ? ms : 0
+function measurableActiveMs(ms: number, calls: number): number {
+  if (ms <= 0) return 0
+  if (ms <= DAY_MS) return ms
+  return ms / Math.max(1, calls) <= MAX_ACTIVE_MS_PER_CALL_PAST_DAY ? ms : 0
 }
 
 /** Convenience over {@link measurableActiveMs} for a day point */
 function measurableActiveMsOf(p: DayPointVM): number {
-  return measurableActiveMs(p.activeTimeMs)
+  return measurableActiveMs(p.activeTimeMs, p.messages)
 }
 
 /** The only shape a fallback source can produce: a total, nothing else */
@@ -65,7 +89,8 @@ export interface FallbackPoint {
 }
 
 /**
- * Expand a sparse day series onto a contiguous calendar grid.
+ * Expand a sparse day series onto a contiguous calendar grid that runs up to
+ * `today` (a local `YYYY-MM-DD`, see `todayKey`).
  *
  * The scan emits one contribution per day that HAS usage, so `dailySeries` is
  * sparse in practice (388-day span, 213 rows, 175 days missing, worst gap 49
@@ -75,16 +100,19 @@ export interface FallbackPoint {
  *
  * A missing day is a day with no usage, so it is inserted as a zero row rather
  * than left out: the x axis has to carry every day in the window or its spacing
- * lies. Only points carrying a `day` key can be placed on the grid — a series
- * without them (legacy archived points) is returned untouched, because inventing
- * dates is worse than the coarse window it already has.
+ * lies. The same holds for the days after the last record: a grid that stopped
+ * there slid "last N days" back by every idle day. Only points carrying a
+ * `day` key can be placed on the grid — a series without them (legacy archived
+ * points) is returned untouched, because inventing dates is worse than the
+ * coarse window it already has.
  *
  * `models` are index-aligned with `points` by construction (`summarizeScan`
  * builds both in one pass), so every row is expanded by the same insertion map.
  */
 export function densifySeries(
   points: readonly DayPointVM[],
-  models: readonly ModelDailySeriesVM[] = [],
+  models: readonly ModelDailySeriesVM[],
+  today: string,
 ): { points: DayPointVM[]; models: ModelDailySeriesVM[] } {
   const unchanged = { points: [...points], models: [...models] }
   if (points.length < 2) return unchanged
@@ -108,7 +136,11 @@ export function densifySeries(
 
   const firstMs = dayMs[0]!
   const lastMs = dayMs[dayMs.length - 1]!
-  const total = Math.round((lastMs - firstMs) / DAY_MS) + 1
+  // The grid ends today, unless the series already reaches past it (a record
+  // dated ahead of the local clock is left alone rather than truncated).
+  const todayMs = Date.parse(`${today}T00:00:00Z`)
+  const endMs = Number.isFinite(todayMs) && todayMs > lastMs ? todayMs : lastMs
+  const total = Math.round((endMs - firstMs) / DAY_MS) + 1
   if (total <= points.length) return unchanged
   // A bogus far-future date would otherwise allocate one row per day up to it,
   // times every model row, synchronously during render.
@@ -122,6 +154,7 @@ export function densifySeries(
     model: m.model,
     tokens: m.tokens,
     input: [] as number[],
+    cacheRead: [] as number[],
     output: [] as number[],
     messages: [] as number[],
     total: [] as number[],
@@ -144,6 +177,7 @@ export function densifySeries(
       })
       for (const row of modelGrid) {
         row.input.push(0)
+        row.cacheRead.push(0)
         row.output.push(0)
         row.messages.push(0)
         row.total.push(0)
@@ -154,6 +188,7 @@ export function densifySeries(
     for (let mi = 0; mi < models.length; mi++) {
       const row = modelGrid[mi]!
       row.input.push(models[mi]!.input[src] ?? 0)
+      row.cacheRead.push(models[mi]!.cacheRead[src] ?? 0)
       row.output.push(models[mi]!.output[src] ?? 0)
       row.messages.push(models[mi]!.messages[src] ?? 0)
       row.total.push(models[mi]!.total[src] ?? 0)
@@ -238,10 +273,13 @@ export function selectTrendSource(input: {
   models?: readonly ModelDailySeriesVM[]
   archive: readonly FallbackPoint[]
   snapshots: readonly FallbackPoint[]
+  /** Local calendar day the grid is carried up to; defaults to today */
+  today?: string
 }): TrendSource {
+  const today = input.today ?? todayKey()
   if (input.scan.length >= 2) {
     const models = input.models ?? []
-    const dense = densifySeries(input.scan, modelsDescribePoints(input.scan, models) ? models : [])
+    const dense = densifySeries(input.scan, modelsDescribePoints(input.scan, models) ? models : [], today)
     return {
       kind: 'scan',
       points: dense.points,
@@ -250,11 +288,11 @@ export function selectTrendSource(input: {
     }
   }
   if (input.archive.length >= 2) {
-    const dense = densifySeries(input.archive.map(fallbackPoint))
+    const dense = densifySeries(input.archive.map(fallbackPoint), [], today)
     return { kind: 'archive', points: dense.points, models: [], hasModelDetail: false }
   }
   if (input.snapshots.length >= 2) {
-    const dense = densifySeries(input.snapshots.map(fallbackPoint))
+    const dense = densifySeries(input.snapshots.map(fallbackPoint), [], today)
     return { kind: 'snapshots', points: dense.points, models: [], hasModelDetail: false }
   }
   return { kind: 'none', points: [], models: [], hasModelDetail: false }
@@ -264,11 +302,12 @@ export function selectTrendSource(input: {
  * Recompute the day series from a model selection.
  *
  * A day is kept when ANY picked model was active on it; the day's totals are
- * then recomputed from those models alone, so the KPI row, the stacked bars and
- * the comparison chart all describe the same selection. Input is derived as
- * `total - output` and the cache split collapses, because the scan reports the
- * breakdown per day rather than per model — the caller surfaces that as an
- * unavailable hit rate instead of a misleading 0%.
+ * then recomputed from those models alone, split included, so the KPI row, the
+ * stacked bars, the comparison chart and the hit rate all describe the same
+ * selection in either display mode.
+ *
+ * Cache writes are not stored per model; they are what the picked rows' total
+ * has left once reads, input and output are taken out.
  *
  * `models` must describe `points` (see {@link modelsDescribePoints}); callers
  * only reach this with rows taken from the same series.
@@ -283,15 +322,28 @@ export function filterByModels(
   const rows = models.filter((m) => pickedSet.has(m.model))
   if (rows.length === 0) return []
   return points.map((day, i) => {
+    let input = 0
+    let cacheRead = 0
     let output = 0
     let messages = 0
     let total = 0
     for (const r of rows) {
-      messages += r.messages[i] ?? 0
+      input += r.input[i] ?? 0
+      cacheRead += r.cacheRead[i] ?? 0
       output += r.output[i] ?? 0
+      messages += r.messages[i] ?? 0
       total += r.total[i] ?? 0
     }
-    return { ...day, input: Math.max(0, total - output), output, cacheRead: 0, cacheWrite: 0, value: total, messages }
+    return {
+      ...day,
+      input,
+      cacheRead,
+      // The clamp only guards a row whose parts drift past its own total
+      cacheWrite: Math.max(0, total - input - output - cacheRead),
+      output,
+      value: total,
+      messages,
+    }
   })
 }
 
@@ -300,8 +352,8 @@ export interface CumulativeModelRow {
   model: string
   /**
    * Mode-aware total: every kind of token, or `input + output` when the caller
-   * asked for the no-cache口径. The per-model rows carry both, so this column
-   * follows the display mode; only the cache split itself stays day-level.
+   * asked for the no-cache口径. The per-model rows carry input and output
+   * apart, so this column follows the display mode.
    */
   tokens: number
   output: number
@@ -388,6 +440,12 @@ export interface TrendBucket {
   rangeLabel: string
   /** Cache-read portion of the stack */
   cacheRead: number
+  /**
+   * Cache-write portion of the stack — drawn in the cache-read colour (a
+   * fraction of the reads on every real scan) and itemised in the tooltip, so
+   * a bar is as tall as the headline it sits under.
+   */
+  cacheWrite: number
   /** Non-cached input portion of the stack */
   input: number
   /** Output portion of the stack */
@@ -430,11 +488,13 @@ export interface TrendBucket {
   /** Weighted output speed of the bucket; null when no active time is known */
   tokPerSec: number | null
   /**
-   * True when the bucket holds fewer days than the chosen width.
+   * True when the bucket covers less time than the chosen width.
    *
-   * Only the trailing bucket can be short. Its bar is naturally lower than its
-   * neighbours, which reads as a drop-off unless the UI says otherwise — so the
-   * flag travels with the data rather than being re-derived by each consumer.
+   * Only the trailing bucket can be short: it holds fewer days, or it holds
+   * `today`, whose data is still coming in. Either way its bar is naturally
+   * lower than its neighbours, which reads as a drop-off unless the UI says
+   * otherwise — so the flag travels with the data rather than being re-derived
+   * by each consumer.
    */
   partial: boolean
 }
@@ -476,9 +536,12 @@ export function bucketWidthDays(dayCount: number): number {
  * 30-day window keeps daily columns, a quarter steps up to weeks, a multi-year
  * history to fortnights. The trailing bucket is often shorter than the others
  * and is reported as-is rather than padded with zeros that would fake a
- * drop-off; `partial` marks it so the UI can say so.
+ * drop-off; `partial` marks it so the UI can say so. When `today` is supplied
+ * (a local `YYYY-MM-DD`), the bucket that holds it is partial for the same
+ * reason — at a daily width today's column would otherwise read as a slump
+ * every morning.
  */
-export function bucketize(points: DayPointVM[]): TrendBucket[] {
+export function bucketize(points: DayPointVM[], today?: string): TrendBucket[] {
   const width = bucketWidthDays(points.length)
   const out: TrendBucket[] = []
   for (let i = 0; i < points.length; i += width) {
@@ -494,13 +557,9 @@ export function bucketize(points: DayPointVM[]): TrendBucket[] {
     // credits field existed; the structurally valid VM does not re-add it.
     const credits = chunk.reduce((s, p) => s + (p.credits ?? 0), 0)
 
-    // A calendar day cannot contain more than a day of elapsed time. Some
-    // upstream readers report a session span that outlives the day it is filed
-    // under: on a real scan 30 of 211 days exceeded 24 h, the worst by 100x
-    // (2471 h on a day with 6 calls, one client). Such a value is not a
-    // duration, and counting it took 97% of the denominator and dragged the
-    // headline from ~35 tok/s to 1.06. Token and call totals keep every day;
-    // only the rate drops these.
+    // Some upstream readers report a session span that outlives the day it is
+    // filed under. Such a value is not a duration; see `measurableActiveMs`
+    // for where the line is drawn and why.
     const activeTimeMs = chunk.reduce((s, p) => s + measurableActiveMsOf(p), 0)
     const measuredOutput = chunk.reduce((s, p) => s + (measurableActiveMsOf(p) > 0 ? p.output : 0), 0)
     out.push({
@@ -510,6 +569,7 @@ export function bucketize(points: DayPointVM[]): TrendBucket[] {
       label: first.label,
       rangeLabel: width === 1 || chunk.length === 1 ? first.label : `${first.label}–${last.label}`,
       cacheRead,
+      cacheWrite,
       input,
       output,
       total: input + output + cacheRead + cacheWrite,
@@ -518,7 +578,8 @@ export function bucketize(points: DayPointVM[]): TrendBucket[] {
       messages,
       credits,
       tokPerSec: activeTimeMs > 0 ? measuredOutput / (activeTimeMs / 1000) : null,
-      partial: chunk.length < width,
+      // A point without a day key (legacy archive) never equals `today`
+      partial: chunk.length < width || (today !== undefined && last.day === today),
     })
   }
   return out
@@ -531,6 +592,8 @@ export interface TrendTotals {
   input: number
   output: number
   cacheRead: number
+  /** Cache writes over the window — the fourth part of the `all` headline */
+  cacheWrite: number
   messages: number
   /**
    * Credits over the same window — an independent unit, not part of `tokens`
@@ -562,6 +625,7 @@ export function computeTotals(buckets: TrendBucket[], mode: 'all' | 'no-cache'):
   let input = 0
   let output = 0
   let cacheRead = 0
+  let cacheWrite = 0
   let messages = 0
   let credits = 0
   let activeTimeMs = 0
@@ -570,6 +634,7 @@ export function computeTotals(buckets: TrendBucket[], mode: 'all' | 'no-cache'):
     input += b.input
     output += b.output
     cacheRead += b.cacheRead
+    cacheWrite += b.cacheWrite
     messages += b.messages
     credits += b.credits
     activeTimeMs += b.activeTimeMs
@@ -581,6 +646,7 @@ export function computeTotals(buckets: TrendBucket[], mode: 'all' | 'no-cache'):
     input,
     output,
     cacheRead,
+    cacheWrite,
     messages,
     credits,
     hitRatePct: promptSide > 0 ? (cacheRead / promptSide) * 100 : 0,
@@ -593,7 +659,10 @@ export interface ModelCompareRow {
   model: string
   /** Palette entry for this model's canonical rank, so it matches the chart above */
   color: string
-  /** Total tokens (all kinds) over the selected window */
+  /**
+   * Tokens over the selected window, read in the page's display mode: every
+   * kind, or input + output when the page counts without the cache
+   */
   tokens: number
   /** Output tokens over the window */
   output: number
@@ -631,6 +700,7 @@ export function groupModelDaily(models: ModelDailySeriesVM[]): ModelDailySeriesV
         model: name,
         tokens: m.tokens,
         input: [...m.input],
+        cacheRead: [...m.cacheRead],
         output: [...m.output],
         messages: [...m.messages],
         total: [...m.total],
@@ -640,6 +710,7 @@ export function groupModelDaily(models: ModelDailySeriesVM[]): ModelDailySeriesV
     merged.tokens += m.tokens
     for (let i = 0; i < merged.total.length; i++) {
       merged.input[i] = (merged.input[i] ?? 0) + (m.input[i] ?? 0)
+      merged.cacheRead[i] = (merged.cacheRead[i] ?? 0) + (m.cacheRead[i] ?? 0)
       merged.output[i] = (merged.output[i] ?? 0) + (m.output[i] ?? 0)
       merged.messages[i] = (merged.messages[i] ?? 0) + (m.messages[i] ?? 0)
       merged.total[i] = (merged.total[i] ?? 0) + (m.total[i] ?? 0)
@@ -656,6 +727,13 @@ export function groupModelDaily(models: ModelDailySeriesVM[]): ModelDailySeriesV
  * an ESTIMATE — it spreads a day's session time across the models used that
  * day, so the per-model speeds are comparative, not absolute — and the UI
  * labels it as estimated rather than presenting it as measured generation time.
+ *
+ * `dayMessages` must therefore count EVERY model's calls on each day, not only
+ * the picked ones: fed a filtered count, the share of a model picked alone
+ * became 100% and it absorbed the whole day's session time.
+ *
+ * `mode` reads the row's token figure the same way `computeTotals` reads the
+ * headline, so the comparison bars and the KPI above them never disagree.
  */
 export function buildModelRows(
   models: ModelDailySeriesVM[],
@@ -663,6 +741,7 @@ export function buildModelRows(
   activeTimePerDay: number[],
   dayMessages: number[],
   slots: Map<string, number>,
+  mode: 'all' | 'no-cache',
 ): ModelCompareRow[] {
   const from = Math.max(0, activeTimePerDay.length - dayCount)
   return models
@@ -675,11 +754,13 @@ export function buildModelRows(
       const start = Math.max(0, m.output.length - dayCount)
       for (let i = start; i < m.output.length; i++) {
         const dayCalls = m.messages[i] ?? 0
-        tokens += m.total[i] ?? 0
-        output += m.output[i] ?? 0
+        const dayInput = m.input[i] ?? 0
+        const dayOutput = m.output[i] ?? 0
+        tokens += mode === 'no-cache' ? dayInput + dayOutput : (m.total[i] ?? 0)
+        output += dayOutput
         messages += dayCalls
         const dayIndex = from + (i - start)
-        const dayActive = measurableActiveMs(activeTimePerDay[dayIndex] ?? 0)
+        const dayActive = measurableActiveMs(activeTimePerDay[dayIndex] ?? 0, dayMessages[dayIndex] ?? 0)
         const totalDayCalls = dayMessages[dayIndex] ?? 0
         // Only attribute time when both sides are known; a day with active
         // time but no recorded calls contributes nothing (rather than the
@@ -740,8 +821,14 @@ const MODEL_PALETTE = [
  * drawn model ranked ninth would otherwise wrap onto a colour another drawn
  * curve already holds. Everyone else keeps their canonical rank modulo the
  * palette, where a repeat is unavoidable — the page lists far more models than
- * the palette has entries — and harmless, since those models are not plotted
- * together.
+ * the palette has entries. The limit shows when a filter picks models from
+ * outside `drawn`: two of them can share a colour on one chart. Eight colours
+ * cannot keep every model distinct, keep colours stable under the filter and
+ * keep every on-screen pair apart at once; the page gives up the last.
+ *
+ * `drawn` must be the same list whichever models the filter picks: slots
+ * recomputed from a filtered list moved whichever model was picked alone onto
+ * slot 0, so its colour changed between one click and the next.
  */
 export function modelSlots(
   ranked: readonly { model: string }[],

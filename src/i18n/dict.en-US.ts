@@ -430,11 +430,11 @@ export const enUS: Dict = {
     kpiTokens: 'Total tokens',
     kpiCalls: 'Calls',
     kpiHitRate: 'Cache hit rate',
-    hitRateUnavailable: 'The scan reports the input / cache split per day only, never per model, so a cache hit rate cannot be computed while a model filter is active.',
-    hitRateUnavailableShort: 'Unavailable while filtered',
+    hitRateUnavailable: 'This chart comes from the local archive or provider snapshots, which carry a daily total only — no input / cache split, so no cache hit rate.',
+    hitRateUnavailableShort: 'No split available',
     kpiSpeed: 'Weighted output speed',
     speedHint:
-      'Output tokens ÷ session-active time. Active time includes thinking, tool calls and idle gaps inside a session, so it sits below the model’s own generation speed — use it for comparison only. Days reporting more than 24 hours are not real durations and are excluded.',
+      'Output tokens ÷ session-active time. Active time includes thinking, tool calls and idle gaps inside a session, so it sits below the model’s own generation speed — use it for comparison only. Active time is a sum of session spans, so overlapping sessions can add up to more than 24 hours a day; a day over 24 hours that comes to more than 5 minutes of session time per call is not a real duration and is excluded.',
     estimated: 'Estimated from each day’s call share',
     kpiCredits: 'Credits spent',
     seriesCredits: 'Credits',
@@ -444,10 +444,15 @@ export const enUS: Dict = {
     creditsChartNote: 'Summed from the scan’s per-day credits — a separate unit, never converted to USD or folded into tokens.',
     chartTrend: 'Token consumption over time',
     chartSplit: 'Output over time, by model',
-    chartSplitHint: 'One curve per model, showing output tokens',
+    chartSplitHint: 'One curve per model, showing output tokens; click a legend entry to filter by model',
+    chartSplitTruncated: (n, filtered) =>
+      filtered
+        ? `Showing only the ${n} picked models with the most output`
+        : `Showing only the ${n} models with the most output in the selected range`,
     chartCompare: 'Model comparison',
-    chartCompareHint: 'Click a bar to show only that model; click again to clear',
+    chartCompareHint: 'Click a bar to keep only the selected models; click again to clear',
     seriesCacheRead: 'Cache read',
+    seriesCacheWrite: 'Cache write',
     seriesInput: 'Input',
     seriesOutput: 'Output',
     seriesCalls: 'Calls',
@@ -455,11 +460,15 @@ export const enUS: Dict = {
     filterTitle: 'Models',
     filterAll: 'All',
     filterSelected: (n) => `${n} model${n === 1 ? '' : 's'} selected`,
+    filterMore: (n, where) =>
+      `${n} more model${n === 1 ? '' : 's'} not listed — pick ${n === 1 ? 'it' : 'them'} in “${where}” when ${
+        n === 1 ? 'it has' : 'they have'
+      } token usage in the range`,
     emptyTitle: 'No local usage data yet',
     emptyDesc: 'Local usage comes from scanning this machine’s agent session logs.',
     gathering: 'Gathering data — the chart appears once at least two days have been scanned.',
+    emptyRange: 'No usage in the selected range — try a longer one.',
     weeklyNote: 'Long span: bucketed by week or longer.',
-    filteredSplitNote: 'With a model filter active, input and cache reads cannot be told apart and are both counted under "Input".',
     cumulativeTitle: 'All-time totals',
     cumulativeDesc: 'Cumulative consumption across every agent and model, independent of the range above.',
     cumulativeTotalLabel: 'Cumulative tokens',
@@ -474,7 +483,7 @@ export const enUS: Dict = {
     cumulativeModelNote: 'Per-model totals cover only records that carry a model id, so the total can sit slightly below the headline figure.',
     splitKpiNote: 'The figures above remain the aggregate for the selected range.',
     partialBucketShort: 'partial period',
-    partialBucketNote: 'The last column covers a partial period, so its shorter bar is expected.',
+    partialBucketNote: 'The last column is not a full period yet — the period is unfinished, or the day is still filling in — so its shorter bar is expected.',
   },
   manage: {
     agentsTitle: 'Agents',

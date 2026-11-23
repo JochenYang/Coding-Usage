@@ -132,3 +132,52 @@ describe('cached agent usage summary', () => {
     expect(loadCachedAgentUsage()).toBeNull()
   })
 })
+
+/**
+ * The trends page splits a model-filtered series by `input` and `cacheRead`
+ * per index; a cache written before either array existed has to come back with
+ * both, or that arithmetic turns into `undefined`.
+ */
+describe('cached per-model rows', () => {
+  it('fills cacheRead from the remainder of a row written before it existed', () => {
+    // total - input - output = reads + writes = 60; the writes are unknown
+    localStorage.setItem(
+      KEY,
+      cachedSummary({
+        modelDaily: [{ model: 'm', tokens: 100, input: [30], output: [10], messages: [1], total: [100] }],
+      }),
+    )
+
+    const vm = loadCachedAgentUsage()
+
+    expect(vm?.modelDaily[0]?.cacheRead).toEqual([60])
+  })
+
+  it('fills input and cacheRead together on a row that predates both', () => {
+    localStorage.setItem(
+      KEY,
+      cachedSummary({
+        modelDaily: [{ model: 'm', tokens: 100, output: [10], messages: [1], total: [100] }],
+      }),
+    )
+
+    const row = loadCachedAgentUsage()?.modelDaily[0]
+
+    expect(row?.input).toEqual([90])
+    expect(row?.cacheRead).toEqual([0])
+  })
+
+  it('keeps the split a current build cached', () => {
+    localStorage.setItem(
+      KEY,
+      cachedSummary({
+        modelDaily: [{ model: 'm', tokens: 100, input: [30], cacheRead: [50], output: [10], messages: [1], total: [100] }],
+      }),
+    )
+
+    const row = loadCachedAgentUsage()?.modelDaily[0]
+
+    expect(row?.input).toEqual([30])
+    expect(row?.cacheRead).toEqual([50])
+  })
+})
