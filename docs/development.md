@@ -27,6 +27,11 @@ npm test           # vitest 单元测试
 > `npm run build` 与 `npm run build:web` **共用 `dist/`**。先 `build:web` 再 `build` 才能得到
 > 可在 Electron `file://` 下加载的产物；验证桌面端前请重跑 `npm run build`。
 
+> 两个 dev server 都**不监听** `.tmp/`、`.devflow/`、`.playwright-cli/`（`server.watch.ignored`，
+> `vite.config.ts` 与 `electron.vite.config.ts` 各写一份、保持一致）。这些目录放本地临时文件，
+> 可能正被别的进程锁着（比如验证用的无头浏览器配置目录）；Windows 上 Vite 监听到被锁的文件会以
+> `EBUSY` 直接让 dev server 崩溃。`.tmp/` 下的预览页照常能访问，只是不参与热更新。
+
 ## 测试与验证
 
 - **类型 / 编译**：`npx tsc --noEmit` 零错误；不得使用 `// @ts-ignore`。

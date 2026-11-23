@@ -7,6 +7,11 @@ import { readFileSync } from 'node:fs'
 // Single source of truth for the version the settings page displays
 const APP_VERSION = (JSON.parse(readFileSync('package.json', 'utf8')) as { version: string }).version
 
+// Git-ignored scratch dirs stay out of the renderer's file watcher: a file
+// another process holds there (a headless browser's profile) crashed the dev
+// server with EBUSY on Windows. Same list and reason as in vite.config.ts.
+const WATCH_IGNORED = ['**/.tmp/**', '**/.devflow/**', '**/.playwright-cli/**']
+
 export default defineConfig({
   main: {
     // externalizeDeps keeps dependencies (electron-updater) as runtime requires
@@ -43,6 +48,7 @@ export default defineConfig({
     },
     plugins: [react(), tailwindcss()],
     resolve: { alias: { '@': path.resolve(__dirname, 'src') } },
+    server: { watch: { ignored: WATCH_IGNORED } },
     define: { __APP_VERSION__: JSON.stringify(APP_VERSION) },
   },
 })
