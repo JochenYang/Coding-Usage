@@ -5,6 +5,7 @@ import { EASE_OUT } from '@/lib/ease'
 import { cn } from '@/lib/cn'
 import { useT } from '@/i18n/useT'
 import { Badge } from '@/components/common/Badge'
+import { Popconfirm } from '@/components/beui/popconfirm'
 import type { AgentId, AgentModel, AgentProvider } from '@/lib/agent-config'
 
 export interface ProviderCardProps {
@@ -258,14 +259,22 @@ export function ProviderCard({
                         <Pencil className="h-3 w-3" />
                         {t.agentConfig.edit}
                       </button>
-                      <button
-                        type="button"
-                        onClick={onDelete}
-                        className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-danger"
+                      <Popconfirm
+                        title={t.agentConfig.deleteTitle}
+                        description={t.agentConfig.deleteHint}
+                        confirmText={t.agentConfig.delete}
+                        cancelText={t.agentConfig.cancel}
+                        danger
+                        onConfirm={onDelete}
                       >
-                        <Trash2 className="h-3 w-3" />
-                        {t.agentConfig.delete}
-                      </button>
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-danger"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          {t.agentConfig.delete}
+                        </button>
+                      </Popconfirm>
                     </div>
                   )}
                 </div>

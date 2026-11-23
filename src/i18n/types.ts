@@ -41,6 +41,10 @@ export interface Dict {
   card: {
     refresh: string
     delete: string
+    /** Popconfirm heading for deleting an account */
+    deleteTitle: string
+    /** What deleting costs: the one line under the heading */
+    deleteHint: string
     accountsCount: (n: number) => string
     accountIndex: (n: number) => string
     okRatio: (ok: number, total: number) => string
@@ -50,7 +54,6 @@ export interface Dict {
     unconfigured: string
     loading: string
     refreshing: string
-    deleteHint: string
     needsProxyDetail: string
     needsProxyAfter: string
     goSettings: string
@@ -269,6 +272,8 @@ export interface Dict {
     wxActivateDone: string
     wxActivateError: string
     wxConnected: (t: string) => string
+    /** Popconfirm heading: what is being cut */
+    wxDisconnectTitle: string
     wxDisconnect: string
     wxDisconnectConfirm: string
     wxReloginHint: string
@@ -623,7 +628,6 @@ export interface Dict {
     enabled: string
     disabled: string
     noAccounts: string
-    deleteConfirm: string
     accountsTitle: string
     accountsDesc: string
     keySaved: string
@@ -658,8 +662,12 @@ export interface Dict {
   common: {
     clearSearch: string
     cancel: string
-    confirm: string
-    confirmTitle: string
+    /** Short confirm label for an in-place delete; the title names what is deleted */
+    delete: string
+    /** Dialog heading for leaving a form that has unsaved input */
+    unsavedTitle: string
+    discardChanges: string
+    keepEditing: string
     chartKeyboardHint: string
     /** Unit suffix for token counts ("123 token" zh / "123 tokens" en) */
     unitTokens: string
@@ -680,7 +688,14 @@ export interface Dict {
     exportData: string
     importData: string
     clearSnapshots: string
+    /** Popconfirm heading */
+    clearTitle: string
+    /** What clearing costs (and what it leaves alone) */
     clearConfirm: string
+    /** Confirm button of the clear popconfirm: shorter than the trigger's own label */
+    clearAction: string
+    /** Result note shown for a few seconds after clearing */
+    clearDone: string
     usageHistory: string
     usageHistoryHint: string
     usageHistoryRange: string
@@ -693,6 +708,9 @@ export interface Dict {
     purgeHint: string
     purgeConfirm: (days: number) => string
     purgeConfirmAll: string
+    /** The purge dialog's buttons name their outcome rather than "OK / cancel" */
+    purgeConfirmButton: string
+    purgeKeep: string
     purgeDone: (removed: number) => string
     purgeFailed: string
     repoLink: string
@@ -844,6 +862,9 @@ export interface Dict {
     addProvider: string
     edit: string
     delete: string
+    /** Popconfirm heading for removing a provider config */
+    deleteTitle: string
+    /** What removing it costs */
     deleteHint: string
     builtinBadge: string
     builtinHint: string

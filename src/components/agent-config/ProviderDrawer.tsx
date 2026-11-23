@@ -517,10 +517,11 @@ export function ProviderDrawer({
 
       <ConfirmDialog
         open={confirmClose}
-        title={t.common.confirmTitle}
+        title={t.common.unsavedTitle}
         description={t.settings.unsavedChanges}
-        confirmText={t.common.confirm}
-        cancelText={t.common.cancel}
+        confirmText={t.common.discardChanges}
+        cancelText={t.common.keepEditing}
+        danger
         onConfirm={() => {
           setConfirmClose(false)
           onClose()

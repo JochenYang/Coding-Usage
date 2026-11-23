@@ -182,18 +182,35 @@
 | ProgressBar | `sm(h-1.5)/md(h-2)` | Default · Empty（零值只留轨道） | 水位梯见 §3；`role=progressbar` + `aria-valuenow`；值钳制 0–100 |
 | EmptyState | — | Empty-首次/无结果/权限不足（三类文案区分） | 不用 Error 视觉渲染正常空态；action 槽调用方决定按钮/链接 |
 | PageHeader | — | Default | 左标题右 actions；`actions` 内 `gap-2` |
-| Drawer | `left/right` | Open · Closed · Esc 关闭 · body 滚动锁定 | 面板 `max-w-[min(560px,50vw)] sm:min-w-[440px]`，`bg-card`；backdrop `bg-black/40 + backdrop-blur-sm` |
+| Drawer | `left/right` | Open · Closed · Esc 关闭 · body 滚动锁定 | 面板 `max-w-[min(560px,50vw)] sm:min-w-[440px]`，`bg-card`；backdrop `bg-black/40 + backdrop-blur-sm`；抽屉里叠着的弹层（Select / Popover / Popconfirm）打开时，Esc 只关最上层（弹层经 `claimDismissScope` 登记） |
 | Switch | — | Default · Disabled（果冻抖动提示） · Pressed（挤压） | 轨道 `bg-accent` 开 / `bg-muted` 关，拇指纯白（跨主题恒定，显式例外）；焦点环 `ring-ring` |
 | Loader | 1 种 `variant`（`dots`） | Loading · reduced-motion（透明度脉冲） | `role=status` + `sr-only` 标签；`size/speed` 受控；全仓仅 `dots` 在用，其余 16 种动画变体已删除 |
 | Select | Trigger/Content/Item 组合 | Default · Hover · Focus-visible · Open（果冻圆角 morph）· Disabled · Selected（√标记） | 面板绝对定位于 field 内；多 Select 叠放时由布局层控单开；`inert` 关闭态 |
 | Popover | `click/hover` · `top/bottom` · 对齐三档 | Default · Open（gooey 形变）· Esc/外部关闭（焦点回触发器） | 面板 `max-w-[min(92vw,20rem)] p-4`；hover 模式 120ms 关闭延迟；触屏上 tap 同样可开 |
-| ConfirmDialog | — | Default · Focus（危险确认） | 危险操作二次确认；按钮层级按主/次排布 |
+| Popconfirm | 基于 Popover（click 触发）；`align` 三档（默认 `end`）· `side top/bottom` | Default · Open（焦点落在「取消」）· Esc / 点击外部取消 | 小而明确的就地确认：清除派生数据、删除列表行、断开可重连的授权。面板 `w-72 p-3.5`，左侧警示图标（危险动作为红色三角），右侧「问句标题 + 一句后果」两行，按钮用短动词（删除 / 清除 / 断开）——标题、说明、按钮三处不重复同一句话，也不写「确定」；触发器上挂着 Tooltip 时，确认打开期间传 `disabled` 让 Tooltip 休息 |
+| ConfirmDialog | — | Default · Focus（危险确认） | 重要决策与离开确认：带范围的永久删除、放弃未保存的修改。按钮写结果不写「确定 / 取消」（「永久删除 / 保留历史」「放弃修改 / 继续编辑」）；就地的小操作改用 Popconfirm |
 | LineChart / DonutChart | 自研 SVG（无图表库依赖）；DonutChart 图例默认「数值 占比」两列对齐，`legendValue={false}` 只留百分比 | Default · Hover（十字线 + HTML tooltip）· Empty（`<2` 点显示 `—`） | 网格 `border` 虚线、刻度 `subtle 10px`、线/面 `accent`；tooltip 固定字号 HTML 渲染；x 标签 thinning ≤7 |
 | StackedBarLineChart / MultiSeriesChart / ModelCompareChart | 趋势页三图（自研 SVG）：堆叠柱 缓存读取（含写入）→ 输入 → 输出 + 右轴速度线；分模型多线；横向条形排名 | Default · Hover（十字线 + HTML tooltip，含今天或未满周期的末列带「部分周期」）· Empty（`—`） | 轴按计数总量取最大，不从柱高推；速度线在没有可用时长的列**断开**（不画 0），每段一条 path、孤立点画圆点；分模型图例的点击是筛选模型，提示里写明；chip 超过 24 个时在筛选卡片里说明、曲线超过 8 条时在图下说明截断 |
 | ProviderLogo | lobehub slug / 内联 SVG / 字母兜底 | Default · 加载失败（字母兜底） | `rounded-md` 槽；`logoDarkInvert` 处理白底白 logo |
 | CardWatermark | — | Default（纯装饰） | 拉伸卡片的空白填充：品牌单色字形 6% 前景色水印，`-z-10` 在正文之下；卡片需 `z-0`，见 §1.1 |
 | 表单输入（各页内联） | — | Default · Focus-visible | 边框 `border`，聚焦 `focus:border-accent`；数字类配 `font-mono tabular-nums`；placeholder 用 `subtle` |
 | AppShell/Sidebar/TopBar | 桌面壳（导航 + 视图路由 hash） | Active（当前项高亮）· Default | 导航是全站共享组件，页面不自造第二套 |
+
+**反馈组件选型**——先问「只是让用户看到，还是必须让用户做决定？」前者用轻提示，后者才用弹层。
+
+| 要做的事 | 用哪个 | 本仓库对应 |
+|---|---|---|
+| 悬停补充解释 | Tooltip | `common/Tooltip`（纯 CSS）、`beui/tooltip`（motion） |
+| 几秒消失的操作结果 | Toast 轻提示 | 没有全局 Toast：结果用就地状态文字（`role=status`，如设置页清除快照后的「已清除账户配额快照」停留 4 秒）；行消失、状态翻转本身就是结果时不再提示 |
+| 常驻提醒 | Alert 警告条 | 卡片内的常驻文字（`text-danger` / `text-warning`），不用弹层 |
+| 就地确认一个小操作 | Popconfirm | `beui/popconfirm` |
+| 重要决策、离开未保存的表单 | Modal | `beui/confirm-dialog` |
+| 对照原页面编辑 | Drawer | `beui/drawer` |
+| 复杂、独立的完整流程 | 新页面 | hash 路由页面 |
+
+- 能撤销的删除不二次确认：直接做，再给可撤销的提示；永久删除、扣费必须确认。
+- 确认按钮写结果（「删除」「永久删除」「断开」），不写「确定」；离开表单时取消按钮写去向（「继续编辑」）。就地确认的标题写成问句，说明只写后果，三处文字不互相重复。
+- 有未保存内容的表单不要点遮罩就关：离开确认（现状）或自动存草稿。
 
 Accessibility 五条（组件评审 + 实现后各走查一次）：焦点可见（对比 ≥3:1，不被 overflow 裁切）；
 纯键盘走完核心任务且顺序正确；语义角色与名称正确（纯图标必有可访问名）；状态变化可被感知

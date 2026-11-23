@@ -2,7 +2,6 @@ import { AlertCircle, Loader2, Plus, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ProviderCard } from './ProviderCard'
 import { ProviderDrawer } from './ProviderDrawer'
-import { ConfirmDialog } from '@/components/beui/confirm-dialog'
 import { SearchInput } from '@/components/common/SearchInput'
 import { Tooltip } from '@/components/common/Tooltip'
 import { cn } from '@/lib/cn'
@@ -54,7 +53,6 @@ export function AgentConfigSection({ className }: { className?: string }) {
     open: false,
     provider: undefined,
   })
-  const [deleteTarget, setDeleteTarget] = useState<AgentProvider | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
@@ -108,10 +106,10 @@ export function AgentConfigSection({ className }: { className?: string }) {
     return null
   }
 
-  const confirmDelete = async () => {
-    if (!bridge || !payload || !deleteTarget) return
-    const result = await bridge.agentConfigRemove(agent, payload.revision, deleteTarget.id)
-    setDeleteTarget(null)
+  /** Called once the card's own confirmation has been answered */
+  const removeProvider = async (provider: AgentProvider) => {
+    if (!bridge || !payload) return
+    const result = await bridge.agentConfigRemove(agent, payload.revision, provider.id)
     if (!result.ok) {
       setActionError(t.agentConfig.saveFailed(result.message ?? ''))
       return
@@ -243,7 +241,7 @@ export function AgentConfigSection({ className }: { className?: string }) {
                   expanded={expanded.has(provider.id)}
                   onToggle={() => toggle(provider.id)}
                   onEdit={() => setDrawer({ open: true, provider })}
-                  onDelete={() => setDeleteTarget(provider)}
+                  onDelete={() => void removeProvider(provider)}
                 />
               ))
             )}
@@ -259,17 +257,6 @@ export function AgentConfigSection({ className }: { className?: string }) {
         supportsEnabled={agent === 'mcode'}
         onSave={handleSave}
         onClose={() => setDrawer({ open: false, provider: undefined })}
-      />
-
-      <ConfirmDialog
-        open={deleteTarget !== null}
-        title={t.agentConfig.delete}
-        description={t.agentConfig.deleteHint}
-        confirmText={t.agentConfig.delete}
-        cancelText={t.agentConfig.cancel}
-        danger
-        onConfirm={() => void confirmDelete()}
-        onCancel={() => setDeleteTarget(null)}
       />
     </section>
   )

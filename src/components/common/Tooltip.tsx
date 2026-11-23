@@ -20,6 +20,13 @@ export interface TooltipProps {
    * same way, but a plain mouse click does not stick it open.
    */
   floating?: boolean
+  /**
+   * Hide the bubble without unmounting anything. Use it while the trigger
+   * has something of its own open (a popconfirm) that the bubble would sit
+   * under — an empty `text` would do the same job less well, because it
+   * swaps the wrapper for a fragment and remounts the trigger's subtree.
+   */
+  disabled?: boolean
 }
 
 const POS: Record<NonNullable<TooltipProps['side']>, string> = {
@@ -60,7 +67,7 @@ const BUBBLE =
  * click does not stick it open. `floating` portals the bubble instead — see
  * {@link TooltipProps.floating}.
  */
-export function Tooltip({ text, side = 'top', children, className, bubbleClassName, floating }: TooltipProps) {
+export function Tooltip({ text, side = 'top', children, className, bubbleClassName, floating, disabled = false }: TooltipProps) {
   if (!text) return <>{children}</>
   if (floating) {
     return (
@@ -69,6 +76,7 @@ export function Tooltip({ text, side = 'top', children, className, bubbleClassNa
         side={side}
         className={className}
         bubbleClassName={bubbleClassName}
+        disabled={disabled}
       >
         {children}
       </FloatingTooltip>
@@ -77,16 +85,18 @@ export function Tooltip({ text, side = 'top', children, className, bubbleClassNa
   return (
     <span className={cn('group/tip relative inline-flex', className)}>
       {children}
-      <span
-        role="tooltip"
-        className={cn(
-          'pointer-events-none absolute z-50 hidden whitespace-nowrap rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-foreground shadow-md group-hover/tip:block group-has-[:focus-visible]/tip:block',
-          POS[side],
-          bubbleClassName,
-        )}
-      >
-        {text}
-      </span>
+      {!disabled && (
+        <span
+          role="tooltip"
+          className={cn(
+            'pointer-events-none absolute z-50 hidden whitespace-nowrap rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-foreground shadow-md group-hover/tip:block group-has-[:focus-visible]/tip:block',
+            POS[side],
+            bubbleClassName,
+          )}
+        >
+          {text}
+        </span>
+      )}
     </span>
   )
 }
@@ -97,10 +107,12 @@ function FloatingTooltip({
   children,
   className,
   bubbleClassName,
+  disabled = false,
 }: TooltipProps) {
   const [anchor, setAnchor] = useState<{ top: number; left: number; transform: string } | null>(null)
 
   const show = (el: HTMLElement) => {
+    if (disabled) return
     const rect = el.getBoundingClientRect()
     setAnchor(floatingPos(rect, side))
   }

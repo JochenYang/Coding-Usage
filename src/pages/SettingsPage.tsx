@@ -11,6 +11,7 @@ import {
 } from '@/components/beui/select'
 import { useTheme, type ThemeMode } from '@/components/ThemeProvider'
 import { ConfirmDialog } from '@/components/beui/confirm-dialog'
+import { Popconfirm } from '@/components/beui/popconfirm'
 import { GitHubIcon } from '@/components/logos/GitHubIcon'
 import { Tooltip } from '@/components/common/Tooltip'
 import { cn } from '@/lib/cn'
@@ -305,12 +306,18 @@ export function SettingsPage({ className }: SettingsPageProps) {
     if (imported.split.reindexed.length > 0) void refreshAll()
   }
 
-  const [confirmClear, setConfirmClear] = useState(false)
   /** Inline import failure notice (themed text, not a native alert box) */
   const [importError, setImportError] = useState<string | null>(null)
+  /** "Cleared" shows for a few seconds: nothing else on the page changes when the snapshots go */
+  const [cleared, setCleared] = useState(false)
+  useEffect(() => {
+    if (!cleared) return
+    const timer = setTimeout(() => setCleared(false), 4000)
+    return () => clearTimeout(timer)
+  }, [cleared])
   const handleClear = () => {
-    setConfirmClear(false)
     clearSnapshots()
+    setCleared(true)
   }
 
   return (
@@ -442,27 +449,29 @@ export function SettingsPage({ className }: SettingsPageProps) {
           </div>
         </div>
 
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={() => setConfirmClear(true)}
-            className="rounded-lg border border-danger/40 px-3 py-1.5 text-xs text-danger hover:bg-danger/10"
+        <div className="flex items-center justify-end gap-3">
+          {cleared && (
+            <p role="status" aria-live="polite" className="text-xs text-muted-foreground">
+              {t.prefs.clearDone}
+            </p>
+          )}
+          <Popconfirm
+            title={t.prefs.clearTitle}
+            description={t.prefs.clearConfirm}
+            confirmText={t.prefs.clearAction}
+            cancelText={t.common.cancel}
+            danger
+            onConfirm={handleClear}
           >
-            {t.prefs.clearSnapshots}
-          </button>
+            <button
+              type="button"
+              className="rounded-lg border border-danger/40 px-3 py-1.5 text-xs text-danger hover:bg-danger/10"
+            >
+              {t.prefs.clearSnapshots}
+            </button>
+          </Popconfirm>
         </div>
       </section>
-
-      <ConfirmDialog
-        open={confirmClear}
-        title={t.prefs.clearSnapshots}
-        description={t.prefs.clearConfirm}
-        confirmText={t.prefs.clearSnapshots}
-        cancelText={t.common.cancel}
-        danger
-        onConfirm={handleClear}
-        onCancel={() => setConfirmClear(false)}
-      />
 
       {/* Local agent usage history — rendered only when the main-process store
           answered, i.e. never in the browser build */}
@@ -517,14 +526,16 @@ export function SettingsPage({ className }: SettingsPageProps) {
         </section>
       )}
 
+      {/* The usage history itself, for good: a decision that keeps the dialog.
+          The buttons say what they do rather than "OK / cancel". */}
       <ConfirmDialog
         open={history.confirming}
         title={t.prefs.purgeAction}
         description={
           history.scope === 'all' ? t.prefs.purgeConfirmAll : t.prefs.purgeConfirm(Number(history.scope))
         }
-        confirmText={t.prefs.purgeAction}
-        cancelText={t.common.cancel}
+        confirmText={t.prefs.purgeConfirmButton}
+        cancelText={t.prefs.purgeKeep}
         danger
         onConfirm={() => void history.purge()}
         onCancel={() => history.setConfirming(false)}

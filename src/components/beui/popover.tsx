@@ -232,6 +232,14 @@ function usePopoverContext(component: string) {
   return ctx;
 }
 
+/**
+ * The trigger of the enclosing popover. A panel that closes itself from one
+ * of its own controls hands focus back to it, the same way a dismissal does.
+ */
+export function usePopoverTriggerRef(): React.MutableRefObject<HTMLElement | null> {
+  return usePopoverContext("usePopoverTriggerRef").triggerRef;
+}
+
 export interface PopoverProps {
   children: ReactNode;
   /** Controlled open state. */
@@ -502,9 +510,11 @@ const ALIGN_ORIGIN: Record<Align, string> = {
 export interface PopoverContentProps {
   children: ReactNode;
   className?: string;
+  /** Accessible name for the panel's dialog role (e.g. the question of a confirmation) */
+  ariaLabel?: string;
 }
 
-export function PopoverContent({ children, className }: PopoverContentProps) {
+export function PopoverContent({ children, className, ariaLabel }: PopoverContentProps) {
   const ctx = usePopoverContext("PopoverContent");
   const [portalReady, setPortalReady] = useState(false);
   const {
@@ -531,10 +541,13 @@ export function PopoverContent({ children, className }: PopoverContentProps) {
   const clipRef = useRef<HTMLDivElement>(null);
   const geoRef = useRef<Geo | null>(null);
   const supportsShapeRef = useRef(false);
+  // Observers only while open. A page can hold dozens of these (a popconfirm
+  // per row), and each open observer pair meant layout reads on every scroll;
+  // a closed panel is measured once on mount and again the moment it opens.
   const layout = usePopoverPortalPosition(
     triggerRef,
     measureRef,
-    portalReady,
+    portalReady && open,
   );
 
   useEffect(() => setPortalReady(true), []);
@@ -673,6 +686,7 @@ export function PopoverContent({ children, className }: PopoverContentProps) {
             ref={measureRef}
             id={contentId}
             role="dialog"
+            aria-label={ariaLabel}
             {...hoverHandlers}
             style={{
               position: "absolute",

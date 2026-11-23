@@ -10,6 +10,18 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- 系统设置的「清除账户配额快照」、账号列表与账号抽屉里的「删除」、服务商配置的「删除」、微信机器人的「断开」改为就地气泡确认，不再弹居中窗口；清除快照后旁边显示「已清除」
+- 「放弃未保存的修改」「清除历史用量」两个确认窗口的按钮改为写明结果：放弃修改 / 继续编辑、永久删除 / 保留历史
+- 抽屉里的下拉框或气泡打开时按 Esc 只关最上层，不再把抽屉一起关掉；「放弃未保存的修改」对话框也能用 Esc 关掉了（原来按了没反应）
+
+### English
+- "Clear account quota snapshots" in Settings, "Delete" in the accounts list and the account drawer, "Delete" on a provider config and the WeChat bot's "Disconnect" now confirm in place next to their button instead of a centred dialog; clearing snapshots shows "cleared" beside the button
+- The "discard unsaved changes" and "purge usage history" dialogs name their outcome on the buttons: Discard changes / Keep editing, Delete permanently / Keep history
+- With a select or a popover open inside a drawer, Escape closes only that top layer instead of the drawer too; Escape now also closes the "discard unsaved changes" dialog, which ignored it before
+
 ## [v0.10.6] - 2026-11-23
 
 ### 中文

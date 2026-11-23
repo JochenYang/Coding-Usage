@@ -8,7 +8,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { Badge } from '@/components/common/Badge'
 import { Tooltip } from '@/components/common/Tooltip'
-import { ConfirmDialog } from '@/components/beui/confirm-dialog'
+import { Popconfirm } from '@/components/beui/popconfirm'
 import { AddAccountMenu } from '@/components/account/AddAccountMenu'
 import { ProviderLogo } from '@/components/ProviderLogo'
 import { formatAgo } from '@/lib/format'
@@ -118,18 +118,37 @@ export function AccountsPage({ onEditAccount, onAddAccount }: AccountsPageProps)
                       <Settings className="h-4 w-4" />
                     </button>
                   </Tooltip>
-                  <Tooltip text={t.settings.deleteTooltip}>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setPendingDelete({ providerId: def.id, index: i })
+                  {/* The hover tooltip would sit under the open confirmation,
+                      so it rests while this row's is showing */}
+                  <Tooltip
+                    text={t.settings.deleteTooltip}
+                    disabled={pendingDelete?.providerId === def.id && pendingDelete.index === i}
+                  >
+                    <Popconfirm
+                      open={pendingDelete?.providerId === def.id && pendingDelete.index === i}
+                      onOpenChange={(next) => setPendingDelete(next ? { providerId: def.id, index: i } : null)}
+                      title={t.card.deleteTitle}
+                      description={t.card.deleteHint}
+                      confirmText={t.common.delete}
+                      cancelText={t.common.cancel}
+                      danger
+                      onConfirm={() => {
+                        deleteEntry(def.id, i)
+                        setPendingDelete(null)
                       }}
-                      aria-label={t.settings.deleteTooltip}
-                      className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger"
                     >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          // Row click already opens the editor; avoid double firing
+                          e.stopPropagation()
+                        }}
+                        aria-label={t.settings.deleteTooltip}
+                        className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </Popconfirm>
                   </Tooltip>
                 </div>
               )
@@ -137,19 +156,6 @@ export function AccountsPage({ onEditAccount, onAddAccount }: AccountsPageProps)
           </section>
         ))}
       </div>
-      <ConfirmDialog
-        open={pendingDelete !== null}
-        title={t.card.delete}
-        description={t.manage.deleteConfirm}
-        confirmText={t.card.delete}
-        cancelText={t.common.cancel}
-        danger
-        onConfirm={() => {
-          if (pendingDelete) deleteEntry(pendingDelete.providerId, pendingDelete.index)
-          setPendingDelete(null)
-        }}
-        onCancel={() => setPendingDelete(null)}
-      />
     </div>
   )
 }

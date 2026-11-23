@@ -8,6 +8,7 @@ import { useT } from '../../i18n/useT'
 import { Drawer } from '../beui/drawer'
 import { Tooltip } from '../common/Tooltip'
 import { ConfirmDialog } from '../beui/confirm-dialog'
+import { Popconfirm } from '../beui/popconfirm'
 import { Loader } from '../beui/loader'
 import { Switch } from '../beui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../beui/select'
@@ -66,9 +67,8 @@ export function AccountDrawer({
   const [enabled, setEnabled] = useState(true)
   const [showKey, setShowKey] = useState(false)
   const [test, setTest] = useState<TestState>({ phase: 'idle' })
-  /** Themed guards replacing the native window.confirm (unsaved close / delete) */
+  /** Themed guard for closing with unsaved input (the delete confirms in place) */
   const [confirmClose, setConfirmClose] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
 
   /** True when the form differs from the persisted config (used for the
    *  unsaved-changes guard on close). Create mode counts any typed content. */
@@ -141,10 +141,6 @@ export function AccountDrawer({
     } catch (e) {
       setTest({ phase: 'error', message: e instanceof Error ? e.message : String(e) })
     }
-  }
-
-  const handleDelete = () => {
-    if (onDelete) setConfirmDelete(true)
   }
 
   // Header subtitle: create mode shows the "add" copy; edit mode prefers the
@@ -314,12 +310,22 @@ export function AccountDrawer({
           )}
         </div>
         {onDelete && (
-          <button
-            onClick={handleDelete}
-            className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-danger transition-colors hover:bg-danger/10"
+          <Popconfirm
+            title={t.card.deleteTitle}
+            description={t.card.deleteHint}
+            confirmText={t.common.delete}
+            cancelText={t.common.cancel}
+            danger
+            side="top"
+            onConfirm={() => onDelete?.()}
           >
-            {t.card.delete}
-          </button>
+            <button
+              type="button"
+              className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-danger transition-colors hover:bg-danger/10"
+            >
+              {t.card.delete}
+            </button>
+          </Popconfirm>
         )}
       </div>
     </Drawer>
@@ -327,28 +333,16 @@ export function AccountDrawer({
           transform would otherwise re-anchor them to itself */}
       <ConfirmDialog
         open={confirmClose}
-        title={t.common.confirmTitle}
+        title={t.common.unsavedTitle}
         description={t.settings.unsavedChanges}
-        confirmText={t.common.confirm}
-        cancelText={t.common.cancel}
+        confirmText={t.common.discardChanges}
+        cancelText={t.common.keepEditing}
+        danger
         onConfirm={() => {
           setConfirmClose(false)
           onClose()
         }}
         onCancel={() => setConfirmClose(false)}
-      />
-      <ConfirmDialog
-        open={confirmDelete}
-        title={t.card.delete}
-        description={t.card.deleteHint}
-        confirmText={t.card.delete}
-        cancelText={t.common.cancel}
-        danger
-        onConfirm={() => {
-          setConfirmDelete(false)
-          onDelete?.()
-        }}
-        onCancel={() => setConfirmDelete(false)}
       />
     </>
   )
