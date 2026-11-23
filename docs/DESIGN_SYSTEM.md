@@ -156,6 +156,11 @@
   悬停时 logo 淡出而收缩/展开图标淡入（150ms）；收起后为 64px 图标态（即窄屏形态：
   只留图标，导航项由右侧浮动 tooltip 补标签）。选择存 localStorage，
   `transition-[width]` 200ms 过渡（`Sidebar.tsx`）。
+- Sidebar 导航高亮是**滑动**的：悬停与选中各一个共享的运动层（`useMotionValue` 驱动，
+  不经 React 状态——悬停不重渲染侧栏），在菜单项之间滑动；弹簧 `stiffness 360 /
+  damping 27 / mass 0.9`（过冲约 8px 后落定，再多会串到下一项），并按速度拉伸
+  （纵向最长 1.4 倍、横向相应收窄，从拖尾一侧拉长），即果冻质感。首次落位、侧栏
+  收放与尺寸变化时原地出现；`prefers-reduced-motion` 下只保留淡入淡出。
 - Header 模式：`PageHeader`（`text-lg` 标题 + `sm` 描述 + 右侧 actions 槽）；全页 primary ≤1 个，
   次要操作降档 `secondary/ghost`。
 - 本项目的 archetype 映射：Overview/Trends/CostAnalysis = Dashboard（指标卡 → 主图表 → 明细）；
@@ -197,7 +202,7 @@ Accessibility 五条（组件评审 + 实现后各走查一次）：焦点可见
 
 - 缓动权威：`src/lib/ease.ts`（`EASE_OUT` / `EASE_IN_OUT`）。组件只从 `@/lib/ease` 引用曲线，不重复定义。
 - 曲线：`EASE_OUT [0.16,1,0.3,1]`（进入/面板类），`EASE_IN_OUT [0.45,0,0.55,1]`（Loader 节奏）。
-- 弹簧：就近声明在拥有该手势的组件里，不进 `ease.ts`。Drawer 进入 `220/26/0.9`（延迟 80ms，backdrop 先 250ms 淡入）、退出 `260/30`（`drawer.tsx:32,34`）；Switch 的滑块与 Tooltip 各自持有自己的弹簧。
+- 弹簧：就近声明在拥有该手势的组件里，不进 `ease.ts`。Drawer 进入 `220/26/0.9`（延迟 80ms，backdrop 先 250ms 淡入）、退出 `260/30`（`drawer.tsx:32,34`）；Switch 的滑块与 Tooltip 各自持有自己的弹簧；Sidebar 导航高亮的滑动 `360/27/0.9`（`Sidebar.tsx` 的 `NAV_GLIDE`），拉伸由同一运动的velocity 派生。
 - 铁律：所有动效读 `useReducedMotion()`，降级为透明度脉冲或静止；骨架屏与 spinner 不在同一区块混用；
   状态切换预留空间防布局跳动。
 

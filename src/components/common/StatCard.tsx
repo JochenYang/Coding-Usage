@@ -61,7 +61,9 @@ export function StatCard({
       )}
       <div className={cn(illustration && 'relative z-20')}>
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-muted-foreground">{title}</span>
+          {/* nowrap: with several brand chips on the balance card the title
+              would otherwise break in the middle of a word */}
+          <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{title}</span>
           {iconSlot ?? (
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-soft">
               <Icon className={cn('h-4 w-4 text-accent', iconClassName)} />

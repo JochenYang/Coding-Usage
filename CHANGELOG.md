@@ -10,6 +10,16 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- 侧边栏菜单的悬停与选中高亮改为在菜单项之间滑动，带动果冻式的拉伸与回弹；悬停不再重渲染整个侧边栏
+- 指标卡标题不再折成两行（账户余额有多个服务商图标时）
+
+### English
+- The sidebar's hover and active highlights now glide between the items with a jelly-like stretch and settle; hovering no longer re-renders the whole rail
+- KPI card titles no longer wrap onto two lines (the balance card with several provider marks)
+
 ## [v0.10.4] - 2026-11-23
 
 ### 中文

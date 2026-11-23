@@ -14,7 +14,8 @@ import {
   Users,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { animate, motion, useMotionValue, useReducedMotion, useTransform, useVelocity } from 'motion/react'
 import { cn } from '@/lib/cn'
 import { useT } from '@/i18n/useT'
 import { useData } from '@/lib/data-context'
@@ -42,6 +43,37 @@ function useTick(ms = 30_000) {
 }
 
 const SIDEBAR_COLLAPSED_KEY = 'coding-usage.sidebar-collapsed'
+
+/**
+ * The glide of the nav highlight from one item to the next. Bouncy on purpose:
+ * it overshoots the item it lands on by about a quarter of its height and
+ * settles — with the stretch below, that is the jelly feel. More bounce than
+ * this and the highlight runs into the next item.
+ */
+const NAV_GLIDE = { type: 'spring', stiffness: 360, damping: 27, mass: 0.9 } as const
+/** Jelly: the highlight stretches with its speed, up to this much */
+const STRETCH_PER_SPEED = 0.28 / 2000
+const MAX_STRETCH = 0.4
+
+/**
+ * One highlight's motion values: where it is, whether it shows, and how far
+ * it is stretched. All of it is driven off `y`'s velocity, so the glide and
+ * the deformation are one movement, and nothing here goes through React
+ * state — hovering never re-renders the rail.
+ */
+function useNavHighlight() {
+  const y = useMotionValue(0)
+  const height = useMotionValue(0)
+  const opacity = useMotionValue(0)
+  const speed = useVelocity(y)
+  // Stretches along its travel and narrows across it, the way a blob keeps
+  // its area; at rest the speed is zero and it is exactly the item's box
+  const stretch = useTransform(speed, (v) => 1 + Math.min(Math.abs(v) * STRETCH_PER_SPEED, MAX_STRETCH))
+  const squash = useTransform(stretch, (s) => 1 / Math.sqrt(s))
+  // Grows from the trailing edge, so the leading edge runs ahead
+  const originY = useTransform(speed, (v) => (v >= 0 ? 0 : 1))
+  return { y, height, opacity, stretch, squash, originY }
+}
 
 /** Persisted collapse choice; unreadable storage (private mode / quota) falls back to expanded */
 function readCollapsed(): boolean {
@@ -90,6 +122,73 @@ export function Sidebar({
   const t = useT()
   const { lastUpdated, refreshAll, refreshingAll } = useData()
   useTick()
+  const reduced = useReducedMotion()
+
+  // The two highlights behind the items (hover, active): one element each,
+  // moved between the items' boxes. Nothing of this is React state, so a
+  // pointer passing over the items costs no render.
+  const navRef = useRef<HTMLElement>(null)
+  const itemRefs = useRef(new Map<View, HTMLButtonElement>())
+  const hoveredRef = useRef<View | null>(null)
+  const hover = useNavHighlight()
+  const active = useNavHighlight()
+  /** An item's box in the nav's own coordinates, so it holds while the nav scrolls */
+  const boxOf = (button: HTMLElement): { top: number; height: number } => {
+    const nav = navRef.current
+    if (!nav) return { top: 0, height: 0 }
+    const navBox = nav.getBoundingClientRect()
+    const box = button.getBoundingClientRect()
+    return { top: box.top - navBox.top + nav.scrollTop, height: box.height }
+  }
+  const glideTo = (highlight: ReturnType<typeof useNavHighlight>, button: HTMLElement): void => {
+    const { top, height } = boxOf(button)
+    // Reduced motion: land in place, only the fade is kept
+    if (reduced) {
+      highlight.y.set(top)
+      highlight.height.set(height)
+      return
+    }
+    animate(highlight.y, top, NAV_GLIDE)
+    animate(highlight.height, height, NAV_GLIDE)
+  }
+  const snapTo = (highlight: ReturnType<typeof useNavHighlight>, button: HTMLElement): void => {
+    const { top, height } = boxOf(button)
+    highlight.y.set(top)
+    highlight.height.set(height)
+  }
+
+  // The active highlight: in place on the first paint and when the rail is
+  // resized (collapsing hides the group labels, which moves the items), a
+  // glide when the view changes
+  const placedRef = useRef(false)
+  const wasCollapsed = useRef(collapsed)
+  useLayoutEffect(() => {
+    const button = itemRefs.current.get(view)
+    if (!button) return
+    const resize = !placedRef.current || wasCollapsed.current !== collapsed
+    placedRef.current = true
+    wasCollapsed.current = collapsed
+    if (resize) snapTo(active, button)
+    else glideTo(active, button)
+    // The click that changed the view left the pointer on this item: its
+    // hover highlight has nothing left to show
+    if (hoveredRef.current === view) animate(hover.opacity, 0, { duration: 0.12 })
+    // `t` is not read here, but a locale switch relabels the items and moves them
+  }, [view, collapsed, t])
+
+  // Window height and font loading move the items too: follow without animating
+  useEffect(() => {
+    const nav = navRef.current
+    if (!nav || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => {
+      const current = itemRefs.current.get(view)
+      if (current) snapTo(active, current)
+      const hoveredButton = hoveredRef.current ? itemRefs.current.get(hoveredRef.current) : undefined
+      if (hoveredButton && hover.opacity.get() > 0) snapTo(hover, hoveredButton)
+    })
+    observer.observe(nav)
+    return () => observer.disconnect()
+  }, [view, active, hover])
 
   const groups: NavGroup[] = [
     { label: null, items: [{ view: 'overview', icon: Home, label: t.nav.overview }] },
@@ -186,7 +285,36 @@ export function Sidebar({
         </div>
       </div>
 
-      <nav className="flex-1 space-y-4 overflow-y-auto px-2 pb-4 md:px-3">
+      <nav
+        ref={navRef}
+        // Leaving the rail as a whole fades the hover highlight out where it
+        // stands; coming back elsewhere glides from there while fading in
+        onPointerLeave={() => {
+          hoveredRef.current = null
+          animate(hover.opacity, 0, { duration: 0.18 })
+        }}
+        className="relative flex-1 space-y-4 overflow-y-auto px-2 pb-4 md:px-3"
+      >
+        {/* The two highlights, behind the items (-z-10 in the rail's stacking
+            context). inset mirrors the nav's own padding, so each one is
+            exactly as wide as the items */}
+        <motion.span
+          aria-hidden
+          style={{
+            y: hover.y,
+            height: hover.height,
+            opacity: hover.opacity,
+            scaleY: hover.stretch,
+            scaleX: hover.squash,
+            originY: hover.originY,
+          }}
+          className="pointer-events-none absolute inset-x-2 -z-10 rounded-lg bg-muted md:inset-x-3"
+        />
+        <motion.span
+          aria-hidden
+          style={{ y: active.y, height: active.height, scaleY: active.stretch, scaleX: active.squash, originY: active.originY }}
+          className="pointer-events-none absolute inset-x-2 -z-10 rounded-lg bg-accent md:inset-x-3"
+        />
         {groups.map((group, gi) => (
           <div key={gi}>
             {group.label && (
@@ -201,7 +329,7 @@ export function Sidebar({
             )}
             <div className="space-y-0.5">
               {group.items.map((item) => {
-                const active = view === item.view
+                const activeItem = view === item.view
                 const Icon = item.icon
                 return (
                   // Collapsed: the label is hidden, so a floating right-side
@@ -218,21 +346,29 @@ export function Sidebar({
                   >
                     <button
                       type="button"
+                      ref={(el) => {
+                        if (el) itemRefs.current.set(item.view, el)
+                        else itemRefs.current.delete(item.view)
+                      }}
                       onClick={() => onNavigate(item.view)}
+                      onPointerEnter={(event) => {
+                        hoveredRef.current = item.view
+                        // Hovering the active item shows its own highlight only
+                        animate(hover.opacity, activeItem ? 0 : 1, { duration: 0.12 })
+                        if (!activeItem) glideTo(hover, event.currentTarget)
+                      }}
                       aria-label={item.label}
-                      aria-current={active ? 'page' : undefined}
+                      aria-current={activeItem ? 'page' : undefined}
                       className={cn(
+                        // The backgrounds live in the two highlight layers at
+                        // the top of the nav, not on the button itself
                         'flex w-full items-center justify-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors',
                         collapsed ? '' : 'md:justify-start',
-                        active
-                          ? 'bg-accent font-medium text-white'
-                          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                        activeItem ? 'font-medium text-white' : 'text-muted-foreground hover:text-foreground',
                       )}
                     >
                       <Icon className="h-4 w-4 shrink-0" />
-                      <span
-                        className={cn('truncate text-sm', collapsed ? 'hidden' : 'hidden md:block')}
-                      >
+                      <span className={cn('truncate text-sm', collapsed ? 'hidden' : 'hidden md:block')}>
                         {item.label}
                       </span>
                     </button>
