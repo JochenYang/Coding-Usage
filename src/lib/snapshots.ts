@@ -176,26 +176,36 @@ export function getDailySeries(accountKey: string, days: number): DayPoint[] {
 }
 
 /**
- * Sum of per-account daily-consumption deltas across `accountKeys` for the
- * trailing `days` local days. A delta is last-minus-first observed `used`
- * within the window; negative deltas (quota reset / data gap) contribute 0.
- * Returns null when no account has any usable data.
+ * Sum of per-account consumption across `accountKeys` for the trailing `days`
+ * local days, one point per day.
+ *
+ * A day's consumption is the rise in an account's `used` since its previous
+ * reading — the day before, or the last earlier day that had one. A reading
+ * taken after a gap carries the consumption of the whole gap; comparing with
+ * the previous calendar day alone dropped it, and the longer the window the
+ * more gaps it has. A drop in `used` (quota reset / data gap) contributes 0,
+ * and so does the first reading of an account, which has nothing to compare.
  */
 export function getConsumedSeries(accountKeys: string[], days: number): DayPoint[] {
   if (accountKeys.length === 0) return []
   const perAccount = accountKeys.map((k) => getDailySeries(k, days))
+  // `used` at each account's most recent earlier reading, in series order
+  const lastObserved: (number | null)[] = perAccount.map(() => null)
   const out: DayPoint[] = []
   for (let i = 0; i < days; i++) {
     let used = 0
     let hasConsumed = false
     let pctSum = 0
     let pctCount = 0
-    for (const series of perAccount) {
-      const cur = series[i]
-      const prev = series[i - 1]
-      if (cur?.used != null && prev?.used != null && cur.used >= prev.used) {
-        used += cur.used - prev.used
-        hasConsumed = true
+    for (let a = 0; a < perAccount.length; a++) {
+      const cur = perAccount[a]![i]
+      if (cur?.used != null) {
+        const prev = lastObserved[a]
+        if (prev != null && cur.used >= prev) {
+          used += cur.used - prev
+          hasConsumed = true
+        }
+        lastObserved[a] = cur.used
       }
       if (cur?.pct != null) {
         pctSum += cur.pct

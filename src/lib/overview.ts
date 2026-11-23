@@ -282,18 +282,26 @@ export function buildDistribution(
   return { slices: main, total }
 }
 
-/** 7-day (default) consumed-tokens series for the trend chart; [] until data exists */
-export function buildTrendPoints(sections: Section[], days = 7): { label: string; value: number }[] {
+/**
+ * Consumed-tokens series for the trend chart, `days` local days (7 by
+ * default); [] until data exists.
+ *
+ * Each point keeps its `day` so the trends page, which asks for a longer
+ * window, can restore the calendar spacing between the days that had a
+ * reading — a day without one is not a day without consumption.
+ */
+export function buildTrendPoints(sections: Section[], days = 7): { label: string; value: number; day: string }[] {
   const keys = sections.flatMap((s) => s.cards.map((c) => c.key))
   const series: DayPointLike[] = getConsumedSeries(keys, days)
   const points = series
     .filter((p): p is DayPointLike & { used: number } => p.used != null)
-    .map((p) => ({ label: p.label, value: p.used }))
+    .map((p) => ({ label: p.label, value: p.used, day: p.day }))
   return points.length >= 2 ? points : []
 }
 
 interface DayPointLike {
   label: string
+  day: string
   used: number | null
 }
 

@@ -443,7 +443,7 @@ export const zhCN: Dict = {
     filterTitle: '模型筛选',
     filterAll: '全部',
     filterSelected: (n) => `已选 ${n} 个模型`,
-    filterMore: (n, where) => `其余 ${n} 个模型未列出，在所选范围内有 token 用量时可在「${where}」中点选`,
+    filterMore: (n, where) => `其余 ${n} 个模型未列出，在所选范围内有用量时可在「${where}」中点选`,
     emptyTitle: '暂无本地用量数据',
     emptyDesc: '本地用量来自本机智能体会话日志的扫描结果。',
     gathering: '正在累积数据，图表将在扫描到至少两天记录后显示。',

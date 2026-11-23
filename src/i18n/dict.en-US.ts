@@ -463,7 +463,7 @@ export const enUS: Dict = {
     filterMore: (n, where) =>
       `${n} more model${n === 1 ? '' : 's'} not listed — pick ${n === 1 ? 'it' : 'them'} in “${where}” when ${
         n === 1 ? 'it has' : 'they have'
-      } token usage in the range`,
+      } usage in the range`,
     emptyTitle: 'No local usage data yet',
     emptyDesc: 'Local usage comes from scanning this machine’s agent session logs.',
     gathering: 'Gathering data — the chart appears once at least two days have been scanned.',

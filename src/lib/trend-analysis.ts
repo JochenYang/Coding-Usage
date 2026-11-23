@@ -306,6 +306,12 @@ export function selectTrendSource(input: {
  * stacked bars, the comparison chart and the hit rate all describe the same
  * selection in either display mode.
  *
+ * Session time is recorded per day, never per model, so the picked models get
+ * their share of a day's time by call count — the same estimate
+ * {@link buildModelRows} makes for its rows. Left whole, the day's time made
+ * the KPI speed of a model picked alone "its output over every model's
+ * session time", a fraction of the figure the comparison listed for it.
+ *
  * Cache writes are not stored per model; they are what the picked rows' total
  * has left once reads, input and output are taken out.
  *
@@ -343,6 +349,10 @@ export function filterByModels(
       output,
       value: total,
       messages,
+      // Measured at the day level first, then shared: a stuck session's day is
+      // out for every model. Judging the share instead let such a day back in
+      // whenever the share fell under 24 h.
+      activeTimeMs: day.messages > 0 ? measurableActiveMs(day.activeTimeMs, day.messages) * (messages / day.messages) : 0,
     }
   })
 }
@@ -779,10 +789,15 @@ export function buildModelRows(
         output,
         messages,
         activeTimeMs,
-        tokPerSec: activeTimeMs > 0 ? measuredOutput / (activeTimeMs / 1000) : null,
+        // No output on the timed days is no speed to report: a credits-billed
+        // model has calls and a share of the time, and 0.0 read as measured
+        tokPerSec: measuredOutput > 0 ? measuredOutput / (activeTimeMs / 1000) : null,
       }
     })
-    .filter((r) => r.tokens > 0)
+    // A credits-billed model reports calls but no token counters; it stays so
+    // it can still be picked from the comparison chart under the call metric.
+    // Only a row with no signal at all is noise.
+    .filter((r) => r.tokens > 0 || r.messages > 0)
     .sort((a, b) => b.tokens - a.tokens)
 }
 
@@ -822,9 +837,8 @@ const MODEL_PALETTE = [
  * curve already holds. Everyone else keeps their canonical rank modulo the
  * palette, where a repeat is unavoidable — the page lists far more models than
  * the palette has entries. The limit shows when a filter picks models from
- * outside `drawn`: two of them can share a colour on one chart. Eight colours
- * cannot keep every model distinct, keep colours stable under the filter and
- * keep every on-screen pair apart at once; the page gives up the last.
+ * outside `drawn`: two of them can share a colour on one chart, which is what
+ * {@link distinctSlots} resolves for the picked set.
  *
  * `drawn` must be the same list whichever models the filter picks: slots
  * recomputed from a filtered list moved whichever model was picked alone onto
@@ -861,6 +875,44 @@ export function modelSlots(
 export function modelColor(slot: number): string {
   const size = MODEL_PALETTE.length
   return MODEL_PALETTE[((slot % size) + size) % size]!
+}
+
+/**
+ * The stable slots, with the picked models moved off each other's colour.
+ *
+ * `modelSlots` gives the unfiltered top of the ranking a colour each and
+ * everyone else their rank modulo the palette, so a filter that picks models
+ * from outside that top can put two of them on one colour — on one chart. In
+ * `picked` order (the caller passes the cumulative token ranking, so which of
+ * a pair moves does not depend on the selected range) each model keeps its
+ * slot unless an earlier pick already holds it; a collision moves to the
+ * first slot that no pick holds or needs, so a later pick does not have to
+ * move in turn. A single pick, the common case, is returned untouched, so a
+ * model never changes colour just by being selected; and past the palette
+ * size the repeat is unavoidable again.
+ */
+export function distinctSlots(
+  slots: ReadonlyMap<string, number>,
+  picked: readonly string[],
+  paletteSize = MODEL_PALETTE.length,
+): Map<string, number> {
+  if (picked.length < 2) return new Map(slots)
+  const out = new Map(slots)
+  // What every pick would wear if nothing moved: a free slot is only free
+  // when no later pick is coming for it
+  const claimed = new Set(picked.map((model) => out.get(model) ?? 0))
+  const taken = new Set<number>()
+  for (const model of picked) {
+    let slot = out.get(model) ?? 0
+    if (taken.has(slot)) {
+      const free = Array.from({ length: paletteSize }, (_, i) => i).find((i) => !taken.has(i) && !claimed.has(i))
+      if (free !== undefined) slot = free
+      else slot = Array.from({ length: paletteSize }, (_, i) => i).find((i) => !taken.has(i)) ?? slot
+    }
+    taken.add(slot)
+    out.set(model, slot)
+  }
+  return out
 }
 
 /**

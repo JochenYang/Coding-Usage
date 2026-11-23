@@ -20,6 +20,7 @@ import {
   buildCumulative,
   buildModelRows,
   computeTotals,
+  distinctSlots,
   filterByModels,
   groupModelDaily,
   modelColor,
@@ -36,6 +37,9 @@ const SPLIT_SERIES_LIMIT = 8
 
 /** Filter chips listed before the rest are left to the comparison chart */
 const FILTER_CHIP_LIMIT = 24
+
+/** Days of provider snapshots the fallback asks for: the store's whole retention */
+const SNAPSHOT_DAYS = 90
 
 /**
  * The credits series wears one hue of its own. Teal keeps it away from the
@@ -93,10 +97,14 @@ export function TrendsPage() {
   /**
    * Provider snapshots are the last resort, and reading them parses
    * localStorage — so this is gated on the two series above being unusable
-   * instead of being computed on every refresh.
+   * instead of being computed on every refresh. The whole retention window is
+   * asked for and the range selector narrows it: at the overview's default of
+   * a week, "last 30 days", "last 90 days" and "all" showed the same seven
+   * days.
    */
   const apiFallback = useMemo(
-    () => (agentUsage.dailySeries.length >= 2 || archived.length >= 2 ? [] : buildTrendPoints(sections)),
+    () =>
+      agentUsage.dailySeries.length >= 2 || archived.length >= 2 ? [] : buildTrendPoints(sections, SNAPSHOT_DAYS),
     [agentUsage.dailySeries.length, archived.length, sections],
   )
 
@@ -244,7 +252,11 @@ export function TrendsPage() {
   // rows, so a model wears one colour everywhere. The slots come from the
   // UNFILTERED ranking: recomputed from the filtered one, whichever model was
   // picked alone moved to slot 0 and changed colour between two clicks — see
-  // `modelSlots` for why the drawn models are placed first.
+  // `modelSlots` for why the drawn models are placed first. A selection of
+  // models from outside that ranking can still put two picks on one colour;
+  // only then does the lower-ranked pick move, so the curves on the chart
+  // stay apart. The order is the cumulative token ranking, not the window's
+  // output: which of a pair changes colour must not depend on the range.
   const drawnByOutput = useMemo(
     () =>
       rankedByOutput
@@ -253,7 +265,14 @@ export function TrendsPage() {
         .map((x) => x.m),
     [rankedByOutput],
   )
-  const slots = useMemo(() => modelSlots(modelSeries, drawnByOutput), [modelSeries, drawnByOutput])
+  const pickedInRankOrder = useMemo(
+    () => modelSeries.filter((m) => picked.includes(m.model)).map((m) => m.model),
+    [modelSeries, picked],
+  )
+  const slots = useMemo(
+    () => distinctSlots(modelSlots(modelSeries, drawnByOutput), pickedInRankOrder),
+    [modelSeries, drawnByOutput, pickedInRankOrder],
+  )
 
   /**
    * The window BEFORE the filter, for the one input a filtered series gets
@@ -426,6 +445,12 @@ export function TrendsPage() {
                 {totals.weightedTokPerSec != null ? `${totals.weightedTokPerSec.toFixed(1)} tok/s` : '—'}
               </div>
             </Tooltip>
+          }
+          // A filter hands the picked models their share of each day's session
+          // time by call count — the same estimate the comparison rows carry,
+          // and labelled as such there
+          footer={
+            isFiltered ? <span className="text-muted-foreground">{t.trends.estimated}</span> : undefined
           }
         />
       </div>

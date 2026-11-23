@@ -7,6 +7,7 @@ import {
   buildModelRows,
   computeTotals,
   densifySeries,
+  distinctSlots,
   filterByModels,
   groupModelDaily,
   modelSlots,
@@ -414,6 +415,44 @@ describe('filterByModels', () => {
     expect(both.map((p) => p.value)).toEqual([50, 70, 90])
   })
 
+  it("gives the picked models their share of a day's session time, so the KPI speed matches the comparison", () => {
+    // Three calls a day (a: 1, b: 2) over three seconds of session time: b owns
+    // two thirds of the time and its speed is its output over that. Over the
+    // whole day's time instead, the KPI read a fraction of the figure the
+    // comparison listed for the very same model.
+    const timed = points.map((p) => ({ ...p, activeTimeMs: 3000, messages: 3 }))
+    const only = filterByModels(timed, models, ['b'])
+
+    expect(only.map((p) => p.activeTimeMs)).toEqual([2000, 2000, 2000])
+    const kpi = computeTotals(bucketize(only), 'all').weightedTokPerSec
+    const row = buildModelRows(
+      models.filter((m) => m.model === 'b'),
+      3,
+      timed.map((p) => p.activeTimeMs),
+      timed.map((p) => p.messages),
+      new Map(),
+      'all',
+    )[0]!
+    expect(kpi).toBeCloseTo(row.tokPerSec!)
+
+    // A day with time but no recorded call has no share to hand out
+    const silent = timed.map((p, i) => (i === 1 ? { ...p, messages: 0 } : p))
+    expect(filterByModels(silent, models, ['b']).map((p) => p.activeTimeMs)).toEqual([2000, 0, 2000])
+  })
+
+  it('keeps a stuck-session day out of the rate after filtering too', () => {
+    // 31.5 h over 61 calls is not a duration. Judged on the filtered share
+    // alone (two of the 61 calls, about an hour) it passed the 24-hour check
+    // and came back in, while the comparison row still left it out.
+    const stuck = points.map((p, i) => (i === 1 ? { ...p, activeTimeMs: 31.5 * 3_600_000, messages: 61 } : p))
+
+    const only = bucketize(filterByModels(stuck, models, ['b']))
+
+    expect(only[1]!.activeTimeMs).toBe(0)
+    expect(only[1]!.tokPerSec).toBeNull()
+    expect(only[0]!.tokPerSec).not.toBeNull()
+  })
+
   it('returns the series untouched when nothing is selected', () => {
     expect(filterByModels(points, [], [])).toEqual(points)
   })
@@ -474,6 +513,78 @@ describe('buildModelRows', () => {
     // The two recorded days land on their real dates, not at the array's head.
     expect(source.models[0]!.total[0]).toBe(5)
     expect(source.models[0]!.total[30]).toBe(7)
+  })
+
+  it('keeps a credits-billed model that reports calls but no tokens', () => {
+    // Such a model is absent from the token chips too (ranked last); dropped
+    // here as well, it could not be picked anywhere on the page.
+    const models = [
+      modelRow('paid', [0, 0], [3, 4], [0, 0]),
+      modelRow('empty', [0, 0], [0, 0], [0, 0]),
+    ]
+
+    const rows = buildModelRows(models, 2, [1000, 1000], [3, 4], new Map(), 'all')
+
+    expect(rows.map((r) => r.model)).toEqual(['paid'])
+    expect(rows[0]!.messages).toBe(7)
+    expect(rows[0]!.tokens).toBe(0)
+    // Calls and a share of the time, but no output: no speed to report, not
+    // a measured 0.0
+    expect(rows[0]!.activeTimeMs).toBe(2000)
+    expect(rows[0]!.tokPerSec).toBeNull()
+  })
+})
+
+describe('distinctSlots', () => {
+  // m8 / m9 rank past the palette: modulo, they land on m0's / m1's colours
+  const base = new Map([
+    ['m0', 0],
+    ['m1', 1],
+    ['m8', 0],
+    ['m9', 1],
+  ])
+
+  it('returns the stable slots untouched for a single pick or none', () => {
+    expect(distinctSlots(base, ['m8'])).toEqual(base)
+    expect(distinctSlots(base, [])).toEqual(base)
+  })
+
+  it('moves only the later of two picks that share a colour', () => {
+    const out = distinctSlots(base, ['m0', 'm8'])
+
+    // Listed most output first: the earlier pick keeps its colour, the later
+    // one takes the first slot no pick holds (slot 1 belongs to m1 here, which
+    // is not picked and so not on the chart)
+    expect(out.get('m0')).toBe(0)
+    expect(out.get('m8')).toBe(1)
+    // Everyone who is not picked is untouched
+    expect(out.get('m1')).toBe(1)
+    expect(out.get('m9')).toBe(1)
+  })
+
+  it('leaves the repeat in place once the palette is full', () => {
+    const nine = Array.from({ length: 9 }, (_, i) => `m${i}`)
+    const out = distinctSlots(new Map(nine.map((m) => [m, 0])), nine, 8)
+
+    expect(new Set(nine.map((m) => out.get(m))).size).toBe(8)
+    // No free slot left, so the ninth keeps the colour it collided on
+    expect(out.get('m8')).toBe(0)
+  })
+
+  it('moves one model rather than two when a free slot is reserved for a later pick', () => {
+    // m9's own slot (1) is free for m8 only because m9 has not been reached
+    // yet: taking it would push m9 on to a third colour
+    const base = new Map([
+      ['m0', 0],
+      ['m8', 0],
+      ['m9', 1],
+    ])
+
+    const out = distinctSlots(base, ['m0', 'm8', 'm9'])
+
+    expect(out.get('m0')).toBe(0)
+    expect(out.get('m8')).toBe(2)
+    expect(out.get('m9')).toBe(1)
   })
 })
 
