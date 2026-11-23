@@ -10,7 +10,7 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
-## [Unreleased]
+## [v0.10.6] - 2026-11-23
 
 ### 中文
 - 趋势页筛选模型后，加权输出速度与模型对比里的估算行是同一个数：会话时长按当天调用占比分摊给所选模型，KPI 卡上注明「按当日调用次数占比估算」（原来同一个模型 KPI 显示 20.4、对比行显示 44.1 tok/s）
@@ -23,7 +23,7 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 - 趋势页的速度线在没有可用时长的列断开，而不是画成 0；单日活跃时长超过 24 小时的记录改为按调用密度判断：并行会话叠加出的重度日照常计入，只有平均每次调用摊到 5 分钟以上时长的才视为上游异常剔除（原来 24 小时就剔除，把并行会话的重度日也丢了）
 - 趋势页所选范围内没有用量时直接说明，不再显示「正在累积数据」（时间范围以今天为终点后，停用一段时间就会落到这种状态）
 - 趋势页的堆叠柱补上缓存写入（与缓存读取同色，悬浮提示里单列），柱高与底栏拆分之和现在等于总量
-- 趋势页里含今天的一列标注「部分周期」；筛选 chip 超过 24 个、分模型曲线超过 8 条时说明截断；模型颜色不再随筛选变化；分模型图例注明「点击图例可筛选模型」
+- 趋势页里含今天的一列标注「部分周期」；筛选 chip 超过 24 个、分模型曲线超过 8 条时说明截断；单独选中一个模型时它的颜色不再变化；分模型图例注明「点击图例可筛选模型」
 - 趋势页筛选模型后，模型对比里的估算速度与未筛选时一致（原来单独选中一个模型，会把当天全部时长都算给它）
 - 用量分布的图例同时显示数值和占比（如「5.72B 31%」），两列对齐
 - 近期活动按告警最近一次确认的时间显示；持续超过一天的告警在详情里注明起始日期（一直成立的低余额不再显示成几个月前的旧数据）
@@ -40,7 +40,7 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 - The trends page's output-speed line breaks on columns with no usable clock instead of dropping to 0; a day's active time over 24 hours is now judged by its call density — heavy days made of overlapping sessions count as recorded, and only a day that comes to more than 5 minutes of session time per call is dropped as a stuck session (the old 24-hour cut also lost heavy days with overlapping sessions)
 - When the selected range on the trends page has no usage, the page says so instead of "gathering data" (a reachable state now that the range ends today)
 - The trends page's stacked bars now include cache writes (in the cache-read colour, itemised in the tooltip), so a bar and the breakdown under the headline add up to the total
-- The trends page marks the column holding today as a partial period, says when the filter chips (24) or the split curves (8) are truncated, keeps model colours stable under a filter, and notes that clicking a split-chart legend entry filters by model
+- The trends page marks the column holding today as a partial period, says when the filter chips (24) or the split curves (8) are truncated, keeps a model's colour when it is picked alone, and notes that clicking a split-chart legend entry filters by model
 - A model's estimated speed in the trends comparison no longer changes when it is picked alone (it used to absorb the whole day's session time)
 - The usage distribution legend shows each slice's value next to its share (as "5.72B 31%"), in two aligned columns
 - Recent activity shows alerts at the time they were last confirmed, and notes since when an alert has held for more than a day (a low balance that never cleared no longer reads as months-old data)
