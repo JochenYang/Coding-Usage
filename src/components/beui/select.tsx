@@ -22,6 +22,7 @@ import {
 } from "react";
 import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/cn";
+import { claimDismissScope } from "@/lib/hooks/use-dismiss";
 
 const INSTANT_TRANSITION: Transition = { duration: 0 };
 
@@ -148,9 +149,15 @@ export function Select({
       if (rootRef.current && !rootRef.current.contains(e.target as Node))
         setOpen(false);
     };
+    // Claim the Escape for this layer: a drawer listening underneath must not
+    // take the same press and close with the list
+    const release = claimDismissScope((target) =>
+      Boolean(rootRef.current?.contains(target)),
+    );
     window.addEventListener("keydown", onKey);
     window.addEventListener("pointerdown", onPointer);
     return () => {
+      release();
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("pointerdown", onPointer);
     };

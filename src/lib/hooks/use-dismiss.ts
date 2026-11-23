@@ -40,6 +40,26 @@ function claimedByAnotherScope(
   return false;
 }
 
+/**
+ * Register an open overlay so that the layers underneath it can leave a
+ * dismissal gesture alone: Escape then closes the topmost thing first instead
+ * of everything that happens to listen — a drawer under an open select, a
+ * popover or a popconfirm. Returns the release. `inside` must be stable.
+ */
+export function claimDismissScope(
+  inside: (target: Element) => boolean,
+): () => void {
+  openScopes.add(inside);
+  return () => {
+    openScopes.delete(inside);
+  };
+}
+
+/** True while any overlay registered here is open */
+export function hasOpenDismissScope(): boolean {
+  return openScopes.size > 0;
+}
+
 // preventDefault on pointerdown does not suppress the click that follows, so
 // consuming a gesture means swallowing that click itself. The swallower
 // deliberately outlives the effect that installed it — the dismissal it
@@ -108,11 +128,11 @@ export function useDismiss(
       }
       onDismiss();
     };
-    openScopes.add(inside);
+    const release = claimDismissScope(inside);
     window.addEventListener("keydown", onKey);
     window.addEventListener("pointerdown", onPointer, true);
     return () => {
-      openScopes.delete(inside);
+      release();
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("pointerdown", onPointer, true);
     };

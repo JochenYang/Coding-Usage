@@ -2,11 +2,14 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, type ReactNode } from 'react'
 import { EASE_OUT } from '@/lib/ease'
 import { cn } from '@/lib/cn'
+import { hasOpenDismissScope } from '@/lib/hooks/use-dismiss'
 
 /**
  * Simplified drawer: modeled on beui.dev/components/motion/drawer, with the
  * PresenceGate dependency removed. AnimatePresence drives both the backdrop
- * and the panel in/out together; Escape closes automatically; body scroll is
+ * and the panel in/out together; Escape closes automatically — unless an
+ * overlay opened over the drawer (a select, a popover, a popconfirm) is the
+ * one that takes it, so Escape peels one layer at a time; body scroll is
  * locked while open.
  *
  * Animation timing (avoids the "blink-and-miss-it" look):
@@ -49,7 +52,7 @@ export function Drawer({
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onOpenChange(false)
+      if (e.key === 'Escape' && !hasOpenDismissScope()) onOpenChange(false)
     }
     window.addEventListener('keydown', onKey)
     const prevOverflow = document.body.style.overflow

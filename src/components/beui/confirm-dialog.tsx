@@ -53,7 +53,13 @@ export function ConfirmDialog({
             if (e.target === e.currentTarget) onCancel();
           }}
           onKeyDown={(e) => {
-            if (e.key === "Escape") onCancel();
+            // This press is answered here. Left to go on, it reaches a drawer
+            // underneath (its Escape listener is on window), which asks the
+            // unsaved-changes guard again and reopens this very dialog.
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              onCancel();
+            }
           }}
         >
           <motion.div
