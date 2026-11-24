@@ -13,9 +13,11 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 ## [v0.10.9] - 2026-11-24
 
 ### 中文
+- 本地用量的历史库只增不减：同一天、同一客户端取较大的那份，归档或删除会话后当天的记录不会再被新的扫描结果改小（此前会话被删或归档后，当天的数字会跟着变小，差额从历史里消失）
 - 概览页的「本地 Agent 用量」按最近在用排序：今天有用量的排最前（按今日用量降序），今天没用但本周用过的其次（按本周），再按累计；长期停用的 Agent 不再因为历史总量大而占在最上面
 
 ### English
+- Local usage history no longer shrinks: for a given client on a given day the larger reading is kept, so archiving or deleting sessions can no longer lower a day's recorded figure (before, the day followed the smaller scan and the difference was lost from history)
 - The overview's local agent usage table is ordered by what is in use now: agents used today come first (by today's usage), then agents used this week (by this week), then by all-time — an agent idle for long no longer sits at the top just because of its history
 
 ## [v0.10.8] - 2026-11-24

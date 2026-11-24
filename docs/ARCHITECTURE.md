@@ -201,8 +201,9 @@ electron/
    （手动粘贴的控制台请求，safeStorage 加密；无 keystore 时拒绝保存而不是写明文）、
    `opendesign-cookie.json`（OpenDesign 卡的凭据槽：device 授权拿到的 vela_ctrl 控制面密钥
    或粘贴的 Cloud Cookie，safeStorage 加密、读取时重新校验；无 keystore 时拒绝保存）、
-   `usage-history.db`（本地用量的日归档 SQLite：每轮扫描按日合并入库，删除/轮转的会话文件
-   不再抹掉历史；`electron/usage-store.ts`，主进程启动时初始化）。
+   `usage-history.db`（本地用量的日归档 SQLite：每轮扫描按日合并入库，删除/轮转/归档的会话
+   不再抹掉历史——同一天、同一客户端取较大的那份，归档或删除会话让扫描值变小也不会把已记录的
+   数字改小；`electron/usage-store.ts`，主进程启动时初始化）。
    **设置镜像与启动恢复**：前台窗口每次保存设置（启动挂载时与每次改动后；隐藏的后台窗口从不保存）
    都把加密 v3 文档另存一份到 userData 的 `settings-backup.json`（加密不可用、回退到明文 v2 时没有 v3
    可另存，不写镜像），读写都只经 `electron/settings-mirror.ts`：新内容先写进暂存文件并落盘，再一步

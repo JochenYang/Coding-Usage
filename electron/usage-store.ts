@@ -13,13 +13,22 @@ import { join } from 'node:path'
  * into it instead of replacing it, so history survives the source files going
  * away.
  *
- * Merge rule, and the whole reason this module exists: a day the fresh scan
- * reports is taken from the fresh scan, but any *client* that the fresh scan no
- * longer mentions keeps its stored rows for that day. Day totals and the token
- * breakdown are recomputed to include those kept rows, because the renderer
- * derives the unclassified "other" bucket from `totals` minus the client rows —
- * leaving them out of the totals would make a kept row silently vanish from the
- * headline figures while still counting toward its client.
+ * Merge rule, and the whole reason this module exists: per client, the larger
+ * of the two views of a day is kept. A client the fresh scan reports with more
+ * usage than the store holds takes the fresh view (today's numbers normally
+ * grow); a client it reports with less keeps the stored view; a client it no
+ * longer mentions keeps its stored rows. Day totals and the token breakdown are
+ * recomputed to include the kept rows, because the renderer derives the
+ * unclassified "other" bucket from `totals` minus the client rows — leaving them
+ * out of the totals would make a kept row silently vanish from the headline
+ * figures while still counting toward its client.
+ *
+ * Why the larger view rather than the fresh one: an agent that deletes,
+ * archives or rewrites a session shrinks what a later scan can see, and this
+ * store exists precisely so that history outlives that. A per-day "fresh wins"
+ * rule made the day's figure follow the shrink, silently dropping the archived
+ * part (measured on this machine: one agent's day fell from 1.11B to 712M after
+ * its sessions were pruned).
  *
  * Storage shape: one row per calendar day holding that day's contribution as
  * JSON. Keeping the payload opaque means a tokscale field this build does not
@@ -27,12 +36,11 @@ import { join } from 'node:path'
  * predicate.
  *
  * Known and accepted limits:
- * - Corrections tokscale itself makes (better de-duplication, a re-read of a
- *   file that was truncated while being appended) are not rolled back: for a
- *   day the fresh scan still reports, its value wins.
- * - A partial deletion *within* one client on one day cannot be detected; the
- *   fresh value for that client wins there too. The merge is monotonic per
- *   (day, client), not per day.
+ * - History is monotonic per client: a scan that reports less for a client on a
+ *   day cannot lower it. A correction tokscale itself makes downward (better
+ *   de-duplication, a re-read of a truncated file) therefore does not land; a
+ *   day may stay higher than a later scanner would compute. Equal views take the
+ *   fresh one, so cost, model labels and other non-count fields still refresh.
  * - `activeTimeMs` is a day-level observation with no per-client attribution, so
  *   a day that keeps stored rows takes the larger of the two — a day tokscale
  *   later trims keeps its old figure, which understates tok/s rather than
@@ -240,45 +248,120 @@ function sumEntries(entries: ClientEntry[]): EntrySums {
   }
 }
 
+/** Entry sums added together (a kept row and another kept row) */
+function addSums(a: EntrySums, b: EntrySums): EntrySums {
+  return {
+    tokens: a.tokens + b.tokens,
+    input: a.input + b.input,
+    output: a.output + b.output,
+    cacheRead: a.cacheRead + b.cacheRead,
+    cacheWrite: a.cacheWrite + b.cacheWrite,
+    cost: a.cost + b.cost,
+    messages: a.messages + b.messages,
+    credits: a.credits + b.credits,
+  }
+}
+
+/** How much more one view of a client carries than another (only called when larger) */
+function subtractSums(a: EntrySums, b: EntrySums): EntrySums {
+  return {
+    tokens: a.tokens - b.tokens,
+    input: a.input - b.input,
+    output: a.output - b.output,
+    cacheRead: a.cacheRead - b.cacheRead,
+    cacheWrite: a.cacheWrite - b.cacheWrite,
+    cost: a.cost - b.cost,
+    messages: a.messages - b.messages,
+    credits: a.credits - b.credits,
+  }
+}
+
 /**
- * Fold a fresh scan's view of one day onto the stored view.
+ * Whether the stored view of a client is the more complete one.
  *
- * Clients the fresh scan still reports are taken from the fresh scan; clients it
- * no longer mentions are carried over from the store. Returns `fresh` untouched
- * when nothing has to be carried over — the common case, since session files
- * normally still exist.
+ * Tokens decide first; calls break a token tie, then credits — a credits-billed
+ * agent (Qoder global) reports no tokens at all, so without them its stored day
+ * could never win. Equal views are not "larger": the fresh one then replaces the
+ * stored one, which is what lets a corrected cost or model label land.
+ */
+function isLarger(stored: EntrySums, fresh: EntrySums): boolean {
+  if (stored.tokens !== fresh.tokens) return stored.tokens > fresh.tokens
+  if (stored.messages !== fresh.messages) return stored.messages > fresh.messages
+  return stored.credits > fresh.credits
+}
+
+/**
+ * Day totals with the kept rows added back in.
+ *
+ * Credits are a unit of their own on the day total: a kept credits-billed row
+ * (Qoder global) must keep its credits here, or the renderer's "unclassified"
+ * derivation (totals − Σclients) would have to absorb the difference and the
+ * headline would under-report the spend.
+ */
+function withTotals(totals: Record<string, unknown>, extra: EntrySums): Record<string, unknown> {
+  return {
+    ...totals,
+    tokens: num(totals.tokens) + extra.tokens,
+    cost: num(totals.cost) + extra.cost,
+    messages: num(totals.messages) + extra.messages,
+    credits: num(totals.credits) + extra.credits,
+  }
+}
+
+/** Token breakdown with the kept rows added back in */
+function withBreakdown(breakdown: Record<string, unknown>, extra: EntrySums): Record<string, unknown> {
+  return {
+    ...breakdown,
+    input: num(breakdown.input) + extra.input,
+    output: num(breakdown.output) + extra.output,
+    cacheRead: num(breakdown.cacheRead) + extra.cacheRead,
+    cacheWrite: num(breakdown.cacheWrite) + extra.cacheWrite,
+  }
+}
+
+/**
+ * Fold a fresh scan's view of one day onto the stored view: per client, the
+ * larger view is kept.
+ *
+ * A client the fresh scan reports with more usage takes the fresh view (the
+ * normal case); one it reports with less keeps the stored view, because a
+ * deleted, archived or rewritten session must not shrink what history already
+ * recorded; one it no longer reports keeps its stored rows.
  */
 function mergeDay(previous: Contribution, fresh: Contribution): Contribution {
   const freshGroups = groupByClient(fresh.clients)
+  const previousGroups = groupByClient(previous.clients)
+  // Rows taken from the store instead of the fresh scan, and how much more they
+  // carry than the fresh view they replace.
   const kept: ClientEntry[] = []
-  for (const [client, entries] of groupByClient(previous.clients)) {
+  /** Clients whose fresh row is replaced by the stored one (never both) */
+  const replaced = new Set<string>()
+  let extra: EntrySums | null = null
+  const addExtra = (sums: EntrySums): void => {
+    extra = extra ? addSums(extra, sums) : sums
+  }
+  for (const [client, freshEntries] of freshGroups) {
+    const previousEntries = previousGroups.get(client)
+    if (!previousEntries) continue
+    const stored = sumEntries(previousEntries)
+    const current = sumEntries(freshEntries)
+    if (!isLarger(stored, current)) continue
+    replaced.add(client)
+    kept.push(...previousEntries)
+    addExtra(subtractSums(stored, current))
+  }
+  for (const [client, entries] of previousGroups) {
     if (freshGroups.has(client)) continue
     kept.push(...entries)
+    addExtra(sumEntries(entries))
   }
-  if (kept.length === 0) return fresh
-
-  const carried = sumEntries(kept)
-  const totals: Record<string, unknown> = { ...fresh.totals }
-  totals.tokens = num(fresh.totals.tokens) + carried.tokens
-  totals.cost = num(fresh.totals.cost) + carried.cost
-  totals.messages = num(fresh.totals.messages) + carried.messages
-  // Credits are a unit of their own on the day total: a carried-over
-  // credits-billed day (Qoder global) must keep its credits here, or the
-  // renderer's "unclassified" derivation (totals − Σclients) would have to
-  // absorb the difference and the headline would under-report the spend.
-  totals.credits = num(fresh.totals.credits) + carried.credits
-
-  const breakdown: Record<string, unknown> = { ...fresh.tokenBreakdown }
-  breakdown.input = num(fresh.tokenBreakdown.input) + carried.input
-  breakdown.output = num(fresh.tokenBreakdown.output) + carried.output
-  breakdown.cacheRead = num(fresh.tokenBreakdown.cacheRead) + carried.cacheRead
-  breakdown.cacheWrite = num(fresh.tokenBreakdown.cacheWrite) + carried.cacheWrite
+  if (extra == null) return fresh
 
   return {
     ...fresh,
-    totals,
-    tokenBreakdown: breakdown,
-    clients: [...fresh.clients, ...kept],
+    totals: withTotals(fresh.totals, extra),
+    tokenBreakdown: withBreakdown(fresh.tokenBreakdown, extra),
+    clients: [...fresh.clients.filter((entry) => !replaced.has(entry.client ?? '')), ...kept],
     // Day-level observation the entries cannot be summed into. The stored value
     // covered the kept clients as well, so the larger one is the closer estimate
     // of the day's real activity. `intensity` is deliberately not merged: no

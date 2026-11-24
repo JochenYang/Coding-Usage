@@ -122,11 +122,56 @@ describe('usage history store', () => {
     expect(readStoredContributions()).toHaveLength(1)
   })
 
-  it('overwrites a day the fresh scan still reports in full', () => {
+  it('keeps the stored view when the fresh scan reports less for a client', () => {
+    // A deleted, archived or rewritten session shrinks what a later scan sees;
+    // history must not follow it down — that is what this store exists for
     mergeScanIntoStore([contribution('2026-01-01', [{ client: 'codex', input: 100 }])])
     const merged = mergeScanIntoStore([contribution('2026-01-01', [{ client: 'codex', input: 40 }])])
-    expect(merged[0]!.clients[0]!.tokens?.input).toBe(40)
-    expect(merged[0]!.totals.tokens).toBe(40)
+    expect(merged[0]!.clients[0]!.tokens?.input).toBe(100)
+    expect(merged[0]!.totals.tokens).toBe(100)
+    expect(merged[0]!.tokenBreakdown.input).toBe(100)
+  })
+
+  it('takes the fresh view where it is larger, and keeps the stored one where it shrank', () => {
+    mergeScanIntoStore([
+      contribution('2026-01-01', [
+        { client: 'codex', input: 100 },
+        { client: 'kimi', input: 50 },
+      ]),
+    ])
+    const merged = mergeScanIntoStore([
+      contribution('2026-01-01', [
+        { client: 'codex', input: 120 },
+        { client: 'kimi', input: 30 },
+      ]),
+    ])
+    const day = merged[0]!
+    expect(day.clients.find((c) => c.client === 'codex')!.tokens?.input).toBe(120)
+    expect(day.clients.find((c) => c.client === 'kimi')!.tokens?.input).toBe(50)
+    expect(day.totals.tokens).toBe(170)
+    expect(day.tokenBreakdown.input).toBe(170)
+  })
+
+  it('breaks a token tie by calls, then by credits', () => {
+    // Same tokens but fewer calls, or fewer credits, is the less complete view
+    mergeScanIntoStore([
+      contribution('2026-01-01', [{ client: 'codex', input: 100, messages: 9 }]),
+      contribution('2026-01-02', [{ client: 'qoder-global', input: 0, credits: 6, messages: 4 }]),
+    ])
+    const merged = mergeScanIntoStore([
+      contribution('2026-01-01', [{ client: 'codex', input: 100, messages: 5 }]),
+      contribution('2026-01-02', [{ client: 'qoder-global', input: 0, credits: 2, messages: 4 }]),
+    ])
+    expect(merged[0]!.clients[0]!.messages).toBe(9)
+    expect(merged[1]!.clients[0]!.credits).toBe(6)
+    expect(merged[1]!.totals.credits).toBe(6)
+  })
+
+  it('lets an equal view refresh what it carries, such as a corrected cost', () => {
+    mergeScanIntoStore([contribution('2026-01-01', [{ client: 'codex', input: 100, cost: 1 }])])
+    const merged = mergeScanIntoStore([contribution('2026-01-01', [{ client: 'codex', input: 100, cost: 2 }])])
+    expect(merged[0]!.clients[0]!.cost).toBe(2)
+    expect(merged[0]!.totals.cost).toBe(2)
   })
 
   it('purges days older than the cutoff and keeps the rest', () => {
@@ -203,6 +248,25 @@ describe('usage history store', () => {
 
     expect(vm.todayTotal.tokens).toBe(150)
     expect(vm.other).toBeNull()
+    expect(vm.clients.find((c) => c.client === 'codex')!.today.tokens).toBe(100)
+    expect(vm.clients.find((c) => c.client === 'kimi')!.today.tokens).toBe(50)
+  })
+
+  it('keeps the day figure a shrink would have lowered, as the card reads it', () => {
+    const now = new Date()
+    const day = `${now.getFullYear()}-${`${now.getMonth() + 1}`.padStart(2, '0')}-${`${now.getDate()}`.padStart(2, '0')}`
+    mergeScanIntoStore([
+      contribution(day, [
+        { client: 'codex', input: 100 },
+        { client: 'kimi', input: 50 },
+      ]),
+    ])
+    // One client's sessions were pruned, the other's numbers fell: neither may
+    // lower what the card already showed (1.11B → 712M on this machine)
+    const merged = mergeScanIntoStore([contribution(day, [{ client: 'codex', input: 60 }])])
+    const vm = summarizeScan({ daily: { contributions: merged } })
+
+    expect(vm.todayTotal.tokens).toBe(150)
     expect(vm.clients.find((c) => c.client === 'codex')!.today.tokens).toBe(100)
     expect(vm.clients.find((c) => c.client === 'kimi')!.today.tokens).toBe(50)
   })
