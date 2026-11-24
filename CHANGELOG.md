@@ -10,6 +10,14 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- 概览页的「本地 Agent 用量」按最近在用排序：今天有用量的排最前（按今日用量降序），今天没用但本周用过的其次（按本周），再按累计；长期停用的 Agent 不再因为历史总量大而占在最上面
+
+### English
+- The overview's local agent usage table is ordered by what is in use now: agents used today come first (by today's usage), then agents used this week (by this week), then by all-time — an agent idle for long no longer sits at the top just because of its history
+
 ## [v0.10.8] - 2026-11-24
 
 ### 中文

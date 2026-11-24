@@ -163,7 +163,9 @@ electron/
    `reads` 数组直读 8 路本地存储后合并：DSH（原生转录，mergeAlways——`dsh` 不在
    TOKSCALE_CLIENTS 里）、CodeBuddy CN IDE、Cindy、Trae CN（mergeAlways，与 tokscale 的来源
    不相交）、MiniMax Code、Antigravity、Qoder CN、Qoder global（这四路在 tokscale 已覆盖该
-   client 时跳过），聚合在 `src/lib/agent-usage.ts`。
+   client 时跳过），聚合在 `src/lib/agent-usage.ts`。概览页的表格行按「最近在用」排序
+   （`sortAgentClients`）：今日 tokens 降序 → 本周 tokens 降序 → 累计 tokens 降序，token 相同时按
+   调用次数，三项都为 0 的保持注册顺序——长期停用的大户不会因为历史总量大而占在最上面。
    **趋势页口径**（`src/lib/trend-analysis.ts`，全部是纯函数）：数据源按 扫描日序列 → localStorage 日归档 →
    服务商快照 依次取用、互不拼接；只有扫描序列带按模型拆分（归档与快照只有总量，所以命中率在那两种来源下
    显示不可用）。快照回退取快照存储的全部保留期（90 天，`buildTrendPoints` 透传每个点的日期），再由范围

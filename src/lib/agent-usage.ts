@@ -147,6 +147,40 @@ export interface AgentClientVM {
   models: AgentModelVM[]
 }
 
+/**
+ * Order the agent rows of the overview table: what is in use now comes first.
+ *
+ * Three keys, each descending — today's tokens, then this week's, then
+ * all-time — with call counts breaking token ties (a credits-billed agent
+ * reports no tokens, but its turns are real usage). So an agent used today
+ * always sits above one that was not, an agent idle today but used this week
+ * stays above one that has been idle for longer, and a long-idle agent with a
+ * large history never takes the top spot from something in use. The registry
+ * order is the final tie-break, so rows with nothing in any window keep the
+ * order they always had.
+ *
+ * Pure: the array passed in is left alone.
+ */
+export function sortAgentClients(clients: AgentClientVM[]): AgentClientVM[] {
+  const registryRank = new Map(AGENT_CLIENTS.map((client, index) => [client, index]))
+  const windows: Array<(client: AgentClientVM) => AgentPeriodVM | undefined> = [
+    (client) => client.today,
+    (client) => client.week,
+    (client) => client.allTime,
+  ]
+  return [...clients].sort((a, b) => {
+    for (const window of windows) {
+      const left = window(a)
+      const right = window(b)
+      const byTokens = (right?.tokens ?? 0) - (left?.tokens ?? 0)
+      if (byTokens !== 0) return byTokens
+      const byCalls = (right?.messages ?? 0) - (left?.messages ?? 0)
+      if (byCalls !== 0) return byCalls
+    }
+    return (registryRank.get(a.client) ?? 0) - (registryRank.get(b.client) ?? 0)
+  })
+}
+
 /** tokens/cost for one model or provider label (analysis views) */
 export interface CostSliceVM {
   label: string
@@ -804,7 +838,8 @@ export function summarizeScan(raw: unknown): AgentUsageVM {
     .sort((a, b) => b.tokens - a.tokens)
 
   return {
-    clients,
+    // The table reads as "what is in use now" rather than as the registry order
+    clients: sortAgentClients(clients),
     other:
       otherToday.tokens > 0 ||
       otherWeek.tokens > 0 ||

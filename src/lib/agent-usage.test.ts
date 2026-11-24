@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { summarizeScan } from './agent-usage'
+import { sortAgentClients, summarizeScan, type AgentClientVM, type AgentPeriodVM } from './agent-usage'
 
 /**
  * Regression cover for the agent × model cross-cut.
@@ -312,5 +312,89 @@ describe('week windows', () => {
 
     expect(vm.other?.week?.tokens).toBe(30)
     expect(vm.weekTotal?.tokens).toBe(30)
+  })
+})
+
+/**
+ * The overview table's row order: what is in use now comes first, so a large
+ * but long-idle agent no longer takes the top spot from something running today.
+ */
+describe('overview table order', () => {
+  /** A period carrying only the two figures the ordering reads */
+  const period = (tokens: number, messages = 0): AgentPeriodVM => ({
+    tokens,
+    input: tokens,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    costUsd: 0,
+    messages,
+    credits: 0,
+  })
+
+  interface RowSpec {
+    today?: [tokens: number, messages?: number]
+    week?: [tokens: number, messages?: number]
+    all?: [tokens: number, messages?: number]
+  }
+
+  /** One client row as the table receives it */
+  const row = (client: AgentClientVM['client'], spec: RowSpec = {}): AgentClientVM => ({
+    client,
+    exists: true,
+    today: period(spec.today?.[0] ?? 0, spec.today?.[1] ?? 0),
+    month: period(0),
+    week: period(spec.week?.[0] ?? 0, spec.week?.[1] ?? 0),
+    last7: period(spec.week?.[0] ?? 0),
+    allTime: period(spec.all?.[0] ?? 0, spec.all?.[1] ?? 0),
+    models: [],
+  })
+
+  const order = (rows: AgentClientVM[]): string[] => sortAgentClients(rows).map((r) => r.client)
+
+  it('puts what was used today first, however large another agent’s history is', () => {
+    expect(
+      order([
+        row('opencode', { all: [16_000_000_000, 100] }),
+        row('kimi', { all: [20_000_000_000, 100] }),
+        row('codex', { today: [1_000], all: [27_000_000] }),
+      ]),
+    ).toEqual(['codex', 'kimi', 'opencode'])
+  })
+
+  it('ranks agents idle today by this week, then by all time', () => {
+    expect(
+      order([
+        row('codex', { all: [9_000, 10] }),
+        row('kimi', { week: [5_000], all: [9_000] }),
+        row('gemini', { today: [100] }),
+      ]),
+    ).toEqual(['gemini', 'kimi', 'codex'])
+  })
+
+  it('breaks token ties by call count, so a credits-billed agent keeps its place', () => {
+    expect(order([row('kimi'), row('qoder', { today: [0, 7] })])).toEqual(['qoder', 'kimi'])
+  })
+
+  it('keeps the registry order for rows with nothing in any window', () => {
+    expect(order([row('qoder'), row('codex'), row('kimi')])).toEqual(['codex', 'kimi', 'qoder'])
+  })
+
+  it('leaves the array it was given untouched', () => {
+    const rows = [row('kimi', { today: [1] }), row('codex', { today: [2] })]
+    const before = rows.map((r) => r.client)
+    sortAgentClients(rows)
+    expect(rows.map((r) => r.client)).toEqual(before)
+  })
+
+  it('orders the view model the card renders, not just the helper', () => {
+    // Qoder comes after Codex in the registry, so this order can only come
+    // from the usage ranking: a little used today beats a lot used long ago
+    const vm = scan([
+      day(localDay(0), [{ client: 'qoder', modelId: 'm', tokens: { input: 10 }, messages: 1 }]),
+      day(localDay(10), [{ client: 'codex', modelId: 'm', tokens: { input: 9_999_999 }, messages: 1 }]),
+    ])
+
+    expect(vm.clients.filter((c) => c.exists).map((c) => c.client)).toEqual(['qoder', 'codex'])
   })
 })
