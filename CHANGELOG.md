@@ -10,7 +10,7 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
-## [Unreleased]
+## [v0.10.8] - 2026-11-24
 
 ### 中文
 - 「添加套餐计划」里的 Antigravity 拆成三张卡：Antigravity IDE、Antigravity App、Antigravity CLI（同一账号下三张显示的是同一份额度）。原来已启用的 Antigravity 卡自动变为 Antigravity IDE；App 与 CLI 两张按需自行添加（更早的、还没有订阅卡列表的配置会直接带上全部三张）
