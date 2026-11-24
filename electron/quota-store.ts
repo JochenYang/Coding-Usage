@@ -28,6 +28,14 @@ const WRITE_DELAY_MS = 300
 /** Entries older than this are dropped at load; a month-old percentage is noise. */
 const MAX_AGE_MS = 30 * 24 * 60 * 60_000
 const MAX_ENTRIES = 32
+/**
+ * Format version of the file. Version 2 is the split of the Antigravity card:
+ * `antigravity` was the IDE's slot and is the app's from here on, so the IDE's
+ * slot is `antigravity-ide`. A file without a number predates the split too.
+ */
+const VERSION = 2
+const IDE_SLOT = 'antigravity-ide'
+const APP_SLOT = 'antigravity'
 
 export interface QuotaSnapshotEntry {
   /** Epoch ms of the fetch that produced this result */
@@ -69,13 +77,34 @@ function sanitize(raw: unknown, now: number): QuotaSnapshot {
 /** Point the store at userData and load what the previous run left behind. */
 export async function initQuotaStore(userDataDir: string): Promise<void> {
   storeDir = userDataDir
+  // Set when an older file was brought up to date, so it is rewritten before
+  // anything can be saved into the slot that was moved.
+  let upgraded = false
   try {
-    const parsed = JSON.parse(await readFile(join(userDataDir, FILE), 'utf8')) as { entries?: unknown }
+    const parsed = JSON.parse(await readFile(join(userDataDir, FILE), 'utf8')) as {
+      version?: unknown
+      entries?: unknown
+    }
     entries = sanitize(parsed?.entries, Date.now())
+    // A pre-split file only ever means the IDE by what is now the app's slot.
+    // Left there, the app card paints it on its first launch — the right
+    // numbers only for as long as both cards share one account. Only an older
+    // file is touched: one written by a newer build may use the slot for the
+    // app already.
+    const older = typeof parsed?.version !== 'number' || parsed.version < VERSION
+    if (older && entries[APP_SLOT]) {
+      // A build from before the split keeps unknown keys, so after a downgrade
+      // and a second upgrade both slots can be here. The IDE's own reading is
+      // then the fresher one and stays; the other is the IDE's older reading.
+      if (!entries[IDE_SLOT]) entries[IDE_SLOT] = entries[APP_SLOT]
+      delete entries[APP_SLOT]
+      upgraded = true
+    }
   } catch {
     entries = {}
   }
   loaded = true
+  if (upgraded) await flush()
 }
 
 /** What the last successful run produced. Empty until the store is initialized. */
@@ -127,7 +156,7 @@ export function flushQuotaStoreSync(): void {
   const temp = tempPath(target)
   try {
     mkdirSync(storeDir, { recursive: true })
-    writeFileSync(temp, JSON.stringify({ version: 1, entries }), 'utf8')
+    writeFileSync(temp, JSON.stringify({ version: VERSION, entries }), 'utf8')
     renameSync(temp, target)
   } catch {
     // Best effort: a cache is not worth blocking a quit.
@@ -145,7 +174,7 @@ async function flush(): Promise<void> {
   const temp = tempPath(target)
   try {
     await mkdir(storeDir, { recursive: true })
-    await writeFile(temp, JSON.stringify({ version: 1, entries }), 'utf8')
+    await writeFile(temp, JSON.stringify({ version: VERSION, entries }), 'utf8')
     // Atomic on the same volume: a half-written cache must never load.
     await rename(temp, target)
   } catch {

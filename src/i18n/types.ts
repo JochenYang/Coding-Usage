@@ -759,7 +759,10 @@ export interface Dict {
     windowFiveHour: string
     windowOther: string
     remainingNote: string
-    needsIde: string
+    /** Shown beside the title when the client is gone but its login is still read */
+    notInstalled: string
+    /** `client` is the brand name ("Antigravity IDE"), not translated */
+    needsLogin: (client: string) => string
     staleHandshake: string
     refreshUnavailable: string
     unavailable: string

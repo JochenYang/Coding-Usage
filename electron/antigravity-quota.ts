@@ -1,14 +1,26 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import { access, readFile } from 'node:fs/promises'
 import { request as httpsRequest } from 'node:https'
-import { readFile } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
+import type { AntigravityFlavour } from '../src/lib/antigravity-quota'
+import { ANTIGRAVITY_FLAVOURS, narrowAntigravityQuota } from '../src/lib/antigravity-quota'
+import type { QuotaOutcome } from './subscription-quotas'
 
 /**
  * Antigravity subscription quota probe (main process).
+ *
+ * Three clients use it — the IDE, the app (Antigravity 2.0) and the CLI —
+ * because they draw on one allowance and answer to one service. An account
+ * therefore shows the same figures on all three cards; what differs per client
+ * is only where its login lives and whether it is still installed:
+ *
+ * - **IDE**: its own SQLite store (`state.vscdb`), decoded below.
+ * - **App and CLI**: one entry in the system keyring, which the two share —
+ *   whichever signs in overwrites it (`readKeyring`).
  *
  * Two routes reach the same numbers, tried in this order:
  *
@@ -84,8 +96,14 @@ import { promisify } from 'node:util'
  */
 const TOKEN_URL = 'https://oauth2.googleapis.com/token'
 
-/** Flavours that keep a launcher naming the language server executable */
-const LAUNCHER_DIRS = ['antigravity-ide', 'antigravity', 'antigravity-cli'] as const
+/** Product directory names: the install roots and the IDE's userData folder share them */
+const IDE_PRODUCT = 'Antigravity IDE'
+const APP_PRODUCT = 'Antigravity'
+
+/** Flavours that keep a launcher naming a binary that carries the OAuth clients */
+const LAUNCHER_DIRS: string[] = Object.values(ANTIGRAVITY_FLAVOURS).map((flavour) => flavour.dir)
+
+const FLAVOURS = Object.keys(ANTIGRAVITY_FLAVOURS) as AntigravityFlavour[]
 
 /** Bounded read: the bundle is ~15 MB and the language server ~135 MB */
 const BUNDLE_SCAN_BYTES = 40 * 1024 * 1024
@@ -109,7 +127,21 @@ interface RefreshResult {
 let cachedClient: OAuthClient | undefined
 
 const ID_PATTERN = /[0-9]{6,}-[a-z0-9]{6,}\.apps\.googleusercontent\.com/g
-const SECRET_PATTERN = /GOCSPX-[A-Za-z0-9_-]{10,}/g
+
+/**
+ * A Google OAuth client secret is `GOCSPX-` followed by exactly 28
+ * base64url characters, and the pattern is pinned to that length.
+ *
+ * It reads two kinds of text. In a JS bundle a quote ends the literal, so an
+ * open-ended pattern was harmless. A Go binary's string table is different:
+ * strings of equal length sit next to each other with nothing between them, so
+ * `GOCSPX-[A-Za-z0-9_-]{10,}` ran on into the neighbour and returned 40–47
+ * character "secrets" — every candidate was wrong, and Google answered
+ * `invalid_client` to all of them. That is the only path left once the IDE has
+ * been replaced by the app (no JS bundle any more), which is how the IDE card
+ * stopped refreshing on migrated machines.
+ */
+const SECRET_PATTERN = /GOCSPX-[A-Za-z0-9_-]{28}/g
 
 /**
  * Client ids paired with the secret that follows each one in the same text.
@@ -209,9 +241,33 @@ function installRoots(): string[] {
   if (process.env.PROGRAMFILES) bases.push(process.env.PROGRAMFILES)
   const roots: string[] = []
   for (const base of bases) {
-    for (const name of ['Antigravity IDE', 'Antigravity']) roots.push(join(base, name))
+    for (const name of [IDE_PRODUCT, APP_PRODUCT]) roots.push(join(base, name))
   }
   return roots
+}
+
+/**
+ * Where a flavour's binary sits on a default install.
+ *
+ * The launcher is only written the first time a client runs, so a client that
+ * has not run yet — or whose data directory was cleaned up — names nothing.
+ * These paths stand in for it when the OAuth clients have to be read from a
+ * binary. The IDE is absent on purpose: it is a VS Code fork whose clients sit
+ * in a JS bundle, and `installRoots()` already reads that.
+ */
+function knownBinaries(flavour: AntigravityFlavour): string[] {
+  const local = process.env.LOCALAPPDATA
+  // Without the variable a join would make a path relative to the working
+  // directory, which on another platform could happen to exist.
+  if (!local) return []
+  switch (flavour) {
+    case 'ide':
+      return []
+    case 'app':
+      return [join(local, 'Programs', APP_PRODUCT, 'resources', 'bin', 'language_server.exe')]
+    case 'cli':
+      return [join(local, 'agy', 'bin', 'agy.exe')]
+  }
 }
 
 /**
@@ -263,6 +319,9 @@ export async function* clientCandidates(): AsyncGenerator<OAuthClient> {
 
   const ids: string[] = []
   const secrets: string[] = []
+  for (const flavour of FLAVOURS) {
+    for (const exe of knownBinaries(flavour)) if (!exePaths.includes(exe)) exePaths.push(exe)
+  }
   for (const exe of exePaths) {
     const binary = await readTextBytes(exe, BINARY_SCAN_BYTES)
     if (!binary) continue
@@ -477,10 +536,12 @@ interface StoredCredentials {
  * empty or unreadable store simply yields null so the caller falls through.
  */
 async function readStoredCredentials(): Promise<StoredCredentials | null> {
-  const candidates = [
-    join(process.env.APPDATA ?? '', 'Antigravity IDE', 'User', 'globalStorage', 'state.vscdb'),
-    join(process.env.APPDATA ?? '', 'Antigravity', 'User', 'globalStorage', 'state.vscdb'),
-  ]
+  // Both product names have been the IDE's userData folder across versions.
+  // The second one is the app's folder today, but the app keeps no such store
+  // there (see readKeyring), so it simply misses.
+  const candidates = [IDE_PRODUCT, APP_PRODUCT].map((name) =>
+    join(process.env.APPDATA ?? '', name, 'User', 'globalStorage', 'state.vscdb'),
+  )
   for (const dbPath of candidates) {
     try {
       const db = new DatabaseSync(dbPath, { readOnly: true })
@@ -788,14 +849,22 @@ export function quotaGroupsFromModels(models: Map<string, ModelQuota>): unknown 
 }
 
 /**
- * Route 1. Uses the stored token when it is still valid, refreshes it when it
- * is not, and reports `refresh-failed` when Google rejects the refresh token
- * itself (`invalid_grant`) or `refresh-unavailable` when the probe could not
- * refresh (no client found / network) — the two need different advice.
- * Exported for regression tests.
+ * Route 1 for the IDE's own login. Reads the store, then hands the token trio
+ * to {@link fetchWithCredentials}. Exported for regression tests.
  */
-export async function fetchViaCloudCode(): Promise<{ available: boolean; body?: string; reason?: string }> {
-  const creds = await readStoredCredentials()
+export async function fetchViaCloudCode(): Promise<QuotaOutcome> {
+  return fetchWithCredentials(await readStoredCredentials())
+}
+
+/**
+ * Ask Cloud Code with one login, whichever store it came from.
+ *
+ * Uses the stored token while it is valid, refreshes it when it is not, and
+ * reports `refresh-failed` when Google rejects the refresh token itself
+ * (`invalid_grant`) or `refresh-unavailable` when the probe could not refresh
+ * (no client found / network) — the two need different advice.
+ */
+async function fetchWithCredentials(creds: StoredCredentials | null): Promise<QuotaOutcome> {
   if (!creds) return { available: false, reason: 'no-credentials' }
 
   const stale = creds.expiresAt === 0 || Date.now() + 60_000 >= creds.expiresAt
@@ -844,15 +913,310 @@ export async function fetchViaCloudCode(): Promise<{ available: boolean; body?: 
   return { available: false, reason: first.status ? `http-${first.status}` : 'no-response' }
 }
 
-/** `--flag value` from a command line */
-function flagValue(commandLine: string, flag: string): string {
-  const match = commandLine.match(new RegExp(`${flag}\\s+(\\S+)`))
-  return match?.[1] ?? ''
+// ===== the app / CLI login =====
+
+/**
+ * go-keyring's address for the login the app and the CLI share: service
+ * `gemini`, user `antigravity`. On Windows that pair is the credential's target
+ * name (`service:user`, how it appears in Credential Manager); on macOS it is
+ * the generic password's service and account; on Linux the attributes
+ * `secret-tool` looks up. The value is the CLI's own JSON,
+ * `{token:{access_token,refresh_token,expiry},auth_method,…}` with `expiry` in
+ * RFC 3339 — a much flatter shape than the IDE's protobuf envelope.
+ *
+ * Read through the platform's own tool, so no native dependency is needed.
+ * Only the Windows entry has been checked against a live install; the other
+ * two follow go-keyring's own source and degrade to "no login" or "unreadable"
+ * when the tool or the entry is missing:
+ *
+ * - **Windows**: the blob is the UTF-8 bytes go-keyring wrote (`[]byte(secret)`),
+ *   which is what the live entry decoded to.
+ * - **macOS**: go-keyring goes through `/usr/bin/security`, and what that
+ *   prints is the value with one of its own wrappers in front — see
+ *   {@link unwrapKeyringValue}. Not tried on a Mac: reading an entry another
+ *   program created may bring up the keychain's own access prompt the first
+ *   time.
+ * - **Linux**: the secret service stores the value as it is, no wrapper.
+ */
+const KEYRING_SERVICE = 'gemini'
+const KEYRING_USER = 'antigravity'
+
+/**
+ * `CredReadW` through a P/Invoke, printing the blob as base64. Passed as an
+ * encoded command, so nothing is written to disk and no quoting applies.
+ * Exit 3 = the entry is not there (ERROR_NOT_FOUND); any other failure is 2.
+ */
+const KEYRING_PS1 = String.raw`
+$ErrorActionPreference = 'Stop'
+Add-Type -Namespace Win32 -Name Cred -MemberDefinition @'
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+public class CREDENTIAL {
+  public int Flags;
+  public int Type;
+  public string TargetName;
+  public string Comment;
+  public long LastWritten;
+  public int CredentialBlobSize;
+  public IntPtr CredentialBlob;
+  public int Persist;
+  public int AttributeCount;
+  public IntPtr Attributes;
+  public string TargetAlias;
+  public string UserName;
+}
+[DllImport("advapi32.dll", EntryPoint = "CredReadW", CharSet = CharSet.Unicode, SetLastError = true)]
+private static extern bool CredRead(string target, int type, int flags, out IntPtr pcred);
+[DllImport("advapi32.dll")]
+private static extern void CredFree(IntPtr pcred);
+public static byte[] ReadBlob(string target) {
+  IntPtr p = IntPtr.Zero;
+  if (!CredRead(target, 1, 0, out p)) {
+    throw new Exception("win32=" + System.Runtime.InteropServices.Marshal.GetLastWin32Error());
+  }
+  try {
+    CREDENTIAL cred = (CREDENTIAL)System.Runtime.InteropServices.Marshal.PtrToStructure(p, typeof(CREDENTIAL));
+    byte[] bytes = new byte[cred.CredentialBlobSize];
+    if (bytes.Length > 0) {
+      System.Runtime.InteropServices.Marshal.Copy(cred.CredentialBlob, bytes, 0, bytes.Length);
+    }
+    return bytes;
+  }
+  finally { CredFree(p); }
+}
+'@
+try {
+  $bytes = [Win32.Cred]::ReadBlob('${KEYRING_SERVICE}:${KEYRING_USER}')
+  [Console]::OutputEncoding = [Text.Encoding]::UTF8
+  [Console]::WriteLine([Convert]::ToBase64String($bytes))
+  exit 0
+}
+catch {
+  if ($_.Exception.Message -like '*win32=1168*') { exit 3 }
+  exit 2
+}
+`
+
+/** Exit status of a failed child process; 0 when it did not get that far */
+function exitCode(error: unknown): number {
+  const code = (error as { code?: unknown } | null)?.code
+  return typeof code === 'number' ? code : 0
 }
 
 /** `execFile` as a promise: the loopback fallback must not block the event loop
  * (a sync 2×15 s worst case froze window/tray IPC for its whole duration). */
 const execFileP = promisify(execFile)
+
+/** Options for every helper process: hidden, bounded, and never interactive */
+const HELPER_PROCESS = {
+  encoding: 'utf8',
+  timeout: 20_000,
+  windowsHide: true,
+  maxBuffer: 1024 * 1024,
+} as const
+
+/** What reading the shared keyring entry came to */
+export type KeyringRead =
+  | { ok: true; text: string }
+  | { ok: false; reason: 'no-credentials' | 'keyring-unavailable' }
+
+/**
+ * The shared keyring entry, as text. Never throws: a missing tool, a locked
+ * keyring or a platform without one is `keyring-unavailable`, an entry that is
+ * simply not there is `no-credentials` — the card's advice differs ("sign in"
+ * is only right for the latter).
+ */
+async function readKeyring(platform: NodeJS.Platform): Promise<KeyringRead> {
+  const unavailable: KeyringRead = { ok: false, reason: 'keyring-unavailable' }
+  if (platform === 'win32') {
+    try {
+      const { stdout } = await execFileP(
+        'powershell',
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-EncodedCommand',
+          Buffer.from(KEYRING_PS1, 'utf16le').toString('base64'),
+        ],
+        HELPER_PROCESS,
+      )
+      const text = Buffer.from(stdout.trim(), 'base64').toString('utf8')
+      return text ? { ok: true, text } : { ok: false, reason: 'no-credentials' }
+    } catch (error) {
+      return { ok: false, reason: exitCode(error) === 3 ? 'no-credentials' : 'keyring-unavailable' }
+    }
+  }
+  if (platform === 'darwin') {
+    try {
+      const { stdout } = await execFileP(
+        'security',
+        ['find-generic-password', '-s', KEYRING_SERVICE, '-a', KEYRING_USER, '-w'],
+        HELPER_PROCESS,
+      )
+      const text = stdout.trim()
+      return text ? { ok: true, text } : { ok: false, reason: 'no-credentials' }
+    } catch (error) {
+      // 44 is `security`'s "item could not be found in the keychain"
+      return { ok: false, reason: exitCode(error) === 44 ? 'no-credentials' : 'keyring-unavailable' }
+    }
+  }
+  if (platform === 'linux') {
+    try {
+      const { stdout } = await execFileP(
+        'secret-tool',
+        ['lookup', 'service', KEYRING_SERVICE, 'username', KEYRING_USER],
+        HELPER_PROCESS,
+      )
+      const text = stdout.trim()
+      // secret-tool answers 1 both for "no such entry" and for a locked
+      // keyring; the tool itself missing is the unavailable case.
+      return text ? { ok: true, text } : { ok: false, reason: 'no-credentials' }
+    } catch (error) {
+      return { ok: false, reason: (error as { code?: unknown } | null)?.code === 'ENOENT' ? 'keyring-unavailable' : 'no-credentials' }
+    }
+  }
+  return unavailable
+}
+
+const KEYRING_BASE64_PREFIX = 'go-keyring-base64:'
+const KEYRING_HEX_PREFIX = 'go-keyring-encoded:'
+
+/**
+ * Take go-keyring's wrapper off a keyring value, if it has one.
+ *
+ * On macOS the library does not store the password as written: it pipes
+ * `add-generic-password … -w go-keyring-base64:<base64>` to `/usr/bin/security`
+ * (older releases: `go-keyring-encoded:<hex>`) and takes the wrapper off again
+ * on read. `security … -w` hands back that wrapped string verbatim, so without
+ * this step the macOS value is not JSON and reads as "unreadable". Windows and
+ * Linux keep the raw value, whose JSON starts with `{` and so never carries
+ * either prefix — unwrapping is a no-op there.
+ *
+ * A malformed payload decodes to something that is not JSON and ends in the
+ * same honest "unreadable" state; nothing is guessed.
+ */
+function unwrapKeyringValue(text: string): string {
+  if (text.startsWith(KEYRING_BASE64_PREFIX)) {
+    return Buffer.from(text.slice(KEYRING_BASE64_PREFIX.length), 'base64').toString('utf8')
+  }
+  if (text.startsWith(KEYRING_HEX_PREFIX)) {
+    const hex = text.slice(KEYRING_HEX_PREFIX.length)
+    return /^[0-9a-fA-F]*$/.test(hex) ? Buffer.from(hex, 'hex').toString('utf8') : text
+  }
+  return text
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/**
+ * The CLI's keyring value as the token trio the Cloud Code route takes. Null
+ * when the value is not the expected JSON — the entry exists but this build
+ * cannot read it, which is not the same as "never signed in".
+ */
+function parseKeyring(text: string): StoredCredentials | null {
+  let json: unknown
+  try {
+    json = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (!isRecord(json) || !isRecord(json.token)) return null
+  const token = json.token
+  const accessToken = typeof token.access_token === 'string' ? token.access_token : ''
+  if (!accessToken) return null
+  const expiry = typeof token.expiry === 'string' ? Date.parse(token.expiry) : Number.NaN
+  return {
+    accessToken,
+    refreshToken: typeof token.refresh_token === 'string' ? token.refresh_token : '',
+    expiresAt: Number.isNaN(expiry) ? 0 : expiry,
+  }
+}
+
+/** What a probe may have injected in place of the machine it runs on */
+export interface AntigravityProbeDeps {
+  /** Platform to behave as; defaults to the current one */
+  platform?: NodeJS.Platform
+  /**
+   * Display names from Windows' uninstall registry. Null = it could not be
+   * asked, which must not read as "nothing is installed".
+   */
+  installedPrograms?: () => Promise<string[] | null>
+  /** Reads the keyring entry the app and the CLI share */
+  readKeyring?: () => Promise<KeyringRead>
+}
+
+/**
+ * Route for the app and the CLI: the shared keyring login, then Cloud Code.
+ * There is no loopback fallback here — unlike the IDE, neither client keeps a
+ * service running that this probe could ask.
+ */
+async function fetchViaKeyring(deps: AntigravityProbeDeps): Promise<QuotaOutcome> {
+  const read = deps.readKeyring ?? ((): Promise<KeyringRead> => readKeyring(deps.platform ?? process.platform))
+  let entry: KeyringRead
+  try {
+    entry = await read()
+  } catch {
+    return { available: false, reason: 'keyring-unavailable' }
+  }
+  if (!entry.ok) return { available: false, reason: entry.reason }
+  const creds = parseKeyring(unwrapKeyringValue(entry.text))
+  if (!creds) return { available: false, reason: 'unreadable-credentials' }
+  return narrowed(fetchWithCredentials(creds))
+}
+
+/**
+ * The outcome with its body cut down to what the card parses. Everything the
+ * service wraps around the pools — its own envelope, or a field a later
+ * version starts sending — stays in the main process, so neither IPC nor
+ * `quota-cache.json` carries it. A body that cannot be parsed is left alone:
+ * the card's summarizer reports it, and there is nothing in it to narrow.
+ */
+async function narrowed(outcome: Promise<QuotaOutcome>): Promise<QuotaOutcome> {
+  const settled = await outcome
+  if (!settled.available || typeof settled.body !== 'string') return settled
+  try {
+    const kept = narrowAntigravityQuota(JSON.parse(settled.body))
+    return kept ? { ...settled, body: JSON.stringify(kept) } : settled
+  } catch {
+    return settled
+  }
+}
+
+/**
+ * One shared login is one probe for both cards. A result is reused while it is
+ * in flight and for a short moment after it settles: the second card arrives a
+ * few file checks behind the first, and whether it lands inside or after the
+ * first's flight must not decide whether the keyring is read twice. The linger
+ * is deliberately short — a longer one would stand between a user who has just
+ * signed in and the refresh they click next. How long a result is reused after
+ * that is the caller's (main.ts) cache's decision.
+ */
+const KEYRING_LINGER_MS = 3_000
+let keyringShared: { settledAt: number; result: Promise<QuotaOutcome> } | null = null
+
+function keyringQuota(deps: AntigravityProbeDeps): Promise<QuotaOutcome> {
+  // `settledAt` is Infinity while the probe is in flight: the age below is
+  // then negative, so an entry in flight always counts as fresh.
+  if (keyringShared && Date.now() - keyringShared.settledAt < KEYRING_LINGER_MS) {
+    return keyringShared.result
+  }
+  const entry: { settledAt: number; result: Promise<QuotaOutcome> } = {
+    settledAt: Number.POSITIVE_INFINITY,
+    result: Promise.resolve({ available: false, reason: 'keyring-unavailable' }),
+  }
+  // fetchViaKeyring never rejects, so neither does this promise.
+  entry.result = fetchViaKeyring(deps).finally(() => {
+    entry.settledAt = Date.now()
+  })
+  keyringShared = entry
+  return entry.result
+}
+
+/** `--flag value` from a command line */
+function flagValue(commandLine: string, flag: string): string {
+  const match = commandLine.match(new RegExp(`${flag}\\s+(\\S+)`))
+  return match?.[1] ?? ''
+}
 
 /**
  * Running language servers and the ports they listen on.
@@ -987,25 +1351,158 @@ async function fetchViaLanguageServer(): Promise<{ available: boolean; body?: st
   return { available: false, reason: lastStatus ? `http-${lastStatus}` : 'no-response' }
 }
 
-/**
- * Antigravity quota as the IDE panel shows it.
- *
- * Cloud Code first — it needs no IDE, so the card keeps working with Antigravity
- * closed. The loopback route is the fallback for the cases Cloud Code cannot
- * serve: a store the IDE has not written yet, or a rejected refresh token that
- * the running IDE happens to hold a fresher copy of.
- *
- * The returned body is the raw quota JSON the renderer's summarizer parses;
- * both routes answer with the same shape.
- */
-export async function fetchAntigravityUsage(): Promise<{ available: boolean; body?: string; reason?: string }> {
-  const remote = await fetchViaCloudCode()
-  if (remote.available) return remote
+// ===== is the client still installed? =====
 
-  const local = await fetchViaLanguageServer()
-  if (local.available) return local
+/**
+ * Display names of the installed Antigravity programs, from Windows'
+ * uninstall registry. The one signal that survives a custom install
+ * directory — the IDE is commonly installed outside `%LOCALAPPDATA%\Programs`.
+ * The uninstaller removes its entry, so a name that is gone means the
+ * program is. The CLI has no installer and is never listed.
+ */
+const UNINSTALL_QUERY = String.raw`Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'Antigravity*' } | ForEach-Object { $_.DisplayName }`
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Whether the flavour's launcher names a binary that is really there */
+async function launcherTargetsBinary(flavour: AntigravityFlavour): Promise<boolean> {
+  const exe = (await readLauncher(ANTIGRAVITY_FLAVOURS[flavour].dir))?.exe
+  return exe ? fileExists(exe) : false
+}
+
+/**
+ * Files that exist iff the flavour is installed where the installer puts it.
+ * Finding one says "installed"; finding none says nothing on its own, because
+ * the install directory is the user's to choose.
+ */
+function installMarkers(flavour: AntigravityFlavour): string[] {
+  const local = process.env.LOCALAPPDATA
+  // Same reason as in knownBinaries: no variable, no path to check.
+  if (!local) return []
+  switch (flavour) {
+    case 'ide':
+      // both layouts, the same bundle clientCandidates() reads
+      return installRoots()
+        .filter((root) => root.endsWith(IDE_PRODUCT))
+        .flatMap((root) => ['', '_'].map((layout) => join(root, layout, 'resources', 'app', 'out', 'main.js')))
+    case 'app':
+      return [
+        ...knownBinaries('app'),
+        join(local, 'Programs', APP_PRODUCT, 'resources', 'app.asar'),
+      ]
+    case 'cli':
+      return knownBinaries('cli')
+  }
+}
+
+/** Whether an uninstall-registry display name belongs to the flavour */
+function namesFlavour(name: string, flavour: AntigravityFlavour): boolean {
+  const lower = name.toLowerCase()
+  const ide = lower.startsWith('antigravity ide')
+  const cli = lower.startsWith('antigravity cli')
+  if (flavour === 'ide') return ide
+  if (flavour === 'cli') return cli
+  // the app registers as "Antigravity" or "Antigravity <version>"
+  return lower.startsWith('antigravity') && !ide && !cli
+}
+
+/** Install state rarely changes; a probe every couple of minutes must not respawn PowerShell for it */
+const INSTALL_TTL_MS = 10 * 60_000
+const installState = new Map<AntigravityFlavour, { at: number; value: Promise<boolean | null> }>()
+let uninstallNames: { at: number; value: Promise<string[] | null> } | null = null
+
+/**
+ * The registry's display names, or null when it could not be asked.
+ */
+function programNames(deps: AntigravityProbeDeps): Promise<string[] | null> {
+  if (deps.installedPrograms) return deps.installedPrograms().catch((): string[] | null => null)
+  if (!uninstallNames || Date.now() - uninstallNames.at >= INSTALL_TTL_MS) {
+    const value = execFileP(
+      'powershell',
+      ['-NoProfile', '-NonInteractive', '-Command', UNINSTALL_QUERY],
+      HELPER_PROCESS,
+    )
+      .then((result) => result.stdout.split(/\r?\n/).map((line) => line.trim()).filter((line) => line !== ''))
+      .catch((): string[] | null => null)
+    uninstallNames = { at: Date.now(), value }
+  }
+  return uninstallNames.value
+}
+
+/**
+ * Whether the flavour is still installed. `false` only where that can be
+ * established: on Windows, when the launcher, the default install location
+ * and the uninstall registry all know nothing of it. Anywhere else the answer
+ * is `true` or `null` — reporting a client as gone on a platform whose
+ * install layout was never checked would put a false "not installed" on a
+ * card whose numbers are fine. The one case Windows still misreports is a
+ * portable build, or an installer that leaves no registry entry.
+ */
+async function detectInstall(
+  flavour: AntigravityFlavour,
+  deps: AntigravityProbeDeps,
+): Promise<boolean | null> {
+  if (await launcherTargetsBinary(flavour)) return true
+  for (const marker of installMarkers(flavour)) {
+    if (await fileExists(marker)) return true
+  }
+  if ((deps.platform ?? process.platform) !== 'win32') return null
+  const names = await programNames(deps)
+  if (names == null) return null
+  return names.some((name) => namesFlavour(name, flavour))
+}
+
+function cachedInstall(
+  flavour: AntigravityFlavour,
+  deps: AntigravityProbeDeps,
+): Promise<boolean | null> {
+  const hit = installState.get(flavour)
+  if (hit && Date.now() - hit.at < INSTALL_TTL_MS) return hit.value
+  const value = detectInstall(flavour, deps).catch((): boolean | null => null)
+  installState.set(flavour, { at: Date.now(), value })
+  return value
+}
+
+/**
+ * Antigravity quota for one client, as its own panel shows it.
+ *
+ * The IDE goes to Cloud Code with its own store first — that needs no IDE
+ * running, so the card keeps working with the IDE closed — and falls back to
+ * the loopback service for the cases Cloud Code cannot serve: a store the IDE
+ * has not written yet, or a rejected refresh token that the running IDE
+ * happens to hold a fresher copy of. The app and the CLI have only the shared
+ * keyring login.
+ *
+ * `installed` rides along so a card can say when it is reading the login an
+ * uninstall left behind. The body is the quota JSON cut down to what the
+ * renderer's summarizer parses (see `narrowed`); every route answers with the
+ * same shape.
+ */
+export async function fetchAntigravityUsage(
+  flavour: AntigravityFlavour = 'ide',
+  deps: AntigravityProbeDeps = {},
+): Promise<QuotaOutcome> {
+  const installed = await cachedInstall(flavour, deps)
+  if (flavour !== 'ide') return { ...(await keyringQuota(deps)), installed }
+
+  const remote = await narrowed(fetchViaCloudCode())
+  if (remote.available) return { ...remote, installed }
+
+  const local = await narrowed(fetchViaLanguageServer())
+  if (local.available) return { ...local, installed }
 
   // Neither worked: report the remote reason unless the IDE is what is missing
   // (that is the actionable one for a card whose text asks the user to act).
-  return { available: false, reason: local.reason === 'no-server' ? remote.reason ?? 'unavailable' : local.reason }
+  return {
+    available: false,
+    reason: local.reason === 'no-server' ? remote.reason ?? 'unavailable' : local.reason,
+    installed,
+  }
 }

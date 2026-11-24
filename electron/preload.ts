@@ -78,7 +78,9 @@ const desktopBridge: DesktopBridge = {
   // the probe resolves the local identity itself; the handler reads no
   // arguments, and any extra invoke args are simply ignored.
   kimiUsage: () => ipcRenderer.invoke('kimi:usage'),
-  antigravityUsage: () => ipcRenderer.invoke('antigravity:usage'),
+  // The flavour picks which client's login the probe reads; the main process
+  // validates it. No credential travels in either direction.
+  antigravityUsage: (flavour) => ipcRenderer.invoke('antigravity:usage', flavour),
   // OpenDesign quota: the device-code login keeps its secret and the stored
   // control key inside the main process — the renderer only sees status and
   // normalized windows. The manual fallback pastes a Cloud console Cookie.

@@ -11,6 +11,8 @@
  * order still comes from `settings.subscriptionOrder`.
  */
 
+import { ANTIGRAVITY_FLAVOURS } from './antigravity-quota'
+
 /** How a card gets its data — drives the manage-drawer grouping. */
 export type SubscriptionCardGroup = 'plan' | 'console' | 'local'
 
@@ -36,7 +38,11 @@ export const SUBSCRIPTION_CARDS: SubscriptionCardDef[] = [
   { key: 'trae', name: 'Trae CN', group: 'plan' },
   { key: 'trae-intl', name: 'Trae Intl', group: 'plan' },
   { key: 'kimi', name: 'Kimi Code', group: 'plan' },
-  { key: 'antigravity', name: 'Antigravity', group: 'plan' },
+  // Three clients, one allowance: the keys and names come from the one table
+  // the card and the main-process probe read, so they cannot drift apart.
+  { key: ANTIGRAVITY_FLAVOURS.ide.key, name: ANTIGRAVITY_FLAVOURS.ide.name, group: 'plan' },
+  { key: ANTIGRAVITY_FLAVOURS.app.key, name: ANTIGRAVITY_FLAVOURS.app.name, group: 'plan' },
+  { key: ANTIGRAVITY_FLAVOURS.cli.key, name: ANTIGRAVITY_FLAVOURS.cli.name, group: 'plan' },
   { key: 'cursor', name: 'Cursor', group: 'plan' },
   { key: 'copilot', name: 'GitHub Copilot', group: 'plan' },
   { key: 'qoder', name: 'Qoder', group: 'plan' },

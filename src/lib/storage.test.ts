@@ -11,6 +11,7 @@ import {
   normalizeProviders,
   restoreSettingsDocument,
   saveSettings,
+  SUBSCRIPTION_KEYS_VERSION,
 } from './storage'
 
 /**
@@ -523,6 +524,85 @@ describe('startup recovery from the file mirror', () => {
       expect(restoreSettingsDocument(backup), JSON.stringify(backup)).toBe('corrupt')
     }
     expect(has(KEY_V3)).toBe(false)
+  })
+})
+
+/**
+ * The Antigravity card was split into IDE / app / CLI, and `antigravity` went
+ * from naming the IDE card to naming the app card. A document written before
+ * the split must have its IDE card moved to `antigravity-ide` — once. From
+ * then on `antigravity` is the app card a user may enable, and must stay.
+ */
+describe('subscription card keys across the Antigravity split', () => {
+  const put = (value: unknown): void => localStorage.setItem(KEY_V3, JSON.stringify(value))
+  const settingsDocument = (extra: Record<string, unknown> = {}): Record<string, unknown> => ({
+    providers: {},
+    enabledSubscriptions: ['antigravity', 'codex'],
+    subscriptionOrder: ['antigravity', 'codex'],
+    ...extra,
+  })
+
+  beforeEach(() => {
+    // The v3 document is only read under a bridge, as on a desktop install
+    vi.stubGlobal('window', { desktopBridge: {} })
+  })
+
+  it('moves the IDE card of a document written before the split', () => {
+    put(settingsDocument())
+    const { settings } = loadSettingsDetailed()
+    expect(settings.enabledSubscriptions).toEqual(['antigravity-ide', 'codex'])
+    expect(settings.subscriptionOrder).toEqual(['antigravity-ide', 'codex'])
+    expect(settings.subscriptionKeysVersion).toBe(SUBSCRIPTION_KEYS_VERSION)
+  })
+
+  it('leaves the app card of a document written since the split alone', () => {
+    put(settingsDocument({ subscriptionKeysVersion: SUBSCRIPTION_KEYS_VERSION }))
+    expect(loadSettingsDetailed().settings.enabledSubscriptions).toEqual(['antigravity', 'codex'])
+  })
+
+  it('renames once: reloading the saved result changes nothing', () => {
+    put(settingsDocument())
+    const first = loadSettingsDetailed().settings
+    put(first)
+    expect(loadSettingsDetailed().settings).toEqual(first)
+  })
+
+  it('keeps the app card a user adds after the upgrade', () => {
+    put(settingsDocument())
+    const upgraded = loadSettingsDetailed().settings
+    put({ ...upgraded, enabledSubscriptions: [...upgraded.enabledSubscriptions, 'antigravity'] })
+    expect(loadSettingsDetailed().settings.enabledSubscriptions).toEqual(['antigravity-ide', 'codex', 'antigravity'])
+  })
+
+  it('keeps a newer document’s version, so a later build does not rename again', () => {
+    put(settingsDocument({ subscriptionKeysVersion: SUBSCRIPTION_KEYS_VERSION + 1 }))
+    const { settings } = loadSettingsDetailed()
+    expect(settings.subscriptionKeysVersion).toBe(SUBSCRIPTION_KEYS_VERSION + 1)
+    expect(settings.enabledSubscriptions).toEqual(['antigravity', 'codex'])
+  })
+
+  it('seeds a document from before cards were selectable with all three cards', () => {
+    put({ providers: {} })
+    const { settings } = loadSettingsDetailed()
+    expect(settings.enabledSubscriptions).toEqual(
+      expect.arrayContaining(['antigravity-ide', 'antigravity', 'antigravity-cli']),
+    )
+  })
+
+  it('treats a version too large for JSON as pre-split instead of passing it through', () => {
+    // JSON.parse('1e400') is Infinity and JSON.stringify(Infinity) is null.
+    // Passed through, such a document reads "current" on this load and
+    // "pre-split" after it is saved — the next load would then rename a card.
+    localStorage.setItem(
+      KEY_V3,
+      '{"providers":{},"enabledSubscriptions":["antigravity","codex"],"subscriptionKeysVersion":1e400}',
+    )
+    const { settings } = loadSettingsDetailed()
+    expect(settings.enabledSubscriptions).toEqual(['antigravity-ide', 'codex'])
+    expect(settings.subscriptionKeysVersion).toBe(SUBSCRIPTION_KEYS_VERSION)
+    // Saved as a real number, so the next load sees the same document
+    put(settings)
+    expect(loadSettingsDetailed().settings.enabledSubscriptions).toEqual(['antigravity-ide', 'codex'])
   })
 })
 

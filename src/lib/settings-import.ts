@@ -1,7 +1,13 @@
 import type { AlertThresholds, IntegrationsSettings, ProviderConfig, Settings } from '../types'
 import { resolveThresholds } from './alerts'
 import { isKnownSubscriptionKey } from './subscription-cards'
-import { normalizeProviders, type ProviderSplit } from './storage'
+import {
+  normalizeProviders,
+  subscriptionKeyRenamer,
+  subscriptionKeysVersionOf,
+  SUBSCRIPTION_KEYS_VERSION,
+  type ProviderSplit,
+} from './storage'
 
 /**
  * Settings-backup import: read a backup document and merge it over the
@@ -63,6 +69,12 @@ export function readImportedSettings(raw: unknown): ImportedSettings | null {
           weixinBotUserId: typeof rawIntg.weixinBotUserId === 'string' ? rawIntg.weixinBotUserId : '',
         }
       : null
+  // A backup taken before the Antigravity cards were split holds `antigravity`
+  // as the IDE card; one taken since holds it as the app card. The document's
+  // own key-set version tells them apart. Renaming comes before the filter on
+  // purpose: both keys are valid now, so the filter alone would pass the old
+  // key through as the app card.
+  const renameKeys = subscriptionKeyRenamer(obj)
   return {
     providers,
     split,
@@ -75,11 +87,11 @@ export function readImportedSettings(raw: unknown): ImportedSettings | null {
       ? obj.planOrder.filter((key): key is string => typeof key === 'string')
       : null,
     subscriptionOrder: Array.isArray(obj.subscriptionOrder)
-      ? obj.subscriptionOrder.filter((key): key is string => typeof key === 'string')
+      ? renameKeys(obj.subscriptionOrder.filter((key): key is string => typeof key === 'string'))
       : null,
     enabledSubscriptions: Array.isArray(obj.enabledSubscriptions)
-      ? obj.enabledSubscriptions.filter(
-          (key): key is string => typeof key === 'string' && isKnownSubscriptionKey(key),
+      ? renameKeys(obj.enabledSubscriptions.filter((key): key is string => typeof key === 'string')).filter(
+          isKnownSubscriptionKey,
         )
       : null,
   }
@@ -114,5 +126,12 @@ export function mergeImportedSettings(current: Settings, imported: ImportedSetti
       imported.enabledSubscriptions && imported.enabledSubscriptions.length > 0
         ? imported.enabledSubscriptions
         : current.enabledSubscriptions,
+    // The backup's keys are already renamed to the current set above, so the
+    // merged document belongs to the current version — never lower, whatever
+    // the current document said, and never the backup's, which may predate it.
+    // Read through subscriptionKeysVersionOf on purpose: a current document
+    // built without the field must not turn Math.max into NaN, which JSON
+    // would store as null and the next load would read as "pre-split".
+    subscriptionKeysVersion: Math.max(subscriptionKeysVersionOf(current), SUBSCRIPTION_KEYS_VERSION),
   }
 }

@@ -4,6 +4,7 @@
  * Electron; the plain browser dev path must work without it (hence optional).
  */
 import type { AlertItem } from './lib/alerts'
+import type { AntigravityFlavour } from './lib/antigravity-quota'
 import type {
   AgentConfigPayload,
   AgentId,
@@ -332,12 +333,21 @@ declare global {
      */
     kimiUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
     /**
-     * Antigravity subscription quota, read from the Cloud Code API with the
-     * credentials Antigravity stores (the IDE can stay closed; older builds fall
-     * back to their loopback language server). The body is the service's JSON
-     * (`{response:{groups:[…]}}`); no credential crosses this boundary.
+     * Antigravity subscription quota for one client (`ide` / `app` / `cli`),
+     * read from the Cloud Code API with that client's own login: the IDE's
+     * credential store, or the system keyring entry the app and the CLI share.
+     * The IDE can stay closed; older IDE builds fall back to their loopback
+     * language server. The body is the service's JSON (`{groups:[…]}`); no
+     * credential crosses this boundary. `installed` is `false` only when the
+     * main process established that the client is no longer installed — the
+     * quota is then read from the login the uninstall left behind.
      */
-    antigravityUsage(): Promise<{ available: boolean; body?: string; reason?: string }>
+    antigravityUsage(flavour: AntigravityFlavour): Promise<{
+      available: boolean
+      body?: string
+      reason?: string
+      installed?: boolean | null
+    }>
     /** Mirror the encrypted v3 settings document to a userData file */
     settingsBackupWrite(payload: string): Promise<void>
     /** Read the mirrored settings document, or null when none exists */

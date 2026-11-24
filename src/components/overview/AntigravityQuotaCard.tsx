@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Antigravity } from '@lobehub/icons'
 import { useT } from '@/i18n/useT'
 import type { Dict } from '@/i18n/types'
@@ -8,12 +8,15 @@ import { useInView } from '@/lib/hooks/use-in-view'
 import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
 import { useData } from '@/lib/data-context'
 import {
+  ANTIGRAVITY_FLAVOURS,
   summarizeAntigravityQuota,
+  type AntigravityFlavour,
   type AntigravityGroupId,
   type AntigravityQuotaVM,
   type AntigravityWindowId,
 } from '@/lib/antigravity-quota'
 import { ProgressBar } from '@/components/common/ProgressBar'
+import { Badge } from '@/components/common/Badge'
 import { CardWatermark } from '@/components/common/CardWatermark'
 import { cn } from '@/lib/cn'
 
@@ -35,17 +38,32 @@ const WINDOW_LABELS: Record<AntigravityWindowId, (t: Dict) => string> = {
 }
 
 /**
- * Race budget for the main-process probe: it may read the updater manifest, try
- * two service hosts for the project lookup, the quota summary and the per-model
- * fallback, each with a 6s timeout, so a worst case legitimately runs longer
- * than a single request.
+ * Race budget for the main-process probe: it may read the updater manifest,
+ * spawn a helper for the keyring or the uninstall registry, try two service
+ * hosts for the project lookup, the quota summary and the per-model fallback,
+ * each with a 6s timeout, so a worst case legitimately runs longer than a
+ * single request.
  */
 const PROBE_RACE_TIMEOUT_MS = 60_000
 
-/** Failure reason → the sentence the card shows */
-function unavailableMessage(reason: string | null | undefined, t: Dict): string {
-  if (reason === 'no-credentials') return t.antigravityQuota.needsIde
-  if (reason === 'refresh-unavailable') return t.antigravityQuota.refreshUnavailable
+/**
+ * Failure reason → the sentence the card shows.
+ *
+ * "Could not read the login" comes in three shapes that all mean the same to
+ * the user — no OAuth client found for the refresh, the system keyring itself
+ * unreadable, or a keyring value this build cannot parse — so they share the
+ * "the sign-in may still be valid" advice rather than telling a signed-in user
+ * to sign in again.
+ */
+function unavailableMessage(reason: string | null | undefined, client: string, t: Dict): string {
+  if (reason === 'no-credentials') return t.antigravityQuota.needsLogin(client)
+  if (
+    reason === 'refresh-unavailable' ||
+    reason === 'keyring-unavailable' ||
+    reason === 'unreadable-credentials'
+  ) {
+    return t.antigravityQuota.refreshUnavailable
+  }
   if (reason === 'refresh-failed' || reason === 'http-401' || reason === 'http-403') {
     return t.antigravityQuota.staleHandshake
   }
@@ -53,26 +71,43 @@ function unavailableMessage(reason: string | null | undefined, t: Dict): string 
 }
 
 /**
- * Antigravity subscription quota card. Read through the official Cloud Code API
- * using the credentials Antigravity itself stores (see
- * electron/antigravity-quota.ts), with the IDE's local service as a fallback —
- * so unlike a purely local probe this keeps refreshing with the IDE closed.
+ * Antigravity subscription quota card, one instance per client. Read through
+ * the official Cloud Code API with the login that client keeps (see
+ * electron/antigravity-quota.ts) — the IDE's own store, or the system keyring
+ * entry the app and the CLI share — with the IDE's local service as a fallback.
+ * No client has to be running for the card to keep refreshing.
  *
- * These are REMAINING percentages, matching Antigravity's own "…Limit Remaining"
- * panel, so the rows are labelled as remaining rather than reusing the
- * used-percentage wording of the neighbouring cards.
+ * The three cards show one allowance: an account's quota is not split by
+ * client, so a machine signed into one account reads the same on all of them.
  *
- * `onWideChange` reports whether the card currently needs two grid tracks: it
- * asks for them only when there really are two model groups to lay out side by
- * side, so a single-group or empty card keeps its normal one-cell width.
+ * These are REMAINING percentages, matching Antigravity's own "…Limit
+ * Remaining" panel, so the rows are labelled as remaining rather than reusing
+ * the used-percentage wording of the neighbouring cards.
+ *
+ * `onWideChange` reports whether the card wants two grid tracks: it asks only
+ * when there really are two model groups to lay out side by side. Whether it
+ * gets them is the page's decision, passed back as `expanded` — with sibling
+ * Antigravity cards on the page the groups stack in a single track instead.
  */
 export function AntigravityQuotaCard({
+  flavour,
+  expanded,
   className,
   onWideChange,
 }: {
+  /** Which client's login this card reads; also its title and snapshot slot */
+  flavour: AntigravityFlavour
+  /**
+   * Whether the grid gives this card two tracks. Stacking the two model groups
+   * in one cell makes the card about twice as tall as a neighbour, which is why
+   * it asks for the room — but a two-track card that does not fit the rest of
+   * its row drops to a row of its own and leaves a column empty.
+   */
+  expanded: boolean
   className?: string
   onWideChange?: (wide: boolean) => void
 }) {
+  const client = ANTIGRAVITY_FLAVOURS[flavour]
   const t = useT()
   const [vm, setVm] = useState<AntigravityQuotaVM | null>(null)
   const [loading, setLoading] = useState(false)
@@ -83,6 +118,12 @@ export function AntigravityQuotaCard({
   // Wrapper catches the brand mark's own <title> before it can pop a native
   // hover tooltip (see useStripSvgTitle)
   const brandRef = useStripSvgTitle<HTMLSpanElement>()
+  // The page passes a fresh closure for every card on each render; through a
+  // ref only a real change in `wide` re-reports, not a parent re-render.
+  const onWideChangeRef = useRef(onWideChange)
+  useEffect(() => {
+    onWideChangeRef.current = onWideChange
+  })
 
   useEffect(() => {
     if (!inView) return
@@ -100,7 +141,7 @@ export function AntigravityQuotaCard({
         // A snapshot that arrives after the probe must not rewind the card to
         // older numbers.
         if (cancelled || refreshed) return
-        const stored = snapshot['antigravity']
+        const stored = snapshot[client.key]
         if (!stored?.result?.available) return
         const vm = summarizeAntigravityQuota(stored.result)
         // A stored body this build can no longer decode is not a reading.
@@ -115,7 +156,7 @@ export function AntigravityQuotaCard({
     const watchdog = new Promise<never>((_resolve, reject) => {
       watchdogTimer = setTimeout(() => reject(new Error('timeout')), PROBE_RACE_TIMEOUT_MS)
     })
-    Promise.race([bridge.antigravityUsage(), watchdog])
+    Promise.race([bridge.antigravityUsage(flavour), watchdog])
       .then((raw) => {
         refreshed = true
         if (cancelled) return
@@ -133,19 +174,20 @@ export function AntigravityQuotaCard({
       cancelled = true
       if (watchdogTimer) clearTimeout(watchdogTimer)
     }
-  }, [refreshTick, inView])
+  }, [refreshTick, inView, flavour, client.key])
 
   // Minute-resolution clock so the reset countdowns stay live on this card alone
   const now = useNowTick()
 
-  // Two model groups are two blocks of rows: stacked in one cell they make this
-  // card twice as tall as its neighbours and leave the next row's cards hanging
-  // beside empty space. Side by side they need a second track, which only the
-  // grid can give, so the need is reported upward.
-  const wide = vm?.available === true && vm.groups.length >= 2
+  // Two model groups are two blocks of rows. With the room the page grants
+  // they go side by side; stacked in one cell they make the card twice as tall
+  // as its neighbours. Only the grid item — not the card — can claim a second
+  // column, so the wish is reported upward and `expanded` is the answer.
+  const twoGroups = vm?.available === true && vm.groups.length >= 2
   useEffect(() => {
-    onWideChange?.(wide)
-  }, [wide, onWideChange])
+    onWideChangeRef.current?.(twoGroups)
+  }, [twoGroups])
+  const wide = expanded && twoGroups
 
   return (
     <section
@@ -161,9 +203,25 @@ export function AntigravityQuotaCard({
         >
           <Antigravity.Color />
         </span>
-        <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-foreground">Antigravity</h2>
-          <p className="truncate text-[11px] text-subtle">{t.antigravityQuota.subtitle}</p>
+        <div className="flex min-w-0 flex-1 items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className="truncate text-sm font-semibold text-foreground">{client.name}</h2>
+            <p className="truncate text-[11px] text-subtle">{t.antigravityQuota.subtitle}</p>
+          </div>
+          {/* Said only when the main process established it: the figures are
+              then read from the login the uninstall left behind, and the badge
+              is what keeps that from looking like a live client. Transparent
+              with an outline rather than the badge's own tinted background:
+              `warning-text` clears 4.5:1 on the card itself, but not on top of
+              the 10% warning wash (4.0:1 in the light theme). */}
+          {vm?.installed === false && (
+            <Badge
+              tone="warning"
+              className="shrink-0 bg-transparent text-warning-text ring-1 ring-inset ring-warning-text/40"
+            >
+              {t.antigravityQuota.notInstalled}
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -171,7 +229,7 @@ export function AntigravityQuotaCard({
         <p className="mt-3 text-xs text-subtle">{t.card.loading}</p>
       ) : !vm?.available ? (
         <p className="mt-3 text-xs leading-relaxed text-subtle">
-          {unavailableMessage(vm?.reason, t)}
+          {unavailableMessage(vm?.reason, client.name, t)}
         </p>
       ) : (
         <div className={wide ? 'mt-3 md:grid md:grid-cols-2 md:items-start md:gap-x-6 md:gap-y-4' : 'mt-3 space-y-4'}>

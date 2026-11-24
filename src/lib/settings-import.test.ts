@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProviderConfig, Settings } from '../types'
 import { getProvider } from '../providers/registry'
 import { mergeImportedSettings, readImportedSettings } from './settings-import'
-import { KEY_V3, loadSettingsDetailed } from './storage'
+import { KEY_V3, loadSettingsDetailed, SUBSCRIPTION_KEYS_VERSION } from './storage'
 
 /**
  * The route a settings backup takes on import. A backup written before the
@@ -29,6 +29,7 @@ const CURRENT: Settings = {
   planOrder: [],
   subscriptionOrder: [],
   enabledSubscriptions: ['codex'],
+  subscriptionKeysVersion: SUBSCRIPTION_KEYS_VERSION,
   alertThresholds: { resetSoonMin: 60, highUsagePct: 90, lowBalance: { CNY: 5, USD: 1, HKD: 5, TWD: 30 } },
   integrations: {
     alertPush: false,
@@ -104,6 +105,32 @@ describe('readImportedSettings', () => {
     expect(labels(imported?.providers.deepseek)).toEqual(['ds'])
     expect(imported?.split).toEqual({ reindexed: [], renamed: {} })
   })
+
+  /**
+   * The Antigravity card was split into IDE / app / CLI. A backup taken before
+   * it holds the IDE card under `antigravity`, which is the app's key now —
+   * and both keys are valid, so only the backup's own key-set version can tell
+   * them apart.
+   */
+  it('moves the IDE card of a pre-split backup off the key that now names the app', () => {
+    const imported = readImportedSettings({
+      providers: {},
+      enabledSubscriptions: ['antigravity', 'codex'],
+      subscriptionOrder: ['antigravity', 'kimi', 'antigravity-ide'],
+    })!
+    expect(imported.enabledSubscriptions).toEqual(['antigravity-ide', 'codex'])
+    // The key the order already named keeps its first position
+    expect(imported.subscriptionOrder).toEqual(['antigravity-ide', 'kimi'])
+  })
+
+  it('keeps the app card of a backup written since the split', () => {
+    const imported = readImportedSettings({
+      providers: {},
+      subscriptionKeysVersion: SUBSCRIPTION_KEYS_VERSION,
+      enabledSubscriptions: ['antigravity', 'antigravity-ide', 'antigravity-cli'],
+    })!
+    expect(imported.enabledSubscriptions).toEqual(['antigravity', 'antigravity-ide', 'antigravity-cli'])
+  })
 })
 
 describe('mergeImportedSettings', () => {
@@ -133,6 +160,27 @@ describe('mergeImportedSettings', () => {
     })
     const merged = mergeImportedSettings(CURRENT, imported!)
     expect(merged).toMatchObject({ autoRefreshMin: 5, displayCurrency: 'USD', planOrder: ['zai-0'], enabledSubscriptions: ['kimi'] })
+  })
+
+  it('marks the merged document as written for the current key set, whatever either side said', () => {
+    const imported = readImportedSettings({
+      providers: {},
+      subscriptionKeysVersion: 0,
+      enabledSubscriptions: ['antigravity', 'antigravity-cli'],
+    })!
+    // A current document that predates the split itself: no version field at all
+    const { subscriptionKeysVersion: _dropped, ...withoutVersion } = CURRENT
+    const merged = mergeImportedSettings(withoutVersion as Settings, imported)
+    expect(merged.enabledSubscriptions).toEqual(['antigravity-ide', 'antigravity-cli'])
+    // A number, never NaN: JSON stores NaN as null, which reads as pre-split
+    expect(merged.subscriptionKeysVersion).toBe(SUBSCRIPTION_KEYS_VERSION)
+  })
+
+  it('does not carry a version that cannot be saved into the merged document', () => {
+    const imported = readImportedSettings({ providers: {}, enabledSubscriptions: ['kimi'] })!
+    const current = { ...CURRENT, subscriptionKeysVersion: Number.POSITIVE_INFINITY }
+    // Infinity would be written to disk as null, which reads as pre-split
+    expect(mergeImportedSettings(current, imported).subscriptionKeysVersion).toBe(SUBSCRIPTION_KEYS_VERSION)
   })
 })
 

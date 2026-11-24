@@ -22,6 +22,15 @@ export interface QuotaOutcome {
    * without the user hunting for a log.
    */
   detail?: string
+  /**
+   * Whether the client this card belongs to is still installed. `false` is
+   * reported only when the probe established that it is gone — the quota can
+   * still be read from the login the uninstall left behind, and the card says
+   * so. `null` is "present or unknown"; the field is absent for probes that
+   * have no such notion. Not persisted: a snapshot is painted first and the
+   * live probe supplies it.
+   */
+  installed?: boolean | null
 }
 
 type FetchImpl = (url: string, init: RequestInit) => Promise<Response>

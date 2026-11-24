@@ -55,8 +55,15 @@ src/
 electron/
   main.ts                 # 窗口、托盘、IPC 注册、自动更新
   preload.ts              # contextBridge → window.desktopBridge
-  kimi-usage.ts / grok-usage.ts / antigravity-quota.ts / subscription-quotas.ts
+  kimi-usage.ts / grok-usage.ts / subscription-quotas.ts
                           # 订阅额度探针（本地登录 → 官方接口）
+  antigravity-quota.ts    # Antigravity IDE / App / CLI 三张额度卡共用的探针：同一个账号的额度是一个池，三端
+                          # 都走 Cloud Code 接口，区别只在登录从哪读——IDE 读自己的 state.vscdb（旧版本另有
+                          # 回环服务兜底），App 与 CLI 读系统 keyring 里两者共用的一条（经平台自带工具读取：
+                          # Windows 的 CredReadW、macOS 的 security、Linux 的 secret-tool，不引入原生依赖）；
+                          # 刷新用的 OAuth client 运行时从已安装的程序文件里读取，不写入仓库；额度响应在
+                          # 回传与落盘前收窄到卡片解析的字段；同时判定客户端
+                          # 是否仍在安装（Windows 另查卸载注册表，以覆盖自定义安装目录），只有查得实才报「未安装」
   factory-quota.ts / devin-quota.ts / amp-quota.ts
                           # Factory Droid / Devin / Amp 套餐额度探针（本地凭据或官方 CLI →
                           # 官方接口；Amp 走官方 `amp usage` 子命令、不读凭据文件，
@@ -139,11 +146,17 @@ electron/
    → 桌面经 `net:fetch` IPC、浏览器直连（失败回退 corsproxy）。结果写入 `results` 与启动缓存。
    GraphQL 型适配器（Warp）经桥的可选 POST 通道（`ParseContext.fetch` 第三参，主进程只接受
    显式 POST + 字符串 body，其余仍为 GET）。
-2. **订阅额度（Codex / Claude / Gemini / Grok / Kimi / Antigravity / Trae / Trae 国际版 / Cursor / Copilot / Qoder 国际版 / Cline Pass / JetBrains AI / Windsurf / Kiro / Kilo / Factory Droid / Devin / Amp / OpenDesign / 阿里云 Coding Plan / 千问 Cloud / 阿里云 Token Plan）**：
+2. **订阅额度（Codex / Claude / Gemini / Grok / Kimi / Antigravity IDE / Antigravity App /
+   Antigravity CLI / Trae / Trae 国际版 / Cursor / Copilot / Qoder 国际版 / Cline Pass / JetBrains AI / Windsurf / Kiro / Kilo / Factory Droid / Devin / Amp / OpenDesign / 阿里云 Coding Plan / 千问 Cloud / 阿里云 Token Plan）**：
    主进程读本地登录或本地额度文件（Amp 走官方 `amp usage` CLI；OpenDesign 走卡片发起的
    官方 device-code 授权拿控制面密钥，Cookie 粘贴为手动回退）→ 需要时调官方接口 →
    **只把归一化的额度字段与计划名**回传渲染层；凭据不出主进程。
    JetBrains 与 Windsurf 不联网：前者读 IDE 配置，后者读 IDE 本地缓存（打开 Windsurf 后才会更新）。
+   Antigravity 的三张卡是两份登录、一个池：额度按账号计，不按客户端分，同一账号下三张卡数字相同；
+   IDE 读自己的登录，App 与 CLI 共用系统 keyring 里的一条，两张卡同时请求时共享一次读取与一次请求。
+   三张卡都带一项安装状态
+   （`installed`），只有主进程查得实（目前仅 Windows）才报 `false`，卡片据此标注「未安装」——额度照常
+   读取卸载后残留的登录。
    CodeBuddy / Cindy / DSH / WorkBuddy 目前只有本地用量行、没有额度卡：截至 2026-11 尚未盘点过
    这四家的厂商额度面（区别于 JetBrains / Windsurf 的「有意纯本地」取舍），下轮接入调研从这四家起步。
 3. **本地 Agent 用量**：主进程 `tokscale:scan` 扫描本地会话日志，另按 `electron/main.ts` 的
@@ -175,9 +188,14 @@ electron/
    自动归位——启动加载与导入共用这一入口，国际站账号的 key 不会因此被发往国内站）、
    `snapshots`（本地时序）、`results`（启动缓存，读取时做字段归一化）。后两者与告警都按账号键
    `providerId-序号` 归档：账号迁移改变序号时，受影响 provider 的读数缓存被丢弃，快照与告警则按
-   「旧键→新键」改到新账号下（历史不丢也不归错账号），该整理每台机器只执行一次。其余：
+   「旧键→新键」改到新账号下（历史不丢也不归错账号），该整理每台机器只执行一次。订阅卡的键名
+   整理同理但标记不同：Antigravity 卡拆成 IDE / App / CLI 后，旧文档里的 `antigravity` 指 IDE 卡、
+   新文档里指 App 卡，两个键都合法，所以是否改名由文档自带的 `subscriptionKeysVersion` 决定
+   （缺失即旧文档，加载与备份导入共用这一判定）；标记随文档一起保存，改名与回写同成同败。
+   其余：
    `quota-cache.json`（上次成功的套餐额度，按 provider
-   存、不含凭据或凭据指纹、30 天过期；卡片先显它再静默刷新）、`pasted-requests.json`
+   存、不含凭据或凭据指纹、30 天过期；卡片先显它再静默刷新。格式版本 2 起 IDE 的槽位是
+   `antigravity-ide`，加载旧版本文件时把原 `antigravity` 槽位的读数挪过去并立即回写）、`pasted-requests.json`
    （手动粘贴的控制台请求，safeStorage 加密；无 keystore 时拒绝保存而不是写明文）、
    `opendesign-cookie.json`（OpenDesign 卡的凭据槽：device 授权拿到的 vela_ctrl 控制面密钥
    或粘贴的 Cloud Cookie，safeStorage 加密、读取时重新校验；无 keystore 时拒绝保存）、
@@ -203,7 +221,8 @@ electron/
    自己的读写：应用外的进程恰好在改名那一刻读这个文件，仍可能让一次镜像写入重试后失败——这次
    写入被放弃并记录，旧的一份保持原样，下次启动保存设置时重写。
 6. **订阅卡可见性**：`settings.enabledSubscriptions` 决定渲染哪些卡；未列出的不渲染。
-   老配置缺该字段时回填「非实验性全部」，新安装从空开始由用户添加。
+   老配置缺该字段时回填「非实验性全部」，新安装从空开始由用户添加。已有该字段的安装升级后，
+   原来启用的 `antigravity` 卡自动成为 `antigravity-ide`；新拆出的 App 与 CLI 两张不自动启用。
 7. **窗口与后台**：关闭到托盘会**销毁**窗口及其渲染进程（空闲时常驻内存因此少约 110 MB），
    而不是隐藏；托盘、`second-instance`、灵动岛点击都会重建窗口并恢复上次的位置
    （如果保存的矩形已不在任何显示器上，则丢弃并居中）。托盘菜单的文案跟随界面语言、
@@ -221,6 +240,13 @@ electron/
   设置导出同样剥离 apiKey/token 等凭据字段，备份 JSON 不含明文密钥。
 - 桌面端 `localStorage` 中的密钥为 `enc:v3:` 密文（safeStorage），无桥接时退回 v2 明文。
 - 探针只读本地登录文件，不修改、不上传；写入类操作（Agent 配置）先备份再 CAS 写入。
+- Antigravity App / CLI 的登录在系统 keyring 里（go-keyring 的 `gemini` / `antigravity`），探针经平台
+  自带工具只读取出、只在主进程内存里使用，不写回、不落盘、不记日志；刷新后的 access token 同样只在
+  内存里。额度响应在回传与落盘之前收窄到卡片解析的字段，服务端包在外层的内容（信封、账号标识等）
+  不出主进程。该 keyring 条目只有 Windows 一侧对照过真实安装：macOS 上 go-keyring 写入的值带
+  `go-keyring-base64:`（旧版 `go-keyring-encoded:`）前缀，读取时解包，但首次读取可能触发系统钥匙串的
+  授权提示；Linux 上 `secret-tool` 的退出码 1 分不清「没有条目」和「钥匙串被锁」，后者会被当成
+  「未登录」来提示。这两处都未实测。
 - 浏览器 Cookie 读取只在主进程、只针对调用方给出的域名。空名单直接拒绝。解不开的 `v20` 值不回传。
 - 阿里云控制台会在应用内窗口登录：窗口没有 preload、无 Node 权限、开启 sandbox，不读页面内容、
   不注入脚本、不代填凭据；只从应用自己的 cookie jar 读会话，且只发给对应控制台域名。

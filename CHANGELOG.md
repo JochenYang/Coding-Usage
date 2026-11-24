@@ -10,6 +10,20 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- 「添加套餐计划」里的 Antigravity 拆成三张卡：Antigravity IDE、Antigravity App、Antigravity CLI（同一账号下三张显示的是同一份额度）。原来已启用的 Antigravity 卡自动变为 Antigravity IDE；App 与 CLI 两张按需自行添加（更早的、还没有订阅卡列表的配置会直接带上全部三张）
+- 同时启用多张 Antigravity 卡时，它们各占一列排在一起；只启用一张时，两组模型仍左右并排（原来每张都横跨两列，在三列布局里各自占满一行并在右侧留空）
+- Antigravity 卡在客户端已卸载、但登录数据还在时照常显示额度，并在标题旁标注「未安装」（目前仅 Windows 能判定）
+- 修复：Antigravity 从 IDE 升级到新版 App 之后，IDE 卡的登录凭据一直刷新失败、显示「无法刷新登录凭据」（从程序文件里读取刷新用的客户端凭据时长度截取有误，每个候选都被拒绝）
+
+### English
+- The Antigravity entry under "Add subscription" is now three cards — Antigravity IDE, Antigravity App and Antigravity CLI (for one account all three show the same allowance). An Antigravity card that was already enabled becomes Antigravity IDE; the App and CLI cards are added on demand (a configuration old enough to have no subscription-card list gets all three at once)
+- With several Antigravity cards enabled they sit side by side, one column each; a single one still lays its two model groups side by side (each card used to span two columns, which in the three-column layout put every one on a row of its own and left the column beside it empty)
+- An Antigravity card keeps showing the quota when the client was uninstalled but its login is still there, and labels the title "Not installed" (Windows only for now)
+- Fixed: after Antigravity migrated from the IDE to the new app, the IDE card's login never refreshed and the card kept saying the login could not be refreshed (the client credentials read from the program files were cut to the wrong length, so every candidate was rejected)
+
 ## [v0.10.7] - 2026-11-23
 
 ### 中文

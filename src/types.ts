@@ -168,6 +168,15 @@ export interface Settings {
    * an upgrade seeds this with the previously always-shown set.
    */
   enabledSubscriptions: string[]
+  /**
+   * Subscription-card key set the document was written for (0 = absent, i.e.
+   * written before the Antigravity cards were split). `antigravity` named the
+   * IDE card up to version 0 and names the app from version 1. The marker
+   * travels inside the document, so a rename and its write-back succeed or
+   * fail together: required, because a settings object built without it would
+   * read as a pre-split document and have its app card renamed to the IDE's.
+   */
+  subscriptionKeysVersion: number
 }
 
 export interface ProviderResult {

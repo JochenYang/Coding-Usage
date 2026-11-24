@@ -746,12 +746,13 @@ export const enUS: Dict = {
     windowOther: 'Limit remaining',
     remainingNote:
       'Values are REMAINING allowance, matching the Antigravity panel; read live from the official Cloud Code API, which does not consume quota.',
-    needsIde:
-      'No Antigravity login found on this machine. Sign in once in the IDE — afterwards the IDE can stay closed and this card keeps refreshing.',
+    notInstalled: 'Not installed',
+    needsLogin: (client: string) =>
+      `No ${client} login was found on this machine. Sign in once in ${client} — it can stay closed afterwards and this card keeps refreshing.`,
     staleHandshake: 'The stored login was rejected. Sign in again in Antigravity and retry.',
     refreshUnavailable:
-      'The stored login could not be refreshed (Antigravity client not found, the refresh service unreachable, or no refresh credential stored); the sign-in itself may still be valid. Check that Antigravity is installed and retry later; if this persists, update this app.',
-    unavailable: 'Antigravity quota is unavailable right now — check that the IDE is running and signed in.',
+      'The stored login could not be refreshed (Antigravity client not found, the login saved in the system unreadable, the refresh service unreachable, or the like); the sign-in itself may still be valid. Check that Antigravity is installed and retry later; if this persists, update this app.',
+    unavailable: 'Antigravity quota is unavailable right now — try again later.',
   },
   factoryQuota: {
     windowFiveHour: '5-hour window',

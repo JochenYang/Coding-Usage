@@ -14,6 +14,60 @@ const KEY_V1 = 'coding-usage.settings.v1'
  */
 export const ENC_PREFIX = 'enc:v3:'
 
+/**
+ * Subscription-card key set a settings document was written for. Version 1 is
+ * the split of the Antigravity card into IDE / app / CLI: before it,
+ * `antigravity` was the IDE card; from it on, `antigravity` is the app and the
+ * IDE card is `antigravity-ide`.
+ *
+ * The marker travels inside the document rather than beside it, so a rename
+ * and its write-back succeed or fail together. A marker kept elsewhere could
+ * be written while the document still holds the old key — and because
+ * `antigravity` is a valid key again (the app), a document that is not known
+ * to be pre-split must never be renamed: that would turn a user's app card
+ * back into the IDE card on every load.
+ */
+export const SUBSCRIPTION_KEYS_VERSION = 1
+
+/** Card keys as they were before the current key-set version, by old key */
+const LEGACY_SUBSCRIPTION_KEYS: Record<string, string> = {
+  antigravity: 'antigravity-ide',
+}
+
+/**
+ * `obj.subscriptionKeysVersion`, with a missing or malformed one read as
+ * "pre-split". A number that JSON cannot carry back — `Infinity` is stored as
+ * `null` — counts as malformed: letting it through would mark a document
+ * "current" in memory and "pre-split" after the next load, and rename a card
+ * the user had just enabled.
+ */
+export function subscriptionKeysVersionOf(obj: unknown): number {
+  const version = (obj as { subscriptionKeysVersion?: unknown } | null)?.subscriptionKeysVersion
+  return typeof version === 'number' && Number.isFinite(version) ? version : 0
+}
+
+/** Rewrite card keys a document written before the current key-set version uses */
+function renameLegacySubscriptionKeys(keys: string[]): string[] {
+  const out: string[] = []
+  for (const key of keys) {
+    const renamed = LEGACY_SUBSCRIPTION_KEYS[key] ?? key
+    // An order list may already name the new key: keep the first position
+    if (!out.includes(renamed)) out.push(renamed)
+  }
+  return out
+}
+
+/**
+ * The renamer a settings document's own key-set version calls for. The
+ * startup load and the backup import both go through here, so the two cannot
+ * drift into renaming different documents.
+ */
+export function subscriptionKeyRenamer(obj: unknown): (keys: string[]) => string[] {
+  return subscriptionKeysVersionOf(obj) < SUBSCRIPTION_KEYS_VERSION
+    ? renameLegacySubscriptionKeys
+    : (keys: string[]): string[] => keys
+}
+
 const DEFAULT_SETTINGS: Settings = {
   providers: {},
   autoRefreshMin: 0,
@@ -23,6 +77,7 @@ const DEFAULT_SETTINGS: Settings = {
   planOrder: [],
   subscriptionOrder: [],
   enabledSubscriptions: [],
+  subscriptionKeysVersion: SUBSCRIPTION_KEYS_VERSION,
   alertThresholds: { ...DEFAULT_ALERT_THRESHOLDS, lowBalance: { ...DEFAULT_ALERT_THRESHOLDS.lowBalance } },
   integrations: {
     alertPush: false,
@@ -222,6 +277,9 @@ function migrate(raw: unknown): LoadedSettings {
   const obj = (raw ?? {}) as Partial<Settings> & { providers?: Record<string, unknown> }
   const { providers, split } = normalizeProviders(obj.providers)
   const intg = obj.integrations
+  // Only a document that predates the split still carries the old key; one
+  // written since may hold `antigravity` as the app card, which must stay.
+  const renameKeys = subscriptionKeyRenamer(obj)
   const settings: Settings = {
     providers,
     autoRefreshMin: typeof obj.autoRefreshMin === 'number' ? obj.autoRefreshMin : 0,
@@ -235,16 +293,19 @@ function migrate(raw: unknown): LoadedSettings {
       ? obj.planOrder.filter((key): key is string => typeof key === 'string')
       : [],
     subscriptionOrder: Array.isArray(obj.subscriptionOrder)
-      ? obj.subscriptionOrder.filter((key): key is string => typeof key === 'string')
+      ? renameKeys(obj.subscriptionOrder.filter((key): key is string => typeof key === 'string'))
       : [],
     // Absent on an older install: it already showed every non-experimental
     // card, so seeding that set is the only change-free upgrade. A fresh
     // install never reaches migrate() and keeps the empty default.
     enabledSubscriptions: Array.isArray(obj.enabledSubscriptions)
-      ? obj.enabledSubscriptions.filter(
-          (key): key is string => typeof key === 'string' && isKnownSubscriptionKey(key),
+      ? renameKeys(obj.enabledSubscriptions.filter((key): key is string => typeof key === 'string')).filter(
+          (key) => isKnownSubscriptionKey(key),
         )
       : [...DEFAULT_ENABLED_SUBSCRIPTIONS],
+    // A document from a newer build keeps its (higher) version: writing this
+    // build's number would make it look pre-split to that build.
+    subscriptionKeysVersion: Math.max(SUBSCRIPTION_KEYS_VERSION, subscriptionKeysVersionOf(obj)),
     alertThresholds: resolveThresholds(obj.alertThresholds),
     integrations: {
       alertPush: intg?.alertPush === true,

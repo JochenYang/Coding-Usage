@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { summarizeAntigravityQuota } from './antigravity-quota'
+import { antigravityCardSpan, narrowAntigravityQuota, summarizeAntigravityQuota } from './antigravity-quota'
 
 /**
  * Regression: the quota summary reports REMAINING fractions and omits
@@ -85,5 +85,115 @@ describe('summarizeAntigravityQuota', () => {
     const vm = summarizeAntigravityQuota(payload([]))
     expect(vm.available).toBe(false)
     expect(vm.reason).toBe('no-buckets')
+  })
+})
+
+describe('install state', () => {
+  const groups = [
+    { displayName: 'Gemini Models', buckets: [{ bucketId: 'gemini-weekly', window: 'weekly', remainingFraction: 1 }] },
+  ]
+
+  it('is carried with a reading, whatever the verdict was', () => {
+    const reading = { available: true, body: JSON.stringify({ groups }) }
+    expect(summarizeAntigravityQuota({ ...reading, installed: false }).installed).toBe(false)
+    expect(summarizeAntigravityQuota({ ...reading, installed: true }).installed).toBe(true)
+    expect(
+      summarizeAntigravityQuota({ available: false, reason: 'no-credentials', installed: false }).installed,
+    ).toBe(false)
+  })
+
+  it('stays unknown when the probe said nothing, or said something else', () => {
+    // A stored snapshot carries no install state, and junk must never be read
+    // as "the client is gone": only an explicit false says that.
+    for (const installed of [undefined, null, 'false', 0, {}]) {
+      expect(
+        summarizeAntigravityQuota({ available: true, body: JSON.stringify({ groups }), installed }).installed,
+      ).toBeNull()
+    }
+  })
+})
+
+describe('narrowAntigravityQuota', () => {
+  /** Two pools as the service sends them, with every member type the card may meet */
+  const pools = [
+    {
+      displayName: 'Gemini Models',
+      buckets: [
+        {
+          bucketId: 'gemini-weekly',
+          window: 'weekly',
+          remainingFraction: 0.5,
+          resetTime: '2026-12-01T00:25:57Z',
+          description: 'Your quota will fully refresh in 6 days.',
+        },
+        // No fraction: the allowance is used up, which the card must still read as 0
+        { bucketId: 'gemini-5h', window: '5h', resetTime: '2026-11-24T05:25:57Z' },
+        { bucketId: 'gemini-unused', window: 'weekly', remainingFraction: 0.1, disabled: true },
+      ],
+    },
+    // Wrong types: a fraction that is a string, a reset time that is a number
+    { displayName: 'Claude and GPT models', buckets: [{ bucketId: '3p-weekly', window: 'weekly', remainingFraction: '0.9', resetTime: 7 }] },
+  ]
+  const narrowed = {
+    groups: [
+      {
+        displayName: 'Gemini Models',
+        buckets: [
+          { bucketId: 'gemini-weekly', window: 'weekly', remainingFraction: 0.5, resetTime: '2026-12-01T00:25:57Z', description: 'Your quota will fully refresh in 6 days.' },
+          { bucketId: 'gemini-5h', window: '5h', resetTime: '2026-11-24T05:25:57Z' },
+          { bucketId: 'gemini-unused', window: 'weekly', remainingFraction: 0.1, disabled: true },
+        ],
+      },
+      { displayName: 'Claude and GPT models', buckets: [{ bucketId: '3p-weekly', window: 'weekly' }] },
+    ],
+  }
+
+  it('keeps the pools and drops everything the service put around them', () => {
+    const raw = { groups: pools, project: 'acct-project', user: { email: 'ACCT-HOLDER-MARKER' }, description: 'Quota summary.' }
+    expect(narrowAntigravityQuota(raw)).toEqual(narrowed)
+    expect(JSON.stringify(narrowAntigravityQuota(raw))).not.toContain('ACCT-HOLDER-MARKER')
+  })
+
+  it.each(['response', 'summary'])('flattens the %s envelope the other route answers with', (key) => {
+    const kept = narrowAntigravityQuota({ [key]: { groups: pools, user: { email: 'ACCT-HOLDER-MARKER' } } })
+    expect(kept).toEqual(narrowed)
+  })
+
+  it('answers null when there is no pool to keep', () => {
+    for (const raw of [null, 'junk', {}, { groups: 'not a list' }, { response: { user: {} } }]) {
+      expect(narrowAntigravityQuota(raw)).toBeNull()
+    }
+  })
+
+  it('shows the card exactly what it showed before narrowing', () => {
+    const body = JSON.stringify({ response: { groups: pools, user: { email: 'ACCT-HOLDER-MARKER' } } })
+    const before = summarizeAntigravityQuota({ available: true, body })
+    const after = summarizeAntigravityQuota({
+      available: true,
+      body: JSON.stringify(narrowAntigravityQuota(JSON.parse(body))),
+    })
+    expect({ ...after, fetchedAt: 0 }).toEqual({ ...before, fetchedAt: 0 })
+    // And the card really had something to show, so this compared real content:
+    // the first pool's disabled bucket is dropped on both sides alike
+    expect(before.groups.map((group) => group.buckets.length)).toEqual([2, 1])
+  })
+})
+
+describe('antigravityCardSpan', () => {
+  it('gives a lone card with two model groups two tracks', () => {
+    expect(antigravityCardSpan(1, true)).toBe(2)
+  })
+
+  it('keeps every other case on one track', () => {
+    const cases = [
+      [1, false],
+      [2, true],
+      [2, false],
+      [3, true],
+      [0, true],
+    ] as const
+    for (const [shown, twoGroups] of cases) {
+      expect(antigravityCardSpan(shown, twoGroups), `${shown} shown / two groups: ${twoGroups}`).toBe(1)
+    }
   })
 })

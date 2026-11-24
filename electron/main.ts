@@ -103,6 +103,7 @@ import {
   testAgentModel,
 } from './agent-config-service'
 import { parseProviderInput, toAgentId } from '../src/lib/agent-config'
+import { ANTIGRAVITY_FLAVOURS, isAntigravityFlavour } from '../src/lib/antigravity-quota'
 import type {
   AgentConfigPayload,
   AgentKeyReveal,
@@ -1626,12 +1627,15 @@ function registerIpc(): void {
     cachedQuotaOutcome('kimi', () => fetchKimiUsage(net.fetch, homedir())),
   )
 
-  // Antigravity subscription quota. Unlike every other subscription this one is
-  // read from the IDE's own language server over loopback (see
-  // antigravity-quota.ts), so it needs the IDE running; the probe reports
-  // `no-server` when it is not, and the card says so.
-  ipcMain.handle('antigravity:usage', async (): Promise<QuotaOutcome> => {
-    return cachedQuotaOutcome('antigravity', () => fetchAntigravityUsage())
+  // Antigravity subscription quota, one card per client (IDE / app / CLI).
+  // The probe reads each client's own login — the IDE's store, or the keyring
+  // entry the app and the CLI share — and asks the Cloud Code API with it, so
+  // no client needs to be running (only the IDE's loopback fallback does; see
+  // antigravity-quota.ts). The flavour is validated before it selects a
+  // probe, and the cache key is the card's, which is also its snapshot slot.
+  ipcMain.handle('antigravity:usage', (_event, flavour: unknown): Promise<QuotaOutcome> => {
+    const which = isAntigravityFlavour(flavour) ? flavour : 'ide'
+    return cachedQuotaOutcome(ANTIGRAVITY_FLAVOURS[which].key, () => fetchAntigravityUsage(which))
   })
 
   /**

@@ -29,6 +29,7 @@ import { AmpQuotaCard } from '@/components/overview/AmpQuotaCard'
 import { OpenDesignQuotaCard } from '@/components/overview/OpenDesignQuotaCard'
 import { KimiQuotaCard } from '@/components/overview/KimiQuotaCard'
 import { AntigravityQuotaCard } from '@/components/overview/AntigravityQuotaCard'
+import { ANTIGRAVITY_FLAVOURS, antigravityCardSpan, type AntigravityFlavour } from '@/lib/antigravity-quota'
 import { LocalQuotaCard } from '@/components/overview/LocalQuotaCard'
 import { QoderQuotaCard } from '@/components/overview/QoderQuotaCard'
 import { SUBSCRIPTION_CARDS, type SubscriptionCardGroup } from '@/lib/subscription-cards'
@@ -300,17 +301,41 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
     [ordered, settings, updateSettings],
   )
 
-  // Whether the Antigravity card needs two grid tracks right now (it reports
-  // this itself once its quota data arrives).
-  const [antigravityWide, setAntigravityWide] = useState(false)
+  // Which subscription cards need two grid tracks right now. Each Antigravity
+  // card reports its own need once its quota data arrives, keyed by card, so
+  // the three of them never share one flag.
+  const [wideCards, setWideCards] = useState<Record<string, boolean>>({})
+  const setCardWide = useCallback((key: string, wide: boolean) => {
+    setWideCards((current) => (current[key] === wide ? current : { ...current, [key]: wide }))
+  }, [])
 
   // The official subscription cards have no accounts, so their order is simply
   // the saved key list with unknown keys appended.
-  //
-  // Antigravity spans two tracks once it has two model groups to show (see
-  // AntigravityQuotaCard): the card reports that need upward, because only the
-  // grid item — not the card — can claim a second column.
   const subscriptionCards = useMemo(() => {
+    // Only the cards the user added. An experimental card starts out absent,
+    // so the page is not a wall of "not connected".
+    const enabled = new Set(settings.enabledSubscriptions)
+    // How wide an Antigravity card is allowed to be is decided by
+    // antigravityCardSpan; the card itself reports whether it has two model
+    // groups to lay out side by side.
+    const antigravityShown = Object.values(ANTIGRAVITY_FLAVOURS).filter((flavour) =>
+      enabled.has(flavour.key),
+    ).length
+    const span = (key: string): 1 | 2 => antigravityCardSpan(antigravityShown, wideCards[key] === true)
+    const antigravityCard = (flavour: AntigravityFlavour) => {
+      const key = ANTIGRAVITY_FLAVOURS[flavour].key
+      return {
+        key,
+        node: (
+          <AntigravityQuotaCard
+            flavour={flavour}
+            expanded={span(key) === 2}
+            onWideChange={(wide) => setCardWide(key, wide)}
+          />
+        ),
+        span: span(key),
+      }
+    }
     const all: Array<{ key: string; node: ReactNode; span?: 1 | 2 }> = [
       { key: 'codex', node: <CodexQuotaCard /> },
       { key: 'claude', node: <ClaudeQuotaCard /> },
@@ -319,11 +344,9 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
       { key: 'trae', node: <TraeQuotaCard /> },
       { key: 'trae-intl', node: <TraeIntlQuotaCard /> },
       { key: 'kimi', node: <KimiQuotaCard /> },
-      {
-        key: 'antigravity',
-        node: <AntigravityQuotaCard onWideChange={setAntigravityWide} />,
-        span: antigravityWide ? 2 : 1,
-      },
+      antigravityCard('ide'),
+      antigravityCard('app'),
+      antigravityCard('cli'),
       { key: 'cursor', node: <LocalQuotaCard kind="cursor" /> },
       { key: 'copilot', node: <LocalQuotaCard kind="copilot" /> },
       { key: 'cline', node: <LocalQuotaCard kind="cline" /> },
@@ -340,14 +363,11 @@ export function PlansPage({ onAddAccount }: PlansPageProps) {
       { key: 'alitoken', node: <LocalQuotaCard kind="alitoken" /> },
       { key: 'qoder', node: <QoderQuotaCard /> },
     ]
-    // Only the cards the user added. An experimental card starts out absent,
-    // so the page is not a wall of "not connected".
-    const enabled = new Set(settings.enabledSubscriptions)
     return applyPlanOrder(
       all.filter((card) => enabled.has(card.key)),
       settings.subscriptionOrder,
     )
-  }, [settings.subscriptionOrder, settings.enabledSubscriptions, antigravityWide])
+  }, [settings.subscriptionOrder, settings.enabledSubscriptions, wideCards, setCardWide])
 
   // Manage-drawer state: enabled counter, name/key filter (dims non-matching
   // rows instead of unmounting them — see the drawer note) and the fixed group
