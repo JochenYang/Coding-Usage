@@ -103,8 +103,10 @@ electron/
                           # dsh 自己读多帧 zstd 转录 + DSH 应用自己的用量插件存储：tokscale 的 dsh 读者
                           # 遇到一个坏事件会丢弃整份会话，而转录只覆盖仍在磁盘的会话）
   minimax-code-usage.ts / antigravity-usage.ts
-                          # tokscale 读不到的 agent 自有会话库：mcode 客户端只支持 headless 捕获，
-                          # IDE 版 antigravity 的 conversations/*.db 在 tokscale 的 CLI 路径之外；
+                          # tokscale 读不到的 agent 自有会话库：mcode 客户端只支持 headless 捕获；
+                          # Antigravity 的 IDE / App / CLI 三份 conversations/*.db 都在这条直读里，
+                          # 分别报成 antigravity-ide / antigravity / antigravity-cli 三个 client
+                          # （App 与 CLI 的 generation 记录没有时间戳，按「到达日」归日，见 §3）；
                           # 两者读库后产出与 `tokscale graph` 同形的 payload 供合并
   model-id-sanitize.ts    # 扫描前把第三方 agent 转录里的非 ASCII model/provider id 原地 percent-encode
                           #（tokscale 4.14.0 的字节切片 bug 会让一个非 ASCII 别名令整个 client 消失）；
@@ -162,8 +164,26 @@ electron/
 3. **本地 Agent 用量**：主进程 `tokscale:scan` 扫描本地会话日志，另按 `electron/main.ts` 的
    `reads` 数组直读 8 路本地存储后合并：DSH（原生转录，mergeAlways——`dsh` 不在
    TOKSCALE_CLIENTS 里）、CodeBuddy CN IDE、Cindy、Trae CN（mergeAlways，与 tokscale 的来源
-   不相交）、MiniMax Code、Antigravity、Qoder CN、Qoder global（这四路在 tokscale 已覆盖该
-   client 时跳过），聚合在 `src/lib/agent-usage.ts`。概览页的表格行按「最近在用」排序
+   不相交）、MiniMax Code、Antigravity 三端、Qoder CN、Qoder global（这四路在 tokscale 已覆盖该
+   client 时跳过），聚合在 `src/lib/agent-usage.ts`。Antigravity 的三端各占一行
+   （`antigravity-ide` / `antigravity` / `antigravity-cli`），与三张额度卡一一对应；
+   **App 与 CLI 的 generation 记录不带时间戳**（递归扫遍 `gen_metadata` 各层都没有），所以按
+   「到达日」归日：每轮扫描只计每个会话库新增的 generation（`idx` 高于上次记录的高水位），记在扫描
+   当天，然后推进高水位；游标存在 `usage-history.db` 的 `session_cursor` 表（`path` 主键 +
+   `max_idx` + `file_id`），按会话库路径索引，文件号（inode / NTFS 文件记录号）变化视为同一路径换了
+   库、整库重计；本轮列出但读不了的库、整个目录读不出来的端都保留旧游标（一次瞬时失败不会让之后的
+   generation 被跳过），没再见到的路径才丢掉。游标由调用方在 payload 入库之后才写（`commit`），顺序
+   反过来会让一轮已找到的用量随失败一起消失；本轮没有新数据时 reader 自己提交（否则调用方只在有
+   payload 时提交，机器会永远停在「无游标」分支、一条都计不到）。**当天的数字按累计上报**：reader
+   把历史库当天本 reader 的行加上本轮新增一起给出——历史库对同一天同一 client 取较大值，只含增量的
+   读数会被当成更小值丢掉；整库计入的行已经描述完整内容，与当日值取**较大**而不是相加，避免同一会话
+   换文件或索引重排那天被记两遍。首扫（无游标，`firstScanPlan`）分两种：这是本 build 第一次扫描且
+   历史库里已有 Antigravity 行 → 从当前高水位起算、不补记（旧版把三端都记在 `antigravity` 名下，
+   无法按 flavour 拆分，重算就会把那批磁盘数据再加一遍）；其它情况（历史库一条都没有、或本 build
+   首扫之后才出现的会话、或首读失败的库）→ 整库计入、归文件最后写入日。整库计入一律归文件的
+   **最后写入日**，那才是这批 generation 最可能产生的时间。已知代价：升级前已存在的会话在那之后新增
+   的一小段不补记（从下一条 generation 起入账）；旧版记在 `antigravity` 名下的历史留在 App 行，
+   IDE / CLI 行从升级起各自准确。概览页的表格行按「最近在用」排序
    （`sortAgentClients`）：今日 tokens 降序 → 本周 tokens 降序 → 累计 tokens 降序，token 相同时按
    调用次数，三项都为 0 的保持注册顺序——长期停用的大户不会因为历史总量大而占在最上面。
    **趋势页口径**（`src/lib/trend-analysis.ts`，全部是纯函数）：数据源按 扫描日序列 → localStorage 日归档 →
@@ -203,7 +223,8 @@ electron/
    或粘贴的 Cloud Cookie，safeStorage 加密、读取时重新校验；无 keystore 时拒绝保存）、
    `usage-history.db`（本地用量的日归档 SQLite：每轮扫描按日合并入库，删除/轮转/归档的会话
    不再抹掉历史——同一天、同一客户端取较大的那份，归档或删除会话让扫描值变小也不会把已记录的
-   数字改小；`electron/usage-store.ts`，主进程启动时初始化）。
+   数字改小；另有 `session_cursor` 表存 Antigravity 各会话库的到达日高水位（路径 + 最高 generation
+   序号 + 文件号），见 §3 第 3 条；`electron/usage-store.ts`，主进程启动时初始化）。
    **设置镜像与启动恢复**：前台窗口每次保存设置（启动挂载时与每次改动后；隐藏的后台窗口从不保存）
    都把加密 v3 文档另存一份到 userData 的 `settings-backup.json`（加密不可用、回退到明文 v2 时没有 v3
    可另存，不写镜像），读写都只经 `electron/settings-mirror.ts`：新内容先写进暂存文件并落盘，再一步

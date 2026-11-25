@@ -69,7 +69,9 @@ export const AGENT_ICONS: Partial<Record<AgentClientId, ReactNode>> = {
   // Pi Agent's mark is a black glyph with no Color variant either
   pi: <Pi.Avatar size={16} />,
   mcode: <Minimax.Color />,
+  'antigravity-ide': <Antigravity.Color />,
   antigravity: <Antigravity.Color />,
+  'antigravity-cli': <Antigravity.Color />,
 }
 
 /**

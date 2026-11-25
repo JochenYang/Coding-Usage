@@ -30,7 +30,9 @@ export const AGENT_LABELS: Record<AgentClientId, string> = {
   micode: 'MiMo',
   pi: 'Pi',
   mcode: 'MiniMax Code',
-  antigravity: 'Antigravity',
+  'antigravity-ide': 'Antigravity IDE',
+  antigravity: 'Antigravity App',
+  'antigravity-cli': 'Antigravity CLI',
   cindy: 'Cindy',
   'cindy-global': 'Cindy Global',
 }

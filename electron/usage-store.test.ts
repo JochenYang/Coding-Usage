@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { summarizeScan } from '@/lib/agent-usage'
 import {
@@ -10,7 +11,11 @@ import {
   initUsageStore,
   mergeScanIntoStore,
   purgeUsageBefore,
+  readSessionCursors,
+  readStoredClientRows,
   readStoredContributions,
+  saveSessionCursors,
+  storedClients,
 } from './usage-store'
 
 /**
@@ -269,5 +274,161 @@ describe('usage history store', () => {
     expect(vm.todayTotal.tokens).toBe(150)
     expect(vm.clients.find((c) => c.client === 'codex')!.today.tokens).toBe(100)
     expect(vm.clients.find((c) => c.client === 'kimi')!.today.tokens).toBe(50)
+  })
+})
+
+describe('session cursors', () => {
+  const mark = (maxIdx: number, fileId = 'file-1'): { maxIdx: number; fileId: string } => ({ maxIdx, fileId })
+
+  it('round-trips a mark across a reopen, which is what a restart sees', () => {
+    saveSessionCursors(new Map([['a.db', mark(12)]]), ['a.db'])
+    closeUsageStore()
+
+    const marks = readSessionCursors()
+    expect(marks.get('a.db')).toEqual({ maxIdx: 12, fileId: 'file-1' })
+  })
+
+  it('replaces the mark of a path it sees again', () => {
+    saveSessionCursors(new Map([['a.db', mark(12)]]), ['a.db'])
+    saveSessionCursors(new Map([['a.db', mark(20)]]), ['a.db'])
+
+    expect(readSessionCursors().get('a.db')).toEqual({ maxIdx: 20, fileId: 'file-1' })
+  })
+
+  it('forgets a conversation the scan no longer finds on disk', () => {
+    saveSessionCursors(
+      new Map([
+        ['a.db', mark(12)],
+        ['gone.db', mark(3, 'file-9')],
+      ]),
+      ['a.db', 'gone.db'],
+    )
+    // A file that is no longer listed is not in `seen`, so its mark goes
+    saveSessionCursors(new Map([['a.db', mark(12)]]), ['a.db'])
+
+    const marks = readSessionCursors()
+    expect([...marks.keys()]).toEqual(['a.db'])
+  })
+
+  it('keeps the mark of a conversation it found but could not read', () => {
+    saveSessionCursors(
+      new Map([
+        ['a.db', mark(12)],
+        ['locked.db', mark(3, 'file-9')],
+      ]),
+      ['a.db', 'locked.db'],
+    )
+    // The unreadable file stays in `seen` (it exists) but has no fresh mark
+    saveSessionCursors(new Map([['a.db', mark(12)]]), ['a.db', 'locked.db'])
+
+    expect(readSessionCursors().get('locked.db')).toEqual({ maxIdx: 3, fileId: 'file-9' })
+  })
+
+  it('clears the table when a scan saw no conversation at all', () => {
+    saveSessionCursors(new Map([['a.db', mark(12)]]), ['a.db'])
+    saveSessionCursors(new Map(), [])
+
+    expect(readSessionCursors().size).toBe(0)
+  })
+})
+
+describe('storedClients', () => {
+  it('lists every client the store holds a day for', () => {
+    mergeScanIntoStore([
+      contribution('2026-11-01', [{ client: 'codex', input: 10 }]),
+      contribution('2026-11-02', [{ client: 'antigravity-cli', input: 5 }]),
+    ])
+
+    expect([...storedClients()].sort()).toEqual(['antigravity-cli', 'codex'])
+  })
+
+  it('is empty for a store with no days', () => {
+    expect(storedClients().size).toBe(0)
+  })
+})
+
+describe('readStoredClientRows', () => {
+  it("flattens a stored day's client rows", () => {
+    mergeScanIntoStore([contribution('2026-11-05', [{ client: 'antigravity', input: 10, output: 5, messages: 2 }])])
+
+    expect(readStoredClientRows('2026-11-05')).toEqual([
+      {
+        client: 'antigravity',
+        modelId: 'antigravity-model',
+        tokens: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0 },
+        messages: 2,
+      },
+    ])
+  })
+
+  it('is empty for a day the store does not hold', () => {
+    expect(readStoredClientRows('2026-11-06')).toEqual([])
+  })
+
+  it('rejects a key that is not a calendar day', () => {
+    expect(readStoredClientRows('2026-02-30')).toEqual([])
+  })
+
+  it('is empty when the stored day cannot be parsed', () => {
+    closeUsageStore()
+    const raw = new DatabaseSync(join(dir, 'usage-history.db'))
+    raw.exec(
+      'CREATE TABLE IF NOT EXISTS usage_day (' +
+        'day TEXT PRIMARY KEY, payload TEXT NOT NULL, updated_at INTEGER NOT NULL)',
+    )
+    raw.prepare('INSERT OR REPLACE INTO usage_day (day, payload, updated_at) VALUES (?, ?, ?)').run(
+      '2026-11-07',
+      '{not json',
+      Date.now(),
+    )
+    raw.close()
+    initUsageStore(dir)
+
+    expect(readStoredClientRows('2026-11-07')).toEqual([])
+  })
+})
+
+describe('legacy Antigravity rows', () => {
+  /** A day as an older build wrote it: all three roots under one client id */
+  function legacyDay(client: string, day = '2026-11-01'): void {
+    const payload = JSON.stringify({
+      date: day,
+      totals: { tokens: 100, cost: 0, messages: 2 },
+      tokenBreakdown: { input: 100, output: 0, cacheRead: 0, cacheWrite: 0 },
+      clients: [
+        {
+          client,
+          modelId: 'Gemini 3.5 Flash',
+          tokens: { input: 100, output: 0, cacheRead: 0, cacheWrite: 0 },
+          cost: 0,
+          messages: 2,
+        },
+      ],
+      intensity: 7,
+      activeTimeMs: 5000,
+    })
+    const raw = new DatabaseSync(join(dir, 'usage-history.db'))
+    raw.exec(
+      'CREATE TABLE IF NOT EXISTS usage_day (' +
+        'day TEXT PRIMARY KEY, payload TEXT NOT NULL, updated_at INTEGER NOT NULL)',
+    )
+    raw.prepare('INSERT OR REPLACE INTO usage_day (day, payload, updated_at) VALUES (?, ?, ?)').run(day, payload, Date.now())
+    raw.close()
+    initUsageStore(dir)
+  }
+
+  it('are left exactly as written: the split cannot tell which flavour they are', () => {
+    // An older build stored all three roots under `antigravity`, so a rename
+    // would give the app row the IDE's history (and vice versa). The reader
+    // treats their presence as "already counted" instead.
+    closeUsageStore()
+    legacyDay('antigravity')
+
+    const days = readStoredContributions()
+    expect(days).toHaveLength(1)
+    expect(days[0]!.clients[0]!.client).toBe('antigravity')
+    expect(days[0]!.totals).toEqual({ tokens: 100, cost: 0, messages: 2 })
+    expect(days[0]!.intensity).toBe(7)
+    expect(days[0]!.activeTimeMs).toBe(5000)
   })
 })

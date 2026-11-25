@@ -390,8 +390,9 @@ function createTray(): void {
 
 // Scanned through `graph --client`. Mostly mirrors AGENT_CLIENTS in
 // src/lib/agent-usage.ts (which also drives the renderer's labels/icons), with
-// deliberate differences: `mcode` (MiniMax Code), `antigravity` (IDE install),
-// `qoder` and `cindy` are absent because tokscale has no reader for them (or
+// deliberate differences: `mcode` (MiniMax Code), the three Antigravity
+// flavours (`antigravity-ide`, `antigravity`, `antigravity-cli`), `qoder` and
+// `cindy` are absent because tokscale has no reader for them (or
 // its reader covers a different store) — the main process collects those
 // itself (electron/minimax-code-usage.ts, electron/antigravity-usage.ts,
 // electron/qoder-usage.ts, plus Cindy's Pi sessions via
@@ -447,6 +448,12 @@ interface LocalAgentPayload {
    * encrypted store; both may exist side by side and are disjoint by origin.
    */
   mergeAlways?: boolean
+  /**
+   * Run after the payload was persisted. Antigravity's reader advances its
+   * per-conversation marks this way: committing them first would drop the
+   * usage of a scan whose merge never landed.
+   */
+  commit?: () => void
 }
 
 interface TokScanResult {
@@ -462,6 +469,8 @@ interface TokScanResult {
   /** Epoch ms when the scan was requested — kept stable across cache hits so
    *  the renderer can show an honest as-of time instead of re-stamping "now" */
   scannedAt?: number
+  /** Deferred bookkeeping of locally read agents, run once the merge landed */
+  commits?: Array<() => void>
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
@@ -829,8 +838,12 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
       payload == null ? null : { client: 'dsh', payload, mergeAlways: true },
     ),
     readMiniMaxCodeUsage(homedir()).then((payload) => (payload == null ? null : { client: 'mcode', payload })),
-    readAntigravityUsage(homedir()).then((payload) =>
-      payload == null ? null : { client: 'antigravity', payload },
+    // One read covers all three Antigravity flavours; the payload carries its
+    // own `antigravity-ide` / `antigravity` / `antigravity-cli` client rows. The
+    // `client` here is only the "does tokscale already report this?" key, and
+    // none of the three ids is in TOKSCALE_CLIENTS, so the payload merges whole.
+    readAntigravityUsage(homedir()).then((scan) =>
+      scan.payload == null ? null : { client: 'antigravity', payload: scan.payload, commit: scan.commit },
     ),
     readCodeBuddyUsage(homedir()).then((payload) =>
       // Merged unconditionally: tokscale's CodeBuddy reader scans the CLI
@@ -873,6 +886,11 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
     const missing = localAgents.filter((entry) => entry.mergeAlways || !hasClientEntries(payload, entry.client))
     return missing.length === 0 ? payload : mergeGraphPayloads([payload, ...missing.map((e) => e.payload)])
   }
+  // Deferred bookkeeping (Antigravity's marks): run only once the merge landed.
+  // None of its client ids is requested from tokscale, so its payload always
+  // merges and committing it is always the right end state.
+  const localCommits = (): Array<() => void> =>
+    localAgents.flatMap((entry) => (entry.commit ? [entry.commit] : []))
   await ensurePricingCache()
   // --no-spinner: the interactive progress renderer is both the source of
   // ANSI/CR garbage in captured stderr and the prime suspect for the
@@ -897,7 +915,11 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
     const costs = await overrideCosts(withLocalAgents(daily))
     // Decode last: the cost override and the provider attribution read the
     // encoded ids, whose router prefix is ASCII either way.
-    return { daily: decodeNonAsciiIds(reconcileProviderAttribution(costs)), pricing: getPricingMeta() }
+    return {
+      daily: decodeNonAsciiIds(reconcileProviderAttribution(costs)),
+      pricing: getPricingMeta(),
+      commits: localCommits(),
+    }
   }
 
   const merged = await scanPerClientWithFallback(baseArgs)
@@ -909,7 +931,11 @@ async function scanTokscaleUsage(): Promise<TokScanResult> {
     // card, so serve those rather than surfacing nothing at all.
     if (localAgents.length > 0) {
       const costs = await overrideCosts(mergeGraphPayloads(localAgents.map((entry) => entry.payload)))
-      return { daily: decodeNonAsciiIds(reconcileProviderAttribution(costs)), pricing: getPricingMeta() }
+      return {
+        daily: decodeNonAsciiIds(reconcileProviderAttribution(costs)),
+        pricing: getPricingMeta(),
+        commits: localCommits(),
+      }
     }
     throw new Error('tokscale scan failed for every client')
   }
@@ -1694,11 +1720,12 @@ function registerIpc(): void {
         // Stamp the request time, not the completion time: the data is read
         // during the scan, and the label must never claim fresher than we
         // asked. Same anchor as the cache window (`at`) above.
-        const stamped: TokScanResult = {
-          ...result,
-          daily: await persistScanHistory(result.daily),
-          scannedAt: now,
-        }
+        const { commits = [], ...rest } = result
+        const daily = await persistScanHistory(result.daily)
+        // Only now that the payload is in the store may the readers advance
+        // their marks; a failure above leaves them where they were.
+        for (const commit of commits) commit()
+        const stamped: TokScanResult = { ...rest, daily, scannedAt: now }
         tokScanCache = { at: now, result: stamped }
         return stamped
       } catch (e) {

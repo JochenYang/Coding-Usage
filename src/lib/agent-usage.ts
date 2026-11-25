@@ -25,8 +25,10 @@ import { AGENT_LABELS } from './agent-labels'
  * with no entries is filtered out of the card anyway):
  *   - `mcode` (MiniMax Code): tokscale covers it through headless capture only
  *     → electron/minimax-code-usage.ts
- *   - `antigravity`: tokscale reads the terminal agent's databases
- *     (`~/.gemini/antigravity-cli`), not the IDE's
+ *   - `antigravity-ide` / `antigravity` / `antigravity-cli`: tokscale's own
+ *     Antigravity reader covers only the CLI root and is not enabled here, so
+ *     all three stores are read by the main process — one row per flavour
+ *     matching its quota card
  *     → electron/antigravity-usage.ts
  *   - `qoder`: no tokscale reader exists → electron/qoder-usage.ts
  *   - `qoder-global`: the global build of Qoder keeps its own CLI/IDE session
@@ -52,7 +54,9 @@ export const AGENT_CLIENTS = [
   'kimi',
   'opencode',
   'gemini',
+  'antigravity-ide',
   'antigravity',
+  'antigravity-cli',
   'cursor',
   'copilot',
   'qwen',

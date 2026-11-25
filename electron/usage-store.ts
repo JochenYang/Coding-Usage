@@ -41,6 +41,12 @@ import { join } from 'node:path'
  *   de-duplication, a re-read of a truncated file) therefore does not land; a
  *   day may stay higher than a later scanner would compute. Equal views take the
  *   fresh one, so cost, model labels and other non-count fields still refresh.
+ * - A reader whose store carries no per-generation timestamp (Antigravity's app
+ *   and CLI) reports the day's *running total*, not just its latest increment,
+ *   precisely because of the larger-view rule above: the increment alone would
+ *   be the smaller view and would be discarded. The marks that decide "what is
+ *   new" live in `session_cursor` (see {@link readSessionCursors}), and the
+ *   caller advances them only after the payload reached this store.
  * - `activeTimeMs` is a day-level observation with no per-client attribution, so
  *   a day that keeps stored rows takes the larger of the two — a day tokscale
  *   later trims keeps its old figure, which understates tok/s rather than
@@ -142,6 +148,23 @@ function db(): DatabaseSync | null {
     opened.exec(
       'CREATE TABLE IF NOT EXISTS usage_day (' +
         'day TEXT PRIMARY KEY, payload TEXT NOT NULL, updated_at INTEGER NOT NULL)',
+    )
+    // The cursor table is a cache, never history: an earlier build that created
+    // it with a different shape gets a fresh one instead of a column migration
+    // for numbers that carry no meaning on their own.
+    const cursorColumns = opened.prepare('PRAGMA table_info(session_cursor)').all() as Array<{ name?: unknown }>
+    if (cursorColumns.length > 0 && !cursorColumns.some((column) => column.name === 'file_id')) {
+      opened.exec('DROP TABLE IF EXISTS session_cursor')
+    }
+    // Per-conversation high-water mark for readers whose store has no timestamp
+    // of its own (the Antigravity app's generation rows). A scan counts only
+    // the generations past this point, so their tokens land on the day they
+    // were actually produced instead of on the conversation's creation day.
+    // `file_id` is the filesystem's file number, kept as identity: a different
+    // file at the same path is a new conversation, not a grown one.
+    opened.exec(
+      'CREATE TABLE IF NOT EXISTS session_cursor (' +
+        'path TEXT PRIMARY KEY, max_idx INTEGER NOT NULL, file_id TEXT NOT NULL, updated_at INTEGER NOT NULL)',
     )
     handle = opened
     return handle
@@ -466,6 +489,78 @@ export function readStoredContributions(): Contribution[] {
 }
 
 /**
+ * One client/model row of a stored day, flattened for a reader that has to
+ * report a day's *running total* rather than only its latest increment.
+ */
+export interface StoredDayRow {
+  client: string
+  modelId: string
+  tokens: { input: number; output: number; cacheRead: number; cacheWrite: number }
+  messages: number
+}
+
+/**
+ * The client rows a given day already holds, or an empty list.
+ *
+ * A reader whose store has no timestamps reports what is new since its last
+ * scan (see `readSessionCursors`). The merge keeps the larger view of a client
+ * on a day, so that increment alone would be smaller than the day it already
+ * recorded and would be discarded — the reader therefore reports the day's
+ * running total: these rows plus what it just found.
+ */
+export function readStoredClientRows(day: string): StoredDayRow[] {
+  const database = db()
+  if (database == null || !isCalendarDay(day)) return []
+  const row = asRecord(database.prepare('SELECT payload FROM usage_day WHERE day = ?').get(day))
+  if (!row || typeof row.payload !== 'string') return []
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(row.payload)
+  } catch {
+    return [] // readAll already reports an unreadable day; start the total afresh
+  }
+  const contribution = normalizeContribution(parsed)
+  if (!contribution) return []
+  const out: StoredDayRow[] = []
+  for (const entry of contribution.clients) {
+    const client = typeof entry.client === 'string' ? entry.client : ''
+    const modelId = typeof entry.modelId === 'string' ? entry.modelId : ''
+    if (!client || !modelId) continue
+    out.push({
+      client,
+      modelId,
+      tokens: {
+        input: num(entry.tokens?.input),
+        output: num(entry.tokens?.output),
+        cacheRead: num(entry.tokens?.cacheRead),
+        cacheWrite: num(entry.tokens?.cacheWrite),
+      },
+      messages: num(entry.messages),
+    })
+  }
+  return out
+}
+
+/**
+ * Every client id the store already holds a day for.
+ *
+ * A reader that dates by arrival needs it to tell "this client's history was
+ * already recorded" (start at the current end) from "this client is new to the
+ * store, so its whole back catalogue would otherwise never be counted".
+ */
+export function storedClients(): Set<string> {
+  const database = db()
+  const out = new Set<string>()
+  if (database == null) return out
+  for (const day of readAll(database).values()) {
+    for (const entry of day.clients) {
+      if (typeof entry.client === 'string' && entry.client) out.add(entry.client)
+    }
+  }
+  return out
+}
+
+/**
  * Epoch ms when a day's numbers last actually changed, or null when empty.
  * Unchanged days are skipped on write (see mergeScanIntoStore), so this is the
  * age of the figures rather than of the last scan — which is what the as-of
@@ -534,4 +629,96 @@ export function purgeUsageBefore(cutoffDay: string | null): UsagePurgeResult {
     }
   }
   return { removed, stats: getUsageStoreStats() }
+}
+
+// ===== per-conversation cursors =====
+
+/**
+ * One conversation's high-water mark.
+ *
+ * `maxIdx` is the highest generation index counted so far; `fileId` is the
+ * filesystem's file number as a string (an inode / NTFS file record), which
+ * tells a grown conversation from a different file at the same path — empty
+ * when the platform reports none. Creation time cannot serve here: NTFS
+ * tunneling restores it for a file recreated under the same name.
+ */
+export interface SessionCursor {
+  maxIdx: number
+  fileId: string
+}
+
+/**
+ * Cursors for readers whose store carries no per-generation timestamp (the
+ * Antigravity app's `gen_metadata` rows; its CLI shares the schema).
+ *
+ * Such a reader cannot date a generation, so it dates the *new* ones instead:
+ * each scan finds the generations past the stored mark, counts them on the day
+ * the scan ran, and the caller advances the mark once that payload is stored.
+ * A conversation with no mark starts at its current end when the store already
+ * holds any Antigravity usage (an older build counted that disk content, under
+ * a rule and a client id this split cannot separate), and counts whole only
+ * when the store holds none.
+ *
+ * Cursors are keyed by the conversation database's path. {@link saveSessionCursors}
+ * drops the marks of conversations the scan no longer finds on disk, while a
+ * conversation it found but could not read keeps its old mark.
+ */
+export function readSessionCursors(): Map<string, SessionCursor> {
+  const database = db()
+  const out = new Map<string, SessionCursor>()
+  if (database == null) return out
+  for (const row of database.prepare('SELECT path, max_idx, file_id FROM session_cursor').all()) {
+    const rec = asRecord(row)
+    const path = typeof rec?.path === 'string' ? rec.path : ''
+    if (!path) continue
+    out.set(path, {
+      maxIdx: Math.trunc(num(rec?.max_idx)),
+      fileId: typeof rec?.file_id === 'string' ? rec.file_id : '',
+    })
+  }
+  return out
+}
+
+/**
+ * Store this scan's marks and forget conversations the scan no longer saw.
+ *
+ * `seen` is what the scan actually found on disk — not what it managed to read.
+ * A conversation that was found but could not be read this round (WAL lock,
+ * antivirus, a momentarily empty file) is in `seen` but not in `marks`, so its
+ * old mark survives and a later scan continues where it left off. Only a
+ * conversation whose file is gone is dropped: otherwise one transient read
+ * failure would silently skip every generation that arrives afterwards.
+ *
+ * Call this only after the payload was persisted: advancing a mark for usage
+ * that never reached the store would drop it for good.
+ */
+export function saveSessionCursors(marks: Map<string, SessionCursor>, seen: Iterable<string>): void {
+  const database = db()
+  if (database == null) return
+  const now = Date.now()
+  database.exec('BEGIN')
+  try {
+    const upsert = database.prepare(
+      'INSERT INTO session_cursor (path, max_idx, file_id, updated_at) VALUES (?, ?, ?, ?) ' +
+        'ON CONFLICT(path) DO UPDATE SET max_idx = excluded.max_idx, file_id = excluded.file_id, ' +
+        'updated_at = excluded.updated_at',
+    )
+    for (const [path, mark] of marks) upsert.run(path, mark.maxIdx, mark.fileId, now)
+    const keep = [...seen]
+    if (keep.length === 0) {
+      database.prepare('DELETE FROM session_cursor').run()
+    } else {
+      // Paths are keys of a set this process just built, never user input
+      const placeholders = keep.map(() => '?').join(', ')
+      database.prepare(`DELETE FROM session_cursor WHERE path NOT IN (${placeholders})`).run(...keep)
+    }
+    database.exec('COMMIT')
+  } catch (error) {
+    try {
+      database.exec('ROLLBACK')
+    } catch {
+      // Nothing left to roll back
+    }
+    throw error
+  }
 }
