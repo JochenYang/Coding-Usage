@@ -302,7 +302,12 @@ export function firstScanPlan(input: {
 }): { cursor: number; date: string | null } {
   const { stored, skipBackCatalogue, current, mtimeMs, nowMs } = input
   if (stored !== undefined) {
-    const identityMoved = stored.fileId !== '' && current.fileId !== '' && stored.fileId !== current.fileId
+    // Two independent identity signals: NTFS tunneling keeps the creation time
+    // of a file recreated under the same name, while Linux reuses an inode
+    // right after a delete. Either one moving means a different file.
+    const identityMoved =
+      (stored.fileId !== '' && current.fileId !== '' && stored.fileId !== current.fileId) ||
+      (stored.createdMs > 0 && current.createdMs > 0 && stored.createdMs !== current.createdMs)
     const restarted = identityMoved || current.maxIdx < stored.maxIdx
     return restarted ? { cursor: -1, date: localDay(mtimeMs) } : { cursor: stored.maxIdx, date: localDay(nowMs) }
   }
@@ -643,7 +648,11 @@ export async function readAntigravityUsage(home: string): Promise<AntigravitySca
           if (previous) nextCursors.set(db, previous)
           continue
         }
-        const current: SessionCursor = { maxIdx: read.maxIdx, fileId: info.ino > 0 ? String(info.ino) : '' }
+        const current: SessionCursor = {
+          maxIdx: read.maxIdx,
+          fileId: info.ino > 0 ? String(info.ino) : '',
+          createdMs: Math.round(info.birthtimeMs),
+        }
         const plan = firstScanPlan({
           stored: cursors.get(db),
           skipBackCatalogue,

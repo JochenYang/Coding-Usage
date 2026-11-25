@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
 import { closeUsageStore, extractContributions, initUsageStore, mergeScanIntoStore, readSessionCursors } from './usage-store'
+import type { SessionCursor } from './usage-store'
 import { antigravityKnown, firstScanPlan, readAntigravityUsage } from './antigravity-usage'
 
 /**
@@ -148,7 +149,11 @@ async function scan(home: string): Promise<unknown | null> {
 }
 
 describe('firstScanPlan', () => {
-  const mark = (maxIdx: number, fileId = 'file-1'): { maxIdx: number; fileId: string } => ({ maxIdx, fileId })
+  const mark = (maxIdx: number, fileId = 'file-1', createdMs = 1000): SessionCursor => ({
+    maxIdx,
+    fileId,
+    createdMs,
+  })
   const now = new Date(2026, 10, 25, 12).getTime()
   const plan = (over: Partial<Parameters<typeof firstScanPlan>[0]> = {}) =>
     firstScanPlan({
@@ -188,10 +193,25 @@ describe('firstScanPlan', () => {
     expect(plan({ stored: mark(40), current: mark(3) })).toEqual({ cursor: -1, date: localDay(now) })
   })
 
-  it('falls back to the index rule when the platform reports no file number', () => {
-    expect(plan({ stored: mark(40, ''), current: mark(3, '') })).toEqual({ cursor: -1, date: localDay(now) })
-    // A file number appearing later is not a change of identity by itself
-    expect(plan({ stored: mark(40, ''), current: mark(41, 'file-2') })).toEqual({
+  it('counts a replaced file whole even when the file number was reused', () => {
+    // Linux hands the same inode to the next file at that path; the creation
+    // time is what tells the two apart
+    expect(plan({ stored: mark(4, 'file-1', 1000), current: mark(9, 'file-1', 2000) })).toEqual({
+      cursor: -1,
+      date: localDay(now),
+    })
+  })
+
+  it('falls back to the index rule when the platform reports neither signal', () => {
+    expect(plan({ stored: mark(40, '', 0), current: mark(3, '', 0) })).toEqual({ cursor: -1, date: localDay(now) })
+    expect(plan({ stored: mark(40, '', 0), current: mark(41, '', 0) })).toEqual({
+      cursor: 40,
+      date: localDay(now),
+    })
+  })
+
+  it('treats a signal that only one side reports as no evidence of a new file', () => {
+    expect(plan({ stored: mark(40, '', 1000), current: mark(41, 'file-2', 1000) })).toEqual({
       cursor: 40,
       date: localDay(now),
     })
@@ -245,15 +265,17 @@ describe('readAntigravityUsage', () => {
   it('counts a database recreated at the same path from the start', async () => {
     await newStore()
     const home = await tempHome()
-    const file = await writeConversation(home, 'antigravity', 'a.db', [generationBlob({ responseId: 'old' })])
-    const first = parsePayload(await scan(home))
-    mergeScanIntoStore(extractContributions(first))
+    const file = await writeConversation(home, 'antigravity', 'a.db', [
+      generationBlob({ responseId: 'r1' }),
+      generationBlob({ responseId: 'r2' }),
+    ])
+    expect(parsePayload(await scan(home)).contributions[0].totals.messages).toBe(2)
 
-    await recreateConversation(file, [generationBlob({ responseId: 'new-1' }), generationBlob({ responseId: 'new-2' })])
+    // The replacement has fewer rows, so its indexes went backwards: the stored
+    // mark describes a different file and the new database counts whole
+    await recreateConversation(file, [generationBlob({ responseId: 'new-1' })])
     const payload = parsePayload(await scan(home))
-    // A whole count describes the file completely, so it is folded against the
-    // day with max: the new database's two rows replace the old one's reading
-    expect(payload.contributions[0].totals.messages).toBe(2)
+    expect(payload.contributions[0].totals.messages).toBe(1)
   })
 
   it('counts the first generation of a conversation that was empty when scanned', async () => {
@@ -394,13 +416,14 @@ describe('readAntigravityUsage', () => {
     await newStore()
     const home = await tempHome()
     const file = await writeConversation(home, 'antigravity', 'gone.db', [generationBlob({ responseId: 'x' })])
-    const first = parsePayload(await scan(home))
-    mergeScanIntoStore(extractContributions(first))
+    await scan(home)
 
-    // A new conversation at the same path must not inherit the old mark
-    await recreateConversation(file, [generationBlob({ responseId: 'fresh' })])
+    // The file disappearing drops its mark, so a later conversation at the same
+    // path starts clean instead of inheriting the old mark
+    await rm(file)
+    expect(await scan(home)).toBeNull()
+    await createDatabase(file, [generationBlob({ responseId: 'fresh' })])
     const payload = parsePayload(await scan(home))
-    // A whole count does not add to the day: it replaces that client's reading
     expect(payload.contributions[0].totals.messages).toBe(1)
   })
 

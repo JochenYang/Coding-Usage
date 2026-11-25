@@ -16,6 +16,7 @@ import {
   readStoredContributions,
   saveSessionCursors,
   storedClients,
+  type SessionCursor,
 } from './usage-store'
 
 /**
@@ -278,21 +279,21 @@ describe('usage history store', () => {
 })
 
 describe('session cursors', () => {
-  const mark = (maxIdx: number, fileId = 'file-1'): { maxIdx: number; fileId: string } => ({ maxIdx, fileId })
+  const mark = (maxIdx: number, fileId = 'file-1', createdMs = 1000): SessionCursor => ({ maxIdx, fileId, createdMs })
 
   it('round-trips a mark across a reopen, which is what a restart sees', () => {
     saveSessionCursors(new Map([['a.db', mark(12)]]), ['a.db'])
     closeUsageStore()
 
     const marks = readSessionCursors()
-    expect(marks.get('a.db')).toEqual({ maxIdx: 12, fileId: 'file-1' })
+    expect(marks.get('a.db')).toEqual({ maxIdx: 12, fileId: 'file-1', createdMs: 1000 })
   })
 
   it('replaces the mark of a path it sees again', () => {
     saveSessionCursors(new Map([['a.db', mark(12)]]), ['a.db'])
     saveSessionCursors(new Map([['a.db', mark(20)]]), ['a.db'])
 
-    expect(readSessionCursors().get('a.db')).toEqual({ maxIdx: 20, fileId: 'file-1' })
+    expect(readSessionCursors().get('a.db')).toEqual({ maxIdx: 20, fileId: 'file-1', createdMs: 1000 })
   })
 
   it('forgets a conversation the scan no longer finds on disk', () => {
@@ -321,7 +322,7 @@ describe('session cursors', () => {
     // The unreadable file stays in `seen` (it exists) but has no fresh mark
     saveSessionCursors(new Map([['a.db', mark(12)]]), ['a.db', 'locked.db'])
 
-    expect(readSessionCursors().get('locked.db')).toEqual({ maxIdx: 3, fileId: 'file-9' })
+    expect(readSessionCursors().get('locked.db')).toEqual({ maxIdx: 3, fileId: 'file-9', createdMs: 1000 })
   })
 
   it('clears the table when a scan saw no conversation at all', () => {

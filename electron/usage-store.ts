@@ -153,18 +153,20 @@ function db(): DatabaseSync | null {
     // it with a different shape gets a fresh one instead of a column migration
     // for numbers that carry no meaning on their own.
     const cursorColumns = opened.prepare('PRAGMA table_info(session_cursor)').all() as Array<{ name?: unknown }>
-    if (cursorColumns.length > 0 && !cursorColumns.some((column) => column.name === 'file_id')) {
+    const cursorShape = new Set(cursorColumns.map((column) => column.name))
+    if (cursorColumns.length > 0 && (!cursorShape.has('file_id') || !cursorShape.has('created_ms'))) {
       opened.exec('DROP TABLE IF EXISTS session_cursor')
     }
     // Per-conversation high-water mark for readers whose store has no timestamp
     // of its own (the Antigravity app's generation rows). A scan counts only
     // the generations past this point, so their tokens land on the day they
     // were actually produced instead of on the conversation's creation day.
-    // `file_id` is the filesystem's file number, kept as identity: a different
-    // file at the same path is a new conversation, not a grown one.
+    // `file_id` and `created_ms` are the file's identity: a different file at
+    // the same path is a new conversation, not a grown one.
     opened.exec(
       'CREATE TABLE IF NOT EXISTS session_cursor (' +
-        'path TEXT PRIMARY KEY, max_idx INTEGER NOT NULL, file_id TEXT NOT NULL, updated_at INTEGER NOT NULL)',
+        'path TEXT PRIMARY KEY, max_idx INTEGER NOT NULL, file_id TEXT NOT NULL, ' +
+        'created_ms INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
     )
     handle = opened
     return handle
@@ -636,15 +638,18 @@ export function purgeUsageBefore(cutoffDay: string | null): UsagePurgeResult {
 /**
  * One conversation's high-water mark.
  *
- * `maxIdx` is the highest generation index counted so far; `fileId` is the
- * filesystem's file number as a string (an inode / NTFS file record), which
- * tells a grown conversation from a different file at the same path — empty
- * when the platform reports none. Creation time cannot serve here: NTFS
- * tunneling restores it for a file recreated under the same name.
+ * `maxIdx` is the highest generation index counted so far. `fileId` (the
+ * filesystem's file number as a string) and `createdMs` (creation time in whole
+ * ms) together identify the file: a grown conversation keeps both, a different
+ * file at the same path changes at least one. Neither alone is enough — NTFS
+ * tunneling restores the creation time for a file recreated under the same
+ * name, and Linux reuses an inode immediately after a delete. Empty / 0 means
+ * the platform reported nothing, and that dimension is not compared.
  */
 export interface SessionCursor {
   maxIdx: number
   fileId: string
+  createdMs: number
 }
 
 /**
@@ -667,13 +672,14 @@ export function readSessionCursors(): Map<string, SessionCursor> {
   const database = db()
   const out = new Map<string, SessionCursor>()
   if (database == null) return out
-  for (const row of database.prepare('SELECT path, max_idx, file_id FROM session_cursor').all()) {
+  for (const row of database.prepare('SELECT path, max_idx, file_id, created_ms FROM session_cursor').all()) {
     const rec = asRecord(row)
     const path = typeof rec?.path === 'string' ? rec.path : ''
     if (!path) continue
     out.set(path, {
       maxIdx: Math.trunc(num(rec?.max_idx)),
       fileId: typeof rec?.file_id === 'string' ? rec.file_id : '',
+      createdMs: Math.round(num(rec?.created_ms)),
     })
   }
   return out
@@ -699,11 +705,11 @@ export function saveSessionCursors(marks: Map<string, SessionCursor>, seen: Iter
   database.exec('BEGIN')
   try {
     const upsert = database.prepare(
-      'INSERT INTO session_cursor (path, max_idx, file_id, updated_at) VALUES (?, ?, ?, ?) ' +
+      'INSERT INTO session_cursor (path, max_idx, file_id, created_ms, updated_at) VALUES (?, ?, ?, ?, ?) ' +
         'ON CONFLICT(path) DO UPDATE SET max_idx = excluded.max_idx, file_id = excluded.file_id, ' +
-        'updated_at = excluded.updated_at',
+        'created_ms = excluded.created_ms, updated_at = excluded.updated_at',
     )
-    for (const [path, mark] of marks) upsert.run(path, mark.maxIdx, mark.fileId, now)
+    for (const [path, mark] of marks) upsert.run(path, mark.maxIdx, mark.fileId, mark.createdMs, now)
     const keep = [...seen]
     if (keep.length === 0) {
       database.prepare('DELETE FROM session_cursor').run()
