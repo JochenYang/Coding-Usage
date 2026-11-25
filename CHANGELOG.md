@@ -10,6 +10,18 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [v0.11.0] - 2026-11-25
+
+### 中文
+- 概览页的「本地 Agent 用量」现在把 Antigravity 拆成三行：Antigravity IDE、Antigravity App、Antigravity CLI，与三张额度卡一一对应（此前只有 IDE 一行，App 与 CLI 的用量一直是 0，App 里新增的会话和插件用量都看不到）
+- Antigravity App 与 CLI 的 generation 记录不带时间戳，改为按「到达日」归日：每轮扫描只计各会话新增的部分、记在扫描当天，当天显示的是累计值（此前按会话创建日归日，今天在各端产生的用量会被算到会话开始的那天，今天的数字始终是 0）
+- 升级时不会重算已有的 Antigravity 历史：旧版把 IDE、App、CLI 都记在同一个 `antigravity` 名下，无法按端拆开，这批历史留在 Antigravity App 行，三行从升级起各自准确；升级前已存在会话在那之后新增的一小段不补记（从下一条 generation 起入账），升级时点之后新建的会话照常整库计入
+
+### English
+- The overview's local agent usage now lists Antigravity as three rows — Antigravity IDE, Antigravity App and Antigravity CLI, matching the three quota cards (before, only the IDE had a row and the App and CLI always read 0, so new conversations and plugin usage in the app were invisible)
+- Antigravity App and CLI generation records carry no timestamp, so their usage is now dated by arrival: each scan counts only what a conversation added since the previous one and books it on the day of the scan, reporting the day's running total (before, it was dated to the conversation's creation day, so usage produced today landed on the day the conversation started and today's figure stayed at 0)
+- Existing Antigravity history is never re-counted on upgrade: older builds stored the IDE, the app and the CLI under one `antigravity` id that cannot be split, so that history stays on the Antigravity App row and the three rows are accurate from the upgrade onwards; a conversation that existed before the upgrade no longer has the stretch it gained right before it booked (counting resumes with its next generation), while conversations started after the upgrade are counted in full
+
 ## [v0.10.9] - 2026-11-24
 
 ### 中文
