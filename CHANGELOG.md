@@ -10,7 +10,7 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
-## [Unreleased]
+## [v0.11.1] - 2026-11-28
 
 ### 中文
 - 灵动岛与提醒中心现在覆盖官方订阅额度：Claude Code、Codex、Gemini CLI、Grok、Trae、Kimi Code、Antigravity、Cursor、GitHub Copilot、Cline Pass、JetBrains AI、Windsurf、Kiro、Kilo、Factory Droid、Devin、Amp、OpenDesign、阿里云三张卡的高用量与「即将重置」提醒，此前只有 API key 类账户才有（订阅卡的读数不经过提醒引擎）。Antigravity 三张卡是同一个额度池，只报一条；只对已启用的卡报警，超过一天没刷新的读数不算
