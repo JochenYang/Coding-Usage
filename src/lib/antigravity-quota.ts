@@ -22,6 +22,7 @@
  * percentages, so the renderer labels this card's rows explicitly rather than
  * reusing the same wording.
  */
+import type { Dict } from '../i18n/types'
 
 /** The three Antigravity clients that each get a quota card */
 export type AntigravityFlavour = 'ide' | 'app' | 'cli'
@@ -55,6 +56,24 @@ export type AntigravityWindowId = 'weekly' | 'fiveHour' | 'other'
 
 /** Which pool a group belongs to; the server's own group name is English-only */
 export type AntigravityGroupId = 'gemini' | 'thirdParty' | 'other'
+
+/**
+ * Label accessors keyed by the summarizer's stable ids, never by string
+ * concatenation: a new id then fails the build here instead of rendering a raw
+ * i18n key. Both maps are exhaustive over their union by type. Shared by the
+ * card and the alert engine.
+ */
+export const ANTIGRAVITY_GROUP_LABELS: Record<AntigravityGroupId, (t: Dict) => string> = {
+  gemini: (t) => t.antigravityQuota.groupGemini,
+  thirdParty: (t) => t.antigravityQuota.groupThirdParty,
+  other: (t) => t.antigravityQuota.groupOther,
+}
+
+export const ANTIGRAVITY_WINDOW_LABELS: Record<AntigravityWindowId, (t: Dict) => string> = {
+  weekly: (t) => t.antigravityQuota.windowWeekly,
+  fiveHour: (t) => t.antigravityQuota.windowFiveHour,
+  other: (t) => t.antigravityQuota.windowOther,
+}
 
 export interface AntigravityBucketVM {
   id: string

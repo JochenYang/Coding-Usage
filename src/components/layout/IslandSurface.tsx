@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AlertItem } from '@/lib/alerts'
+import type { AlertItem, AlertKind } from '@/lib/alerts'
 import { DynamicIsland, DynamicIslandView, ISLAND_COLLAPSE_MS } from '@/components/beui/dynamic-island'
 import { AlertIslandBody } from './AlertIsland'
 import { useT } from '@/i18n/useT'
@@ -17,6 +17,17 @@ const AUTO_DISMISS_MS = 8_000
 // hiding a millisecond early would cut the animation off at full size.
 const EXIT_FALLBACK_MS = ISLAND_COLLAPSE_MS * 3
 
+/**
+ * Kinds this surface renders. Keyed by the `AlertKind` union so adding a
+ * kind fails the build here instead of being dropped silently at runtime.
+ */
+const RENDERED_KINDS: Record<AlertKind, true> = {
+  'window-reset': true,
+  'window-restored': true,
+  'high-usage': true,
+  'low-balance': true,
+}
+
 /** Runtime shape guard for items relayed over IPC (our own payload, still validate) */
 function isValidAlert(v: unknown): v is AlertItem {
   if (v == null || typeof v !== 'object') return false
@@ -24,7 +35,9 @@ function isValidAlert(v: unknown): v is AlertItem {
   return (
     typeof a.id === 'string' &&
     typeof a.agentName === 'string' &&
-    (a.kind === 'window-reset' || a.kind === 'high-usage' || a.kind === 'low-balance')
+    typeof a.kind === 'string' &&
+    // Index lookup, not `in`: `in` would accept a prototype name like "toString"
+    (RENDERED_KINDS as Record<string, true>)[a.kind] === true
   )
 }
 

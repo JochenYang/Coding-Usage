@@ -375,10 +375,15 @@ export const zhCN: Dict = {
     distUnavailable: '暂无 token 总量数据（部分服务商仅提供百分比，无法计入份额）',
     alertsTitle: '近期告警',
     viewAll: '查看全部',
-    alertWindowReset: (name: string) => `${name} - 窗口即将重置`,
-    alertHighUsage: (name: string, pct: number) => `${name} - 额度使用 ${pct}%`,
+    alertWindowReset: (name: string, window?: string) =>
+      window ? `${name} - ${window}即将重置` : `${name} - 窗口即将重置`,
+    alertWindowRestored: (name: string, window?: string) =>
+      window ? `${name} - ${window}已恢复` : `${name} - 额度已恢复`,
+    alertHighUsage: (name: string, pct: number, window?: string) =>
+      window ? `${name} - ${window}额度使用 ${pct}%` : `${name} - 额度使用 ${pct}%`,
     alertLowBalance: (name: string) => `${name} - 余额较低`,
     alertResetSoon: (m: number) => `将在 ${m} 分钟后重置`,
+    alertExhaustedDetail: (s: string) => `已用完，${s}`,
     alertUsedDetail: (used: string, total: string) => `${used} / ${total} tokens 已使用`,
     alertBalanceDetail: (s: string) => `账户余额：${s}`,
     alertSince: (date: string) => `自 ${date} 起`,

@@ -11,8 +11,24 @@
  * Moonshot platform balance, a money amount on a separate surface with a
  * separate credential.
  */
+import type { Dict } from '../i18n/types'
 
 export type KimiWindowId = 'fiveHour' | 'weekly' | 'monthTotal' | 'monthCode' | 'other'
+
+/**
+ * Window label resolved through an explicit id -> i18n accessor map, never by
+ * string concatenation: a new KimiWindowId then fails the build here instead
+ * of silently rendering a raw key. The ids are the display contract from
+ * `summarizeKimiQuota` and stay stable across payloads. Shared by the card
+ * and the alert engine.
+ */
+export const KIMI_WINDOW_LABELS: Record<KimiWindowId, (t: Dict) => string> = {
+  fiveHour: (t) => t.kimiQuota.windowFiveHour,
+  weekly: (t) => t.kimiQuota.windowWeekly,
+  monthTotal: (t) => t.kimiQuota.windowMonthTotal,
+  monthCode: (t) => t.kimiQuota.windowMonthCode,
+  other: (t) => t.kimiQuota.windowOther,
+}
 
 export interface KimiWindowVM {
   id: KimiWindowId

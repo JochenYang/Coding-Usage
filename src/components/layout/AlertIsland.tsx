@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { BellOff, CircleAlert, Info, Lock, X } from 'lucide-react'
+import { BellOff, CircleAlert, CircleCheck, Info, Lock, X } from 'lucide-react'
 import type { AlertItem, AlertKind } from '@/lib/alerts'
 import { newAlertsFor } from '@/lib/alerts'
 import { alertDetail, alertTitle } from '@/lib/alert-text'
@@ -23,6 +23,7 @@ const AUTO_DISMISS_MS = 8_000
 
 const KIND_ICON: Record<AlertKind, typeof Info> = {
   'window-reset': CircleAlert,
+  'window-restored': CircleCheck,
   'high-usage': Lock,
   'low-balance': Info,
 }

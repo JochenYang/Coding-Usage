@@ -41,15 +41,30 @@ import {
   markAllRead,
   markRead,
   markReadMany,
+  restoredAlertId,
   saveAlerts,
   unreadCount,
 } from './alerts'
+import { subscriptionAlertSources, type QuotaSnapshotLike } from './subscription-alerts'
 import { normalizeOpenErRates, type FxRates } from './rates'
 import { pushAlerts } from './alert-push'
 import { useT } from '../i18n/useT'
 
 const FX_CACHE_KEY = 'coding-usage.fx.v1'
 const FX_TTL_MS = 24 * 60 * 60_000
+/**
+ * setTimeout's 32-bit delay ceiling. A restore timer never asks for more:
+ * an overflowed delay fires at once, which would announce a window that has
+ * not recovered. A window further out is woken halfway and re-armed (see the
+ * restore-timer effect).
+ */
+const MAX_TIMER_MS = 2 ** 31 - 1
+/** Fire a beat after the reset point so the announcement never lands early on a fast clock */
+const RESTORE_GRACE_MS = 1_000
+/** The alert engine waits for the first quota snapshot at most this long */
+const SNAPSHOT_READY_TIMEOUT_MS = 3_000
+/** How often the derive memo re-runs just to re-check the snapshot age */
+const AGE_TICK_MS = 60 * 60_000
 
 function readFxCache(): { fetchedAt: number; rates: FxRates } | null {
   try {
@@ -734,16 +749,164 @@ export function DataProvider({
   }, [])
 
   const sections = useMemo(() => buildSections(settings), [settings])
+  const t = useT()
+
+  // Last-known-good subscription readings (Claude, Codex, …) from the main
+  // process. The cards probe on their own; this is the one place the alert
+  // engine can see them. Read on mount and whenever a probe wrote a new
+  // reading — polling on the refresh tick would be a cycle late, because the
+  // cards probe right after the tick.
+  const [quotaSnapshot, setQuotaSnapshot] = useState<QuotaSnapshotLike>({})
+  // False until the first snapshot read settled (or there is no bridge). A
+  // derive before that sees no subscription sources and files every live
+  // subscription alert as resolved; the snapshot landing would flip it back
+  // to live, and that resolved→live edge is what the island treats as a new
+  // event — every launch would re-pop every persistent subscription alert.
+  // Without a bridge there is nothing to wait for.
+  const [snapshotReady, setSnapshotReady] = useState(() => !window.desktopBridge)
+  useEffect(() => {
+    const bridge = window.desktopBridge
+    if (!bridge) return
+    let cancelled = false
+    const read = () => {
+      bridge
+        .quotaSnapshot()
+        .then((snapshot) => {
+          if (!cancelled) setQuotaSnapshot(snapshot)
+        })
+        .catch(() => {
+          // No snapshot is the same as an empty one.
+        })
+        .finally(() => {
+          if (!cancelled) setSnapshotReady(true)
+        })
+    }
+    read()
+    // A bridge that never answers must not hold the alert engine hostage.
+    const watchdog = setTimeout(() => {
+      if (!cancelled) setSnapshotReady(true)
+    }, SNAPSHOT_READY_TIMEOUT_MS)
+    const unsubscribe = bridge.onQuotaUpdated(read)
+    return () => {
+      cancelled = true
+      clearTimeout(watchdog)
+      unsubscribe()
+    }
+  }, [])
+
+  // Only cards the user kept on the plans page raise alerts: a disabled card
+  // must not keep announcing a snapshot it left behind.
+  const enabledSubscriptions = useMemo(
+    () => new Set(settings.enabledSubscriptions),
+    [settings.enabledSubscriptions],
+  )
+
+  // Low-frequency clock for the derive memo: the snapshot age check inside
+  // `subscriptionAlertSources` only runs when the memo recomputes, and with
+  // auto-refresh off nothing else moves for hours. One tick an hour is
+  // enough for a day-old reading to age out without churning the engine.
+  // Side effect to know about: the derive commits a fresh array on every
+  // tick, so the webhook push effect runs hourly too and its 4h cooldown —
+  // "a still-unread, still-active alert re-pushes once the window lapses" —
+  // now holds with auto-refresh off as well, where it previously only did
+  // for users who had a refresh interval set.
+  const [ageTick, setAgeTick] = useState(0)
+  useEffect(() => {
+    const timer = setInterval(() => setAgeTick((n) => n + 1), AGE_TICK_MS)
+    return () => clearInterval(timer)
+  }, [])
 
   // Re-derive the alert set whenever fresh results arrive; persist the merge.
+  // Subscription windows are normalized on every round (not memoized apart)
+  // so the snapshot age check runs against the current clock.
   const derivedAlerts = useMemo(
-    () => deriveAlerts(sections, results, settings.alertThresholds),
-    [sections, results, settings.alertThresholds],
+    () =>
+      deriveAlerts(
+        sections,
+        results,
+        settings.alertThresholds,
+        subscriptionAlertSources(quotaSnapshot, enabledSubscriptions, t, Date.now()),
+      ),
+    // ageTick is a clock input, not a value the memo reads
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sections, results, settings.alertThresholds, quotaSnapshot, enabledSubscriptions, t, ageTick],
   )
   useEffect(() => {
+    if (!snapshotReady) return
     setAlerts(derivedAlerts)
     saveAlerts(derivedAlerts)
-  }, [derivedAlerts])
+  }, [derivedAlerts, snapshotReady])
+
+  // Restore timer: a window that raised high-usage announces its recovery
+  // when its reset point passes. It is a local timer on `resetsAt`, not a
+  // re-probe — the cards only probe while the plans page is open, so the
+  // reading may be stale, but the reset time itself is exact. One announcement
+  // per window per reset point: the id carries both, and the next derive
+  // files the row as resolved history. Rebuilt on every alerts change (the
+  // derive round re-stamps all rows); the target instant stays the same.
+  const [wakeTick, setWakeTick] = useState(0)
+  useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = []
+    const now = Date.now()
+    for (const alert of alerts) {
+      if (alert.kind !== 'high-usage' || alert.resolved || alert.resetsAt == null || !alert.metricId) continue
+      const delay = alert.resetsAt - now
+      // Past reset points are the engine's business (stale guard).
+      if (delay <= 0) continue
+      // Beyond one timer's reach (a monthly window seen right after its
+      // reset): wake up halfway and let the effect re-arm with a delay that
+      // fits. An overflowed setTimeout fires at once and would announce a
+      // window that has not recovered.
+      if (delay + RESTORE_GRACE_MS > MAX_TIMER_MS) {
+        timers.push(setTimeout(() => setWakeTick((n) => n + 1), Math.min(delay, MAX_TIMER_MS / 2)))
+        continue
+      }
+      const id = restoredAlertId(alert.accountKey, alert.metricId, alert.resetsAt)
+      if (alerts.some((a) => a.id === id)) continue
+      timers.push(
+        setTimeout(() => {
+          const restored: AlertItem = {
+            id,
+            level: 'info',
+            accountKey: alert.accountKey,
+            agentName: alert.agentName,
+            kind: 'window-restored',
+            metricId: alert.metricId,
+            windowLabel: alert.windowLabel,
+            resetsAt: alert.resetsAt,
+            firstSeenAt: Date.now(),
+            lastSeenAt: Date.now(),
+            read: false,
+          }
+          // Same pattern as the mark-read callbacks: compute from state, set,
+          // persist — never a side effect inside the updater. The rows that
+          // described this window as still pending (exhausted, or about to
+          // reset) are closed here too: until the next derive (which may be
+          // an hour away with auto-refresh off) they would otherwise keep
+          // reading "exhausted" / "resets in 30 min" next to the row that
+          // says it recovered.
+          const next = [
+            ...alerts.map((a) =>
+              (a.kind === 'high-usage' || a.kind === 'window-reset') &&
+              !a.resolved &&
+              a.accountKey === alert.accountKey &&
+              a.metricId === alert.metricId
+                ? { ...a, resolved: true }
+                : a,
+            ),
+            restored,
+          ]
+          setAlerts(next)
+          saveAlerts(next)
+        }, delay + RESTORE_GRACE_MS),
+      )
+    }
+    return () => {
+      for (const timer of timers) clearTimeout(timer)
+    }
+    // wakeTick is a clock input, not a value the effect reads
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alerts, wakeTick])
 
   // Webhook push: every refresh offers the full unread set — pushAlerts
   // applies the per-channel 4h cooldown itself, so a still-unread,
@@ -754,7 +917,6 @@ export function DataProvider({
   // Read alerts never push (acknowledged); resolved ones leave the list.
   // Skipped while credentials are still ciphertext (hydration pending) — the
   // push fires on the next refresh cycle once the plaintext lands.
-  const t = useT()
   useEffect(() => {
     if (!settings.integrations.alertPush) return
     // Resolved history rows never push (their condition already cleared)

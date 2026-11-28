@@ -63,6 +63,11 @@ const desktopBridge: DesktopBridge = {
   pastedRequestSet: (target, text) => ipcRenderer.invoke('pasted:set', target, text),
   pastedRequestClear: (target) => ipcRenderer.invoke('pasted:clear', target),
   quotaSnapshot: () => ipcRenderer.invoke('quota:snapshot'),
+  onQuotaUpdated: (callback) => {
+    const listener = (_event: IpcRendererEvent, key: string) => callback(key)
+    ipcRenderer.on('quota:updated', listener)
+    return () => ipcRenderer.removeListener('quota:updated', listener)
+  },
   agentConfigRead: (agent) => ipcRenderer.invoke('agentConfig:read', agent),
   agentConfigReveal: (agent, providerId) =>
     ipcRenderer.invoke('agentConfig:reveal', agent, providerId),

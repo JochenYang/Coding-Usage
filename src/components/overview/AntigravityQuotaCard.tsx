@@ -9,33 +9,22 @@ import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
 import { useData } from '@/lib/data-context'
 import {
   ANTIGRAVITY_FLAVOURS,
+  ANTIGRAVITY_GROUP_LABELS,
+  ANTIGRAVITY_WINDOW_LABELS,
   summarizeAntigravityQuota,
   type AntigravityFlavour,
-  type AntigravityGroupId,
   type AntigravityQuotaVM,
-  type AntigravityWindowId,
 } from '@/lib/antigravity-quota'
 import { ProgressBar } from '@/components/common/ProgressBar'
 import { Badge } from '@/components/common/Badge'
 import { CardWatermark } from '@/components/common/CardWatermark'
 import { cn } from '@/lib/cn'
 
-/**
- * Label accessors keyed by the summarizer's stable ids, never by string
- * concatenation: a new id then fails the build here instead of rendering a raw
- * i18n key. Both maps are exhaustive over their union by type.
- */
-const GROUP_LABELS: Record<AntigravityGroupId, (t: Dict) => string> = {
-  gemini: (t) => t.antigravityQuota.groupGemini,
-  thirdParty: (t) => t.antigravityQuota.groupThirdParty,
-  other: (t) => t.antigravityQuota.groupOther,
-}
-
-const WINDOW_LABELS: Record<AntigravityWindowId, (t: Dict) => string> = {
-  weekly: (t) => t.antigravityQuota.windowWeekly,
-  fiveHour: (t) => t.antigravityQuota.windowFiveHour,
-  other: (t) => t.antigravityQuota.windowOther,
-}
+// The label maps live in @/lib/antigravity-quota so the alert engine names a
+// group and a window exactly as the card does. The local names keep the JSX
+// unchanged.
+const GROUP_LABELS = ANTIGRAVITY_GROUP_LABELS
+const WINDOW_LABELS = ANTIGRAVITY_WINDOW_LABELS
 
 /**
  * Race budget for the main-process probe: it may read the updater manifest,

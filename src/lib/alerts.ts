@@ -1,5 +1,5 @@
 import type { Section } from './sections'
-import type { AlertThresholds, ProviderResult } from '../types'
+import type { AlertThresholds, ProviderResult, UsageMetric } from '../types'
 
 /**
  * Alert engine. Alerts are derived purely from current fetch results (no
@@ -11,18 +11,42 @@ import type { AlertThresholds, ProviderResult } from '../types'
 
 export type AlertLevel = 'danger' | 'warning' | 'info'
 
-export type AlertKind = 'window-reset' | 'high-usage' | 'low-balance'
+export type AlertKind = 'window-reset' | 'high-usage' | 'low-balance' | 'window-restored'
 
 export interface AlertItem {
   /** Stable id: accountKey + kind + metric id */
   id: string
   level: AlertLevel
-  /** Account result key ("providerId-index") */
+  /**
+   * Source key: an account result key ("providerId-index") for provider
+   * metrics, or the subscription card key ("claude", "codex") for a
+   * subscription quota window.
+   */
   accountKey: string
   agentName: string
   kind: AlertKind
+  /**
+   * The window (metric id) this alert is about. Multi-window sources (a
+   * 5-hour and a weekly plan window) raise one alert per window under the
+   * same agent name; the id carries it, and consumers that build a new id
+   * from an existing alert (the restore timer) read it from here instead of
+   * parsing the id.
+   */
+  metricId?: string
+  /**
+   * Window display name in the locale the last derive ran under (the
+   * metric's label). Persisted so a stored row keeps rendering; the next
+   * derive overwrites it, so a locale switch re-labels live rows.
+   */
+  windowLabel?: string
   /** kind=window-reset: minutes until reset */
   resetInMin?: number
+  /**
+   * Window reset time (epoch ms) for kind=high-usage and window-restored:
+   * an exhausted window shows when it recovers, and a restored row records
+   * which reset it announced.
+   */
+  resetsAt?: number
   /** kind=high-usage: used percent */
   pct?: number
   /** kind=high-usage: used/total in original units */
@@ -184,65 +208,78 @@ export function renameAlertAccountKeys(renamed: Record<string, string>): boolean
 const RESOLVED_RETENTION_MS = 48 * 60 * 60_000
 
 /**
- * Derive the live alert set from current sections/results, merged with the
- * stored set (surviving alerts keep firstSeenAt/read and get lastSeenAt
- * stamped to this round; resolved ids are kept for {@link
- * RESOLVED_RETENTION_MS} from their lastSeenAt, then dropped). Alerts whose
- * account has no settled result (status 'loading' or 'error') keep their
- * previous state — an in-flight or failed refresh is not evidence the
- * condition cleared.
+ * One alert source outside the provider pipeline. Subscription quota cards
+ * (Claude, Codex, …) do not run through `results` — every card probes on its
+ * own — so the caller normalizes their last reading into metrics and hands
+ * the list in here. There is no status to wait out: a snapshot is the last
+ * good reading, and the resolved-merge below treats an unknown status as
+ * settled.
+ */
+export interface AlertSource {
+  /** "providerId-index" for accounts, the card key for subscriptions */
+  key: string
+  agentName: string
+  metrics: UsageMetric[]
+}
+
+/**
+ * Derive the live alert set from current sections/results (plus any
+ * {@link AlertSource} the caller adds), merged with the stored set
+ * (surviving alerts keep firstSeenAt/read and get lastSeenAt stamped to this
+ * round; resolved ids are kept for {@link RESOLVED_RETENTION_MS} from their
+ * lastSeenAt, then dropped). Alerts whose account has no settled result
+ * (status 'loading' or 'error') keep their previous state — an in-flight or
+ * failed refresh is not evidence the condition cleared.
  * Pure — the caller persists the result.
  */
 export function deriveAlerts(
   sections: Section[],
   results: Record<string, ProviderResult>,
   thresholds: AlertThresholds = DEFAULT_ALERT_THRESHOLDS,
+  extraSources: AlertSource[] = [],
 ): AlertItem[] {
   const resetSoonMs = thresholds.resetSoonMin * 60_000
   const highUsagePct = thresholds.highUsagePct
   const lowBalance = thresholds.lowBalance
   const live = new Map<string, AlertItem>()
+  // Copied, never the caller's array: the provider sources are appended below.
+  const sources: AlertSource[] = [...extraSources]
   for (const sec of sections) {
     for (const card of sec.cards) {
       const result = results[card.key]
       if (result?.status !== 'ok' || !result.metrics) continue
-      const agentName = card.cfg.label || `${sec.def.name} ${card.index + 1}`
-      for (const m of result.metrics) {
-        if (m.kind === 'percent' && m.percent != null) {
-          // Stale-value guard: a reset point in the past means the window
-          // semantics are dead (e.g. a dead subscription still reporting an
-          // old 100%) — the percentage is no longer actionable, so the
-          // window-reset family of alerts must not survive on it.
-          const staleWindow = m.resetsAt != null && m.resetsAt <= Date.now()
-          if (m.resetsAt != null) {
-            const mins = Math.round((m.resetsAt - Date.now()) / 60_000)
-            if (mins > 0 && m.resetsAt - Date.now() <= resetSoonMs && m.percent < 100) {
-              const id = `${card.key}:window-reset:${m.id}`
-              live.set(id, {
-                id,
-                level: 'info',
-                accountKey: card.key,
-                agentName,
-                kind: 'window-reset',
-                resetInMin: mins,
-                firstSeenAt: Date.now(),
-                // Stamped per round; the merge below re-stamps it with `now`
-                lastSeenAt: Date.now(),
-                read: false,
-              })
-            }
-          }
-          if (m.percent >= highUsagePct && !staleWindow) {
-            const id = `${card.key}:high-usage:${m.id}`
+      sources.push({
+        key: card.key,
+        agentName: card.cfg.label || `${sec.def.name} ${card.index + 1}`,
+        metrics: result.metrics,
+      })
+    }
+  }
+  for (const { key, agentName, metrics } of sources) {
+    for (const m of metrics) {
+      if (m.kind === 'percent' && m.percent != null) {
+        // Stale-value guard: a reset point in the past means the window
+        // semantics are dead (e.g. a dead subscription still reporting an
+        // old 100%) — the percentage is no longer actionable, so the
+        // window-reset family of alerts must not survive on it.
+        const staleWindow = m.resetsAt != null && m.resetsAt <= Date.now()
+        if (m.resetsAt != null) {
+          const mins = Math.round((m.resetsAt - Date.now()) / 60_000)
+          // An exhausted window (100%) is announced by the high-usage row
+          // below, which carries the recovery countdown; a second "resetting
+          // soon" row for the same window would only duplicate it.
+          if (mins > 0 && m.resetsAt - Date.now() <= resetSoonMs && m.percent < 100) {
+            const id = `${key}:window-reset:${m.id}`
             live.set(id, {
               id,
-              level: m.percent >= 100 ? 'danger' : 'warning',
-              accountKey: card.key,
+              level: 'info',
+              accountKey: key,
               agentName,
-              kind: 'high-usage',
-              pct: Math.round(m.percent),
-              used: m.used,
-              total: m.total,
+              kind: 'window-reset',
+              metricId: m.id,
+              windowLabel: m.label,
+              resetsAt: m.resetsAt,
+              resetInMin: mins,
               firstSeenAt: Date.now(),
               // Stamped per round; the merge below re-stamps it with `now`
               lastSeenAt: Date.now(),
@@ -250,24 +287,44 @@ export function deriveAlerts(
             })
           }
         }
-        if (m.kind === 'balance' && m.remaining != null && m.unit) {
-          const floor = lowBalance[normalizeCurrency(m.unit)]
-          if (floor != null && m.remaining <= floor) {
-            const id = `${card.key}:low-balance:${m.id}`
-            live.set(id, {
-              id,
-              level: 'info',
-              accountKey: card.key,
-              agentName,
-              kind: 'low-balance',
-              balance: m.remaining,
-              currency: m.unit,
-              firstSeenAt: Date.now(),
-              // Stamped per round; the merge below re-stamps it with `now`
-              lastSeenAt: Date.now(),
-              read: false,
-            })
-          }
+        if (m.percent >= highUsagePct && !staleWindow) {
+          const id = `${key}:high-usage:${m.id}`
+          live.set(id, {
+            id,
+            level: m.percent >= 100 ? 'danger' : 'warning',
+            accountKey: key,
+            agentName,
+            kind: 'high-usage',
+            metricId: m.id,
+            windowLabel: m.label,
+            resetsAt: m.resetsAt,
+            pct: Math.round(m.percent),
+            used: m.used,
+            total: m.total,
+            firstSeenAt: Date.now(),
+            // Stamped per round; the merge below re-stamps it with `now`
+            lastSeenAt: Date.now(),
+            read: false,
+          })
+        }
+      }
+      if (m.kind === 'balance' && m.remaining != null && m.unit) {
+        const floor = lowBalance[normalizeCurrency(m.unit)]
+        if (floor != null && m.remaining <= floor) {
+          const id = `${key}:low-balance:${m.id}`
+          live.set(id, {
+            id,
+            level: 'info',
+            accountKey: key,
+            agentName,
+            kind: 'low-balance',
+            balance: m.remaining,
+            currency: m.unit,
+            firstSeenAt: Date.now(),
+            // Stamped per round; the merge below re-stamps it with `now`
+            lastSeenAt: Date.now(),
+            read: false,
+          })
         }
       }
     }
@@ -319,6 +376,17 @@ export function newAlertsFor(previous: Map<string, boolean>, current: AlertItem[
     if (was === undefined) return true
     return was === true && alert.resolved !== true
   })
+}
+
+/**
+ * Id of the "window restored" announcement for one window and one reset
+ * point. Carrying `resetsAt` makes every reset its own event: a 5-hour window
+ * that fills up again after recovering raises a new announcement next time,
+ * while the same reset point is announced once however often the timer is
+ * rebuilt.
+ */
+export function restoredAlertId(accountKey: string, metricId: string, resetsAt: number): string {
+  return `${accountKey}:window-restored:${metricId}:${resetsAt}`
 }
 
 export function unreadCount(items: AlertItem[]): number {

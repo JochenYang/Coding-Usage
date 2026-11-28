@@ -2,31 +2,20 @@ import { useEffect, useState } from 'react'
 import { Kimi } from '@lobehub/icons'
 import { useT } from '@/i18n/useT'
 import { useLocale } from '@/i18n/LocaleProvider'
-import type { Dict } from '@/i18n/types'
 import { currencySymbol, formatAgo, formatAmount, formatCountdown } from '@/lib/format'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
 import { useInView } from '@/lib/hooks/use-in-view'
 import { useStripSvgTitle } from '@/lib/hooks/use-strip-svg-title'
 import { useData } from '@/lib/data-context'
-import { summarizeKimiQuota, type KimiQuotaVM, type KimiWindowId } from '@/lib/kimi-quota'
+import { KIMI_WINDOW_LABELS, summarizeKimiQuota, type KimiQuotaVM } from '@/lib/kimi-quota'
 import { useTheme } from '@/components/ThemeProvider'
 import { ProgressBar } from '@/components/common/ProgressBar'
 import { CardWatermark } from '@/components/common/CardWatermark'
 import { cn } from '@/lib/cn'
 
-/**
- * Window label resolved through an explicit id -> i18n accessor map, never by
- * string concatenation: a new KimiWindowId then fails the build here instead of
- * silently rendering a raw key. The ids are the display contract from
- * `summarizeKimiQuota` and stay stable across payloads.
- */
-const WINDOW_LABELS: Record<KimiWindowId, (t: Dict) => string> = {
-  fiveHour: (t) => t.kimiQuota.windowFiveHour,
-  weekly: (t) => t.kimiQuota.windowWeekly,
-  monthTotal: (t) => t.kimiQuota.windowMonthTotal,
-  monthCode: (t) => t.kimiQuota.windowMonthCode,
-  other: (t) => t.kimiQuota.windowOther,
-}
+// The window label map lives in @/lib/kimi-quota so the alert engine names a
+// window exactly as the card does. The local name keeps the JSX unchanged.
+const WINDOW_LABELS = KIMI_WINDOW_LABELS
 
 /**
  * Race budget for the main-process probe. `electron/kimi-usage.ts` bounds every

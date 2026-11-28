@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Bell, CircleAlert, Info, Lock } from 'lucide-react'
+import { Bell, CircleAlert, CircleCheck, Info, Lock } from 'lucide-react'
 import { Switch } from '@/components/beui/switch'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
@@ -17,7 +17,7 @@ import {
 import { cn } from '@/lib/cn'
 import { useT } from '@/i18n/useT'
 import { useData } from '@/lib/data-context'
-import type { AlertItem, AlertLevel } from '@/lib/alerts'
+import type { AlertItem, AlertKind, AlertLevel } from '@/lib/alerts'
 import { alertDetail, alertTitle } from '@/lib/alert-text'
 import { resolveThresholds } from '@/lib/alerts'
 import type { AlertThresholds } from '@/types'
@@ -40,6 +40,14 @@ const LEVEL_CHIP: Record<AlertLevel, string> = {
   info: 'bg-accent-soft text-accent',
 }
 
+/** Glyph per alert kind; mirrors AlertsPanel so both views match */
+const KIND_ICON: Record<AlertKind, typeof Info> = {
+  'window-reset': CircleAlert,
+  'window-restored': CircleCheck,
+  'high-usage': Lock,
+  'low-balance': Info,
+}
+
 interface AlertRowProps {
   alert: AlertItem
   now: number
@@ -52,7 +60,8 @@ interface AlertRowProps {
  */
 function AlertRow({ alert, now, onRead }: AlertRowProps) {
   const t = useT()
-  const detail = alertDetail(alert, t)
+  const detail = alertDetail(alert, t, now)
+  const Icon = KIND_ICON[alert.kind]
 
   return (
     <li className={cn(alert.read && 'opacity-70')}>
@@ -74,15 +83,7 @@ function AlertRow({ alert, now, onRead }: AlertRowProps) {
             LEVEL_CHIP[alert.level],
           )}
         >
-          {
-            alert.kind === 'window-reset' ? (
-              <CircleAlert className="h-4 w-4" />
-            ) : alert.kind === 'high-usage' ? (
-              <Lock className="h-4 w-4" />
-            ) : (
-              <Info className="h-4 w-4" />
-            )
-          }
+          <Icon className="h-4 w-4" />
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-xs font-medium text-foreground">

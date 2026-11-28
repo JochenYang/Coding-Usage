@@ -1,4 +1,4 @@
-import { CircleAlert, Info, Lock } from 'lucide-react'
+import { CircleAlert, CircleCheck, Info, Lock } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { AlertItem, AlertKind, AlertLevel } from '@/lib/alerts'
 import { alertDetail, alertTitle } from '@/lib/alert-text'
@@ -21,9 +21,10 @@ const LEVEL_CHIP: Record<AlertLevel, string> = {
   info: 'bg-accent-soft text-accent',
 }
 
-/** Glyph per alert kind: reset windows, quota usage, low balance */
+/** Glyph per alert kind: reset windows, restored windows, quota usage, low balance */
 const KIND_ICON: Record<AlertKind, typeof Info> = {
   'window-reset': CircleAlert,
+  'window-restored': CircleCheck,
   'high-usage': Lock,
   'low-balance': Info,
 }
@@ -33,7 +34,7 @@ function AlertRow({ alert, now }: { alert: AlertItem; now: number }) {
   const t = useT()
 
   const title = alertTitle(alert, t)
-  const detail = alertDetail(alert, t)
+  const detail = alertDetail(alert, t, now)
 
   return (
     <li className="flex items-center gap-3 py-3">

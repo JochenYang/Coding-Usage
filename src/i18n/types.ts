@@ -383,10 +383,14 @@ export interface Dict {
     agentIdleToday: string
     alertsTitle: string
     viewAll: string
-    alertWindowReset: (name: string) => string
-    alertHighUsage: (name: string, pct: number) => string
+    /** `window` names the plan window when the source has more than one */
+    alertWindowReset: (name: string, window?: string) => string
+    alertWindowRestored: (name: string, window?: string) => string
+    alertHighUsage: (name: string, pct: number, window?: string) => string
     alertLowBalance: (name: string) => string
     alertResetSoon: (m: number) => string
+    /** An exhausted window: `s` is the countdown text ("in 2 h 15 m") */
+    alertExhaustedDetail: (s: string) => string
     alertUsedDetail: (used: string, total: string) => string
     alertBalanceDetail: (s: string) => string
     /** An alert that has held for over a day: when it began */

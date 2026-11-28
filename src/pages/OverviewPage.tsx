@@ -161,10 +161,10 @@ export function OverviewPage({
           title: alertTitle(a, t),
           detail:
             a.lastSeenAt - a.firstSeenAt > DAY_MS
-              ? [alertDetail(a, t), t.overview.alertSince(formatClock(a.firstSeenAt, now))]
+              ? [alertDetail(a, t, now), t.overview.alertSince(formatClock(a.firstSeenAt, now))]
                   .filter(Boolean)
                   .join(' · ')
-              : alertDetail(a, t),
+              : alertDetail(a, t, now),
           level: a.level,
           time: formatClock(a.lastSeenAt, now),
         }),

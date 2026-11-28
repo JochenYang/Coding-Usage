@@ -4,18 +4,15 @@ import { formatAgo, formatCountdown } from '@/lib/format'
 import { useNowTick } from '@/lib/hooks/use-now-tick'
 import { useInView } from '@/lib/hooks/use-in-view'
 import { useData } from '@/lib/data-context'
-import { summarizeOpendesignQuota, type OpendesignQuotaVM, type OpendesignWindowId } from '@/lib/opendesign-quota'
+import {
+  opendesignWindowLabel,
+  summarizeOpendesignQuota,
+  type OpendesignQuotaVM,
+} from '@/lib/opendesign-quota'
 import { ProgressBar } from '@/components/common/ProgressBar'
 import { CardWatermark } from '@/components/common/CardWatermark'
 import { cn } from '@/lib/cn'
 import opendesignLogo from '@/components/logos/opendesign.png'
-
-/** Localized label per window id (the probe's `other` = a duration we don't name) */
-function opendesignWindowLabel(id: OpendesignWindowId, t: ReturnType<typeof useT>): string {
-  if (id === 'fiveHour') return t.windows.rolling
-  if (id === 'weekly') return t.windows.weekly
-  return t.windows.generic
-}
 
 /**
  * OpenDesign Go subscription quota card. Primary credential: the official

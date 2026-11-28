@@ -274,6 +274,12 @@ declare global {
       Record<string, { at: number; result: { available: boolean; body?: string; reason?: string } }>
     >
     /**
+     * Fires in every window after a subscription probe wrote a new reading
+     * into the snapshot (payload: the card key). The alert engine re-reads
+     * `quotaSnapshot()` on it. Returns an unsubscribe function.
+     */
+    onQuotaUpdated(callback: (key: string) => void): () => void
+    /**
      * Open the Alibaba Cloud console in an in-app window so its session lands
      * in the app's own cookie jar. Resolves when signed in, cancelled, or timed
      * out. No credential crosses this boundary.

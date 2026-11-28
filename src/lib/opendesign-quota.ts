@@ -5,8 +5,16 @@
  * `id` is the window's own duration identity (fiveHour / weekly / other), so
  * the card maps labels through the dict instead of trusting response order.
  */
+import type { Dict } from '../i18n/types'
 
 export type OpendesignWindowId = 'fiveHour' | 'weekly' | 'other'
+
+/** Localized label per window id (the probe's `other` = a duration we don't name) */
+export function opendesignWindowLabel(id: OpendesignWindowId, t: Dict): string {
+  if (id === 'fiveHour') return t.windows.rolling
+  if (id === 'weekly') return t.windows.weekly
+  return t.windows.generic
+}
 
 export interface OpendesignWindowVM {
   id: OpendesignWindowId

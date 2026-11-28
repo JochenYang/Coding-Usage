@@ -390,10 +390,15 @@ export const enUS: Dict = {
     distUnavailable: 'No token totals available (some providers only report percentages)',
     alertsTitle: 'Recent alerts',
     viewAll: 'View all',
-    alertWindowReset: (name: string) => `${name} - window resetting soon`,
-    alertHighUsage: (name: string, pct: number) => `${name} - quota ${pct}% used`,
+    alertWindowReset: (name: string, window?: string) =>
+      window ? `${name} - ${window} resetting soon` : `${name} - window resetting soon`,
+    alertWindowRestored: (name: string, window?: string) =>
+      window ? `${name} - ${window} restored` : `${name} - quota restored`,
+    alertHighUsage: (name: string, pct: number, window?: string) =>
+      window ? `${name} - ${window} quota ${pct}% used` : `${name} - quota ${pct}% used`,
     alertLowBalance: (name: string) => `${name} - low balance`,
     alertResetSoon: (m: number) => `resets in ${m} min`,
+    alertExhaustedDetail: (s: string) => `Exhausted, restores ${s}`,
     alertUsedDetail: (used: string, total: string) => `${used} / ${total} tokens used`,
     alertBalanceDetail: (s: string) => `Balance: ${s}`,
     alertSince: (date: string) => `since ${date}`,

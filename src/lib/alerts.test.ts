@@ -2,11 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProviderDef, ProviderResult } from '../types'
 import type { Section } from './sections'
 import {
+  DEFAULT_ALERT_THRESHOLDS,
   deriveAlerts,
   loadAlerts,
   saveAlerts,
+  restoredAlertId,
   unreadCount,
   type AlertItem,
+  type AlertSource,
 } from './alerts'
 
 /**
@@ -198,5 +201,67 @@ describe('resolved history is display-only', () => {
     const merged = deriveAlerts(sections(), results(50))
     saveAlerts(merged)
     expect(loadAlerts()).toEqual(merged)
+  })
+})
+
+/**
+ * Subscription quota windows enter the engine as extra sources: one alert
+ * per window under the card's name, carrying the window id and label so a
+ * multi-window card stays readable. An exhausted window is announced by the
+ * high-usage row (which carries the recovery time), not by a second
+ * "resetting soon" row.
+ */
+describe('deriveAlerts with extra (subscription) sources', () => {
+  const RESET_AT = NOW + 30 * 60_000
+
+  function claudeSource(percent: number): AlertSource {
+    return {
+      key: 'claude',
+      agentName: 'Claude Code',
+      metrics: [{ id: 'fiveHour', label: '5 小时窗口', kind: 'percent', percent, resetsAt: RESET_AT }],
+    }
+  }
+
+  it('raises one high-usage alert per window with the window id, label and reset time', () => {
+    const merged = deriveAlerts(sections(), {}, DEFAULT_ALERT_THRESHOLDS, [claudeSource(100)])
+    expect(merged).toHaveLength(1)
+    expect(merged[0]).toMatchObject({
+      id: 'claude:high-usage:fiveHour',
+      kind: 'high-usage',
+      level: 'danger',
+      accountKey: 'claude',
+      agentName: 'Claude Code',
+      metricId: 'fiveHour',
+      windowLabel: '5 小时窗口',
+      resetsAt: RESET_AT,
+      pct: 100,
+    })
+  })
+
+  it('does not add a window-reset row for an exhausted window inside the reset-soon horizon', () => {
+    const merged = deriveAlerts(sections(), {}, DEFAULT_ALERT_THRESHOLDS, [claudeSource(100)])
+    expect(merged.some((a) => a.kind === 'window-reset')).toBe(false)
+  })
+
+  it('keeps the window-reset row for a window below 100% inside the horizon, naming the window', () => {
+    const merged = deriveAlerts(sections(), {}, DEFAULT_ALERT_THRESHOLDS, [claudeSource(95)])
+    expect(merged.map((a) => a.kind).sort()).toEqual(['high-usage', 'window-reset'])
+    expect(merged.find((a) => a.kind === 'window-reset')).toMatchObject({ windowLabel: '5 小时窗口', resetsAt: RESET_AT })
+  })
+
+  it('files a subscription alert as resolved history once its window is no longer raised', () => {
+    saveAlerts(deriveAlerts(sections(), {}, DEFAULT_ALERT_THRESHOLDS, [claudeSource(95)]))
+    const merged = deriveAlerts(sections(), {}, DEFAULT_ALERT_THRESHOLDS, [])
+    expect(findAlert(merged, 'claude:high-usage:fiveHour')?.resolved).toBe(true)
+  })
+
+  it('does not mutate the extra sources array the caller hands in', () => {
+    const extra = [claudeSource(95)]
+    deriveAlerts(sections(), results(95), DEFAULT_ALERT_THRESHOLDS, extra)
+    expect(extra).toHaveLength(1)
+  })
+
+  it('builds the restore id from the source, the window and the reset point', () => {
+    expect(restoredAlertId('claude', 'fiveHour', RESET_AT)).toBe(`claude:window-restored:fiveHour:${RESET_AT}`)
   })
 })

@@ -534,6 +534,13 @@ async function cachedQuotaOutcome(
         // Only a success is persisted: the cards paint the last good reading on
         // the next visit instead of waiting for this probe again.
         saveQuotaOutcome(key, result)
+        // Tell every renderer a subscription reading changed. The alert
+        // engine re-reads the snapshot on this signal; polling it on the
+        // refresh tick would be a cycle late, since the cards probe right
+        // after the tick.
+        for (const win of BrowserWindow.getAllWindows()) {
+          if (!win.isDestroyed()) win.webContents.send('quota:updated', key)
+        }
       }
       return result
     } finally {

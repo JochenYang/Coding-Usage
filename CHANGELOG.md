@@ -10,6 +10,20 @@ release workflow 会自动构建 Windows 安装包并用本文件生成双语 re
 双语条目对齐维护：`### 中文` / `### English` 子节条目一一对应、顺序一致，
 新条目加在列表顶部。
 
+## [Unreleased]
+
+### 中文
+- 灵动岛与提醒中心现在覆盖官方订阅额度：Claude Code、Codex、Gemini CLI、Grok、Trae、Kimi Code、Antigravity、Cursor、GitHub Copilot、Cline Pass、JetBrains AI、Windsurf、Kiro、Kilo、Factory Droid、Devin、Amp、OpenDesign、阿里云三张卡的高用量与「即将重置」提醒，此前只有 API key 类账户才有（订阅卡的读数不经过提醒引擎）。Antigravity 三张卡是同一个额度池，只报一条；只对已启用的卡报警，超过一天没刷新的读数不算
+- 额度用完时的提醒会写明恢复时间（「已用完，2 小时 15 分后重置」），此前额度到 100% 反而不提醒重置；曾报过高用量的窗口在恢复时刻会再弹一条「已恢复」提醒，按重置时间本地推算、同一重置点只报一次
+- 多窗口的卡在提醒标题里带上窗口名（如「Claude Code - 每周窗口额度使用 95%」），几个窗口同时超限时不再分不清是哪一个；API key 账户的套餐窗口提醒同样带窗口名
+- 提醒引擎每小时跑一次（用于让过期读数失效），因此「持续未读的提醒每 4 小时重推一次」在关闭自动刷新时也成立——此前只有设了刷新间隔的用户才会收到重推
+
+### English
+- The dynamic island and the alerts center now cover official subscription quotas: high-usage and "resetting soon" alerts for Claude Code, Codex, Gemini CLI, Grok, Trae, Kimi Code, Antigravity, Cursor, GitHub Copilot, Cline Pass, JetBrains AI, Windsurf, Kiro, Kilo, Factory Droid, Devin, Amp, OpenDesign and the three Alibaba cards — before, only API-key accounts had them (subscription readings never reached the alert engine). The three Antigravity cards are one allowance and raise one alert; only enabled cards alert, and a reading older than a day does not count
+- An exhausted window now says when it recovers ("Exhausted, restores in 2 h 15 m") — before, a window at 100% raised no reset alert at all; a window that had raised high-usage gets a "restored" announcement at its reset time, derived locally from the reset time and announced once per reset point
+- Multi-window cards name the window in the alert title ("Claude Code - Weekly window quota 95% used"), so several windows over the limit at once no longer read the same; plan-window alerts of API-key accounts carry the window name too
+- The alert engine now ticks hourly (so stale readings age out), which means "a still-unread alert re-pushes every 4 hours" also holds with auto-refresh off — before, only users with a refresh interval set got those re-pushes
+
 ## [v0.11.0] - 2026-11-25
 
 ### 中文

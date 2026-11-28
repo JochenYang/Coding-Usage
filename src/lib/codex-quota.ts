@@ -10,6 +10,23 @@
  * because they are the only place the UI can learn "this account is actually
  * out of credits" — a 0% window looks identical to a healthy one otherwise.
  */
+import type { Dict } from '../i18n/types'
+
+/**
+ * Map the endpoint's window length to a localized label. The known 5h / 7d /
+ * 30d lengths carry their own dict keys; any other length the endpoint may
+ * grow falls back to an approximate count instead of showing raw seconds.
+ * Shared by the card and the alert engine so both name a window the same way.
+ */
+export function codexWindowLabel(seconds: number, t: Dict): string {
+  if (seconds === 18000) return t.windows.rolling
+  if (seconds === 604800) return t.windows.weekly
+  if (seconds === 2592000) return t.windows.monthly
+  if (seconds <= 0) return t.windows.generic
+  const h = Math.round(seconds / 3600)
+  if (h < 48) return t.windows.hoursLabel(h)
+  return t.windows.daysLabel(Math.round(seconds / 86400))
+}
 
 export interface CodexWindowVM {
   /** Window length in seconds; the card maps it to a localized label */

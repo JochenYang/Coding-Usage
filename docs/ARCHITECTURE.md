@@ -117,7 +117,8 @@ electron/
   qoder-quota.ts          # Qoder 国际版额度：解 IDE 本地登录（DPAPI 密钥 + safe-storage.ts）→ 官方 credits 接口
   quota-store.ts          # 套餐额度上次成功结果（`quota-cache.json`）：卡片首屏直接显示并标注时间，
                           # 只存归一化额度字段与计划名，不存凭据与账号标识（登录邮箱等）；
-                          # 失败不覆盖上次成功
+                          # 失败不覆盖上次成功；每次成功写入后向所有窗口广播 `quota:updated`
+                          # （提醒引擎据此重读快照，见 §3 第 2 条）
   usage-store.ts          # 本地用量日归档（SQLite，userData/usage-history.db）：每轮扫描按日合并入库，
                           # 会话文件被删除/轮转后历史仍在（tokscale 只反映当前磁盘上的文件）
   model-pricing.ts / model-pricing-core.ts / builtin-pricing.ts
@@ -159,6 +160,25 @@ electron/
    三张卡都带一项安装状态
    （`installed`），只有主进程查得实（目前仅 Windows）才报 `false`，卡片据此标注「未安装」——额度照常
    读取卸载后残留的登录。
+   **订阅额度进提醒引擎**：订阅卡不经过 `results`，它们唯一的共同记录是主进程 `quota-cache.json` 里的
+   上次成功读数（`quotaSnapshot()`）。`src/lib/subscription-alerts.ts` 用每张卡自己的解析器（与卡片渲染
+   同一份代码，Amp / Factory / Devin 的解析器因此从组件搬到了 `src/lib/*-quota.ts`）把快照归一成
+   `deriveAlerts` 的额外来源：每个窗口一条已用百分比 metric，带窗口 id、当前语言的窗口名与 `resetsAt`。
+   规则：只看 `enabledSubscriptions` 里的卡（禁用的卡不再用它留下的快照报警）；超过 24 小时的快照不算
+   读数；Antigravity 三张卡是同一个额度池，只取三槽里最新的一份、以「Antigravity」一条来源报警，服务
+   报的剩余百分比在此反转为已用；Qoder 不报重置时间，暂不接入。主进程每次写入新读数后向所有渲染进程
+   广播 `quota:updated`（载荷为卡键），`DataProvider` 据此重读快照并在下一轮 `deriveAlerts` 里带上——
+   卡片是在刷新 tick 之后才探测的，跟着 tick 轮询会晚一整轮。提醒侧新增两种表现：额度 ≥ 100% 且带
+   `resetsAt` 的高用量提醒，详情行改为「已用完，{倒计时}」（不再引用 used/total）；曾报过高用量的窗口在
+   `resetsAt` 到点时由 `DataProvider` 的本地定时器发一条 `window-restored` 提醒（id 带重置时刻，同一
+   重置点只报一次，同一窗口的高用量行同时结为已解决，下一轮派生归为历史），不依赖重新探测；超出
+   `setTimeout` 32 位范围的月度窗口先在半程唤醒一次再排真正的定时器。启动时首轮派生等快照首读
+   完成（最多 3 秒）才跑——否则持久化里的订阅提醒会先被标成已解决、快照到达后再翻回 live，灵动岛把
+   这个翻转当成新事件，每次启动都重弹一遍。已知限制：卡片只在套餐页打开且可见时
+   探测，用户停留在别处时快照不更新，后台周期窗口也不探测——「恢复」靠 `resetsAt` 推算，真实额度要等
+   下次探测验证；恢复定时器活在主窗口的渲染进程里，主窗口关闭到托盘期间不会触发；快照 24 小时过期
+   按派生轮次与每小时一次的时钟 tick 检查，该 tick 也让 webhook 的「持续未读每 4 小时重推一次」在关闭
+   自动刷新时同样成立。
    CodeBuddy / Cindy / DSH / WorkBuddy 目前只有本地用量行、没有额度卡：截至 2026-11 尚未盘点过
    这四家的厂商额度面（区别于 JetBrains / Windsurf 的「有意纯本地」取舍），下轮接入调研从这四家起步。
 3. **本地 Agent 用量**：主进程 `tokscale:scan` 扫描本地会话日志，另按 `electron/main.ts` 的
